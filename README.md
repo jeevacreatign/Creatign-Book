@@ -1,1 +1,118 @@
-# Creatign-Book
+# Creatign Books
+
+Accounting and billing for **Creatign** (Tamil Nadu, India): items, customers and vendors, the full sales cycle (quote → sales order → invoice → payment), the full purchase cycle (purchase order → bill → payment made), expenses, double-entry journals and financial reports.
+
+* Currency: Indian Rupee with Indian digit grouping, e.g. **₹1,00,000.00**
+* Dates: **dd/MM/yyyy**
+* Fiscal year: **April to March**
+
+The architecture, every entity and the double-entry posting rules are documented in [docs/SCHEMA.md](docs/SCHEMA.md).
+
+## Tech stack
+
+| Layer | Tools |
+|---|---|
+| Frontend | React 18, TypeScript, Tailwind CSS 3, Vite 5, React Router 6, TanStack Query 5, Recharts, lucide-react |
+| Backend | Node.js, Express 5 (run with `tsx`), multer for attachments |
+| Persistence | JSON document store at `server/data/db.json`, written atomically. Attachments go to `server/uploads/` |
+| Tests | Vitest + Supertest (end-to-end API workflows) |
+
+## Setup
+
+Requirements: Node.js 20 or newer and npm.
+
+```bash
+npm install
+npm run dev
+```
+
+* App: http://localhost:5173
+* API: http://localhost:4000/api (Vite proxies `/api` and `/uploads` to it)
+
+On first start the server creates `server/data/db.json` with the Creatign organisation, a chart of accounts and a little sample data (4 items, customers *Test Company* and *Ananya Textiles*, vendors, one project), so every screen has something to show.
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Starts API (port 4000, auto-reload) and web app (port 5173) together |
+| `npm test` | Runs the workflow tests against an in-memory database |
+| `npm run typecheck` | TypeScript check for client, server and shared code |
+| `npm run reset-data` | Wipes the data file and reseeds sample data. `npm run reset-data -- --empty` seeds only the organisation and accounts |
+| `npm run build` then `npm start` | Production build; the API then also serves the built app on port 4000 |
+
+Environment variables: `PORT` (default 4000) and `DB_FILE` (default `server/data/db.json`, `:memory:` for no disk).
+
+You can also reset from the app: **Settings → Data & Backup**.
+
+## Project structure
+
+```
+shared/        types, totals calculation, INR/date/fiscal formatting, document metadata
+server/
+  app.ts       REST routes (/api/...)
+  services.ts  validation, numbering, document actions, payments, credits, expenses
+  engine.ts    recompute balances/statuses and rebuild journals after each change
+  reports.ts   dashboard, P&L, balance sheet, trial balance, ledgers, aging, sales reports
+  db.ts        load/persist the JSON store     seed.ts  organisation, accounts, samples
+client/src/
+  components/  layout (sidebar + top bar), form controls, document preview, shared panels
+  pages/       Home, items, contacts, docs (all 10 sales/purchase documents), payments,
+               expenses, misc (banking, accountant, reports, time tracking, settings, print)
+tests/flow.test.ts   end-to-end sales and purchase workflow tests
+docs/SCHEMA.md       architecture and data model
+```
+
+## Modules
+
+* **Home**: dashboard with receivables and payables (current and overdue buckets), cash flow, income and expense (accrual or cash), top expenses, projects, bank and credit card balances; Getting Started; Recent Updates.
+* **Items**: goods and services with sales and purchase information.
+* **Sales**: Customers, Quotes, Sales Orders, Invoices, Recurring Invoices, Delivery Challans, Payments Received, Credit Notes.
+* **Purchases**: Vendors, Expenses (including mileage and bulk), Recurring Expenses, Purchase Orders, Bills, Recurring Bills, Payments Made, Vendor Credits.
+* **Time Tracking**: projects and timesheets, with invoicing of billable hours.
+* **Banking**, **Accountant** (chart of accounts, manual journals), **Reports**, **Documents**, **Settings**.
+* **Payroll** and **Payment Gateway** appear in the sidebar as placeholders for future integrations.
+
+Every document supports PDF/print, email, share link, comments, activity history, attachments and a journal tab where it posts to the ledger. Conversions are one click: quote → sales order or invoice, sales order → invoice, delivery challan → invoice, purchase order → bill, expense → invoice.
+
+## Verify the workflows
+
+Run `npm run reset-data` first for a clean start, then `npm run dev` and open http://localhost:5173.
+
+### A. Item → Quote → Sales Order → Invoice → Journal and Payment Received
+
+1. **Create an item.** Items → **New**. Name *Website Audit*, type Service, Selling Price `24000`, Sales Account *Sales*. Save.
+2. **Create a quote.** Sales → Quotes → **New**. Customer *Test Company*, add the item *Website Audit* (qty 1). Check the total reads ₹24,000.00. Click **Save and Send**, then **Send** in the email dialog. The quote's status becomes **Sent**.
+3. **Convert to a sales order.** On the quote, open **More → Convert to Sales Order**. The form opens prefilled with the customer and lines; click **Save and Send** (or **Save**). The new order `SO-00001` is linked back to the quote.
+4. **Convert to an invoice.** On the sales order, click **Convert to Invoice** and then **Save and Send** (or Save as Draft, then Mark as Sent). The sales order's Invoiced indicator turns green. The invoice gets number `INV-00001`, a due date from the customer's payment terms (Net 15), and status **Open/Due**.
+5. **Check the journal.** Open the invoice's **Journal** tab:
+   Accounts Receivable debit ₹24,000.00, Sales credit ₹24,000.00.
+6. **Record the payment.** On the invoice, **Record Payment → Record Payment**. The invoice is prefilled with ₹24,000. Choose mode *Cash* (Deposit To *Petty Cash*) and **Save as Paid**.
+   * The invoice shows **PAID** with balance ₹0.00.
+   * The payment's journal shows Petty Cash debit ₹24,000.00 and Accounts Receivable credit ₹24,000.00.
+   * Test Company's **Statement** and **Transactions** tabs list the invoice and the payment; its Overview shows ₹0.00 outstanding and the income chart shows ₹24,000 for this month.
+7. **Check the ledger.** Reports → **Trial Balance**: total debits equal total credits.
+
+Try also: a quote with 10% discount and 2% TDS (`₹1,00,000 → ₹88,200`), partial payments, overpayment (the excess becomes an unused credit), a credit note applied to an invoice and refunded.
+
+### B. Vendor → Bill → Payment Made
+
+1. **Create a vendor.** Purchases → Vendors → **New**. Display name *Madurai Box Works*, payment terms *Due on Receipt*. Save.
+2. **Create a bill.** Purchases → Bills → **New**. Vendor *Madurai Box Works*, Bill# `MBW-771`, one line (pick an item such as *Printed Brochure*, or type a description), qty 1, rate `6000`. **Save as Open**. The bill shows ₹6,000.00 due and its journal shows the line's purchase account debited and Accounts Payable credited ₹6,000.00.
+3. **Pay the bill.** On the bill, **Record Payment** (or Purchases → Payments Made → **New**). The bill is prefilled with ₹6,000; choose Paid Through *Petty Cash*, **Save as Paid**.
+   * The bill shows **PAID**.
+   * The payment's journal shows Accounts Payable debit and Petty Cash credit ₹6,000.00.
+   * The vendor's payables drop to ₹0.00 and the Home dashboard's Total Payables updates.
+
+Try also: a purchase order converted to a bill (the PO becomes **Billed**), bills with TDS (TDS Payable is credited), vendor credits, and expenses (Purchases → Expenses), which post straight to the expense account.
+
+### Automated check
+
+`npm test` runs both workflows end to end through the API (14 tests): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
+
+## Notes and limits
+
+* **Email** is recorded, not delivered: sending writes to the document's and contact's Mails history and marks the document as sent. Plug an SMTP or API provider into `POST /api/mails` to deliver for real.
+* **PDF** uses the browser's print-to-PDF from the PDF/Print buttons (pages under `/print/...`).
+* **Share links** open a public read-only view at `/share/<token>`.
+* Recurring invoices, bills and expenses generate due documents when the server starts, on the first request each day, and from **More → Generate due invoices now**.
+* Single organisation and single user. GST tax lines, multi-currency, bank feeds and reconciliation are not implemented.
+* The JSON store suits a single small business. For multi-user use, swap `server/db.ts` for a database; the schema in docs/SCHEMA.md maps directly to tables.

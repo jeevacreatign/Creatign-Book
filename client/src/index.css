@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body { @apply bg-white text-[13px] text-slate-800 antialiased; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+  h1 { @apply text-xl font-semibold text-slate-900; }
+  input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; }
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md border px-3 h-8 text-[13px] font-medium transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-primary { @apply btn border-brand-600 bg-brand-600 text-white hover:bg-brand-700; }
+  .btn-secondary { @apply btn border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
+  .btn-ghost { @apply btn border-transparent bg-transparent text-slate-600 hover:bg-slate-100; }
+  .btn-danger { @apply btn border-red-600 bg-red-600 text-white hover:bg-red-700; }
+  .btn-sm { @apply h-7 px-2 text-xs; }
+  .btn-icon { @apply btn px-0 w-8 border-slate-300 bg-white text-slate-600 hover:bg-slate-50; }
+  .input { @apply block w-full h-8 rounded-md border border-slate-300 bg-white px-2.5 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500; }
+  textarea.input { @apply h-auto py-1.5; }
+  .label { @apply text-[13px] text-slate-600; }
+  .label-req { @apply text-[13px] text-red-600; }
+  .card { @apply rounded-lg border border-slate-200 bg-white; }
+  .table { @apply w-full text-left text-[13px]; }
+  .table th { @apply bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200; }
+  .table td { @apply px-3 py-2.5 border-b border-slate-100 align-top; }
+  .table tbody tr.row-link { @apply cursor-pointer hover:bg-slate-50; }
+  .link { @apply text-brand-600 hover:underline cursor-pointer; }
+  .menu { @apply absolute z-40 mt-1 min-w-[180px] rounded-md border border-slate-200 bg-white py-1 shadow-lg; }
+  .menu-item { @apply flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-slate-700 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-40; }
+  .tab { @apply -mb-px border-b-2 border-transparent px-1 pb-2 pt-1 text-[13px] text-slate-600 hover:text-slate-900; }
+  .tab-active { @apply border-brand-600 font-medium text-slate-900; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  .print-area { box-shadow: none !important; border: none !important; margin: 0 !important; }
+  @page { size: A4; margin: 12mm; }
+}
