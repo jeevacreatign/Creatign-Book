@@ -507,7 +507,7 @@ function Mails({ c }: { c: Row }) {
     <div className="max-w-4xl">
       <div className="mb-3 flex items-center justify-between">
         <div className="font-semibold">System Mails</div>
-        <button className="link inline-flex items-center gap-1 text-xs" onClick={() => toast.success('Email accounts can be linked once an SMTP server is configured (see README).')}>
+        <button className="link inline-flex items-center gap-1 text-xs" onClick={() => toast.success('Set SMTP_USER and SMTP_PASS in the .env file to send from your Gmail account (see README).')}>
           <Link2 size={12} /> Link Email account
         </button>
       </div>
@@ -522,7 +522,10 @@ function Mails({ c }: { c: Row }) {
                 </div>
                 <div>
                   <div className="text-xs text-slate-500">To {m.to.join(', ')}</div>
-                  <div className="font-medium">{m.subject}</div>
+                  <div className="font-medium">
+                    {m.subject}
+                    {m.delivered === false && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xxs font-medium text-amber-800">Not delivered</span>}
+                  </div>
                   {m.attachments.length > 0 && <div className="text-xxs text-slate-500">📎 {m.attachments.join(', ')}</div>}
                 </div>
               </div>
@@ -677,6 +680,7 @@ function Statement({ c }: { c: Row }) {
           subject={`Account Statement from ${fmtDate(s.from)} to ${fmtDate(s.to)}`}
           body={`Dear ${c.displayName},\n\nIt's been a great experience working with you. Attached is your statement of accounts for the period ${fmtDate(s.from)} to ${fmtDate(s.to)}. The balance due is ${money(s.closing)}.\n\nRegards,\n${org.name}`}
           contactId={c.id}
+          extra={{ statement: { from: s.from, to: s.to } }}
           attachmentOptions={[
             ...(c.kind === 'customer' ? [{ key: 'unpaid', label: 'Attach Unpaid invoices List', defaultChecked: false }] : []),
             { key: 'statement', label: c.kind === 'customer' ? 'Attach Customer Statement' : 'Attach Vendor Statement' },

@@ -390,11 +390,10 @@ export function DocDetail({ kind }: { kind: DocKind }) {
           title={`Email To ${d.contactName}`}
           to={contactEmail ? [contactEmail] : d.emailRecipients}
           subject={`${meta.label} - ${d.number} from ${org.name}`}
-          body={`Dear ${d.contactName},\n\nThank you for your business. Your ${meta.label.toLowerCase()} ${d.number} can be viewed, printed and downloaded as PDF from the link below.\n\n${meta.label.toUpperCase()} AMOUNT: ${money(d.total)}${d.dueDate ? `\nDUE DATE: ${fmtDate(d.dueDate)}` : ''}\n\nRegards,\n${org.name}`}
+          body={`Dear ${d.contactName},\n\nThank you for your business. Your ${meta.label.toLowerCase()} ${d.number} is attached as a PDF.\n\n${meta.label.toUpperCase()} AMOUNT: ${money(d.total)}${d.dueDate ? `\nDUE DATE: ${fmtDate(d.dueDate)}` : ''}\n\nRegards,\n${org.name}`}
           contactId={d.contactId}
           entityType={kind}
           entityId={d.id}
-          showPayNow={kind === 'invoice' && unpaid}
           attachmentOptions={[{ key: 'pdf', label: `Attach ${pdfLabel(kind)}` }]}
         />
       )}

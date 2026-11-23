@@ -463,6 +463,7 @@ export interface Mail {
   subject: string;
   body: string;
   attachments: string[];
+  delivered?: boolean; // false when no mail server was configured (recorded only)
   createdAt: string;
 }
 

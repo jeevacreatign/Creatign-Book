@@ -39,7 +39,23 @@ On first start the server creates `server/data/db.json` with the Creatign organi
 | `npm run reset-data` | Wipes the data file and reseeds sample data. `npm run reset-data -- --empty` seeds only the organisation and accounts |
 | `npm run build` then `npm start` | Production build; the API then also serves the built app on port 4000 |
 
-Environment variables: `PORT` (default 4000) and `DB_FILE` (default `server/data/db.json`, `:memory:` for no disk).
+Environment variables go in a `.env` file in the project folder (copy `.env.example`): `PORT` (default 4000), `DB_FILE` (default `server/data/db.json`, `:memory:` for no disk) and the email settings below. `.env` is ignored by git, so passwords stay on your computer.
+
+## Sending email (Gmail)
+
+Without setup, emails are only saved in the app (shown as **Not delivered** in a contact's Mails tab). To deliver them from your Gmail account:
+
+1. Turn on **2-Step Verification** for the Gmail account (Google Account → Security).
+2. Open https://myaccount.google.com/apppasswords, create an app password (name it e.g. *Creatign Books*) and copy the 16 letters. Use this, not your normal Gmail password.
+3. In the project folder, copy `.env.example` to `.env` (Windows: `copy .env.example .env`, macOS/Linux: `cp .env.example .env`) and fill in:
+   ```
+   SMTP_USER=yourname@gmail.com
+   SMTP_PASS=abcd efgh ijkl mnop
+   MAIL_FROM_NAME=Creatign
+   ```
+4. Restart `npm run dev`.
+
+The email dialog then shows your Gmail address as **From**. Emails go out with the document as a PDF attachment: invoices, quotes, sales orders, bills, purchase orders, credit notes, payment receipts and customer/vendor statements. If Gmail rejects the login or can't be reached, the app shows the reason and nothing is marked as sent. For another provider, also set `SMTP_HOST` and `SMTP_PORT`.
 
 You can also reset from the app: **Settings → Data & Backup**.
 
@@ -106,11 +122,11 @@ Try also: a purchase order converted to a bill (the PO becomes **Billed**), bill
 
 ### Automated check
 
-`npm test` runs both workflows end to end through the API (14 tests): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
+`npm test` runs both workflows end to end through the API (15 tests, including email): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
 
 ## Notes and limits
 
-* **Email** is recorded, not delivered: sending writes to the document's and contact's Mails history and marks the document as sent. Plug an SMTP or API provider into `POST /api/mails` to deliver for real.
+* **Email** is delivered over SMTP once `.env` is set up (see *Sending email*); otherwise it is only recorded in the app. Attached PDFs show amounts as `Rs.` because the built-in PDF fonts have no ₹ symbol.
 * **PDF** uses the browser's print-to-PDF from the PDF/Print buttons (pages under `/print/...`).
 * **Share links** open a public read-only view at `/share/<token>`.
 * Recurring invoices, bills and expenses generate due documents when the server starts, on the first request each day, and from **More → Generate due invoices now**.

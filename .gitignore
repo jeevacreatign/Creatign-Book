@@ -6,3 +6,5 @@ server/uploads/*
 !server/data/.gitkeep
 *.log
 .DS_Store
+.env
+.env.local

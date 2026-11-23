@@ -10,6 +10,8 @@ import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import * as R from './reports';
 import * as S from './services';
+import { deliver, mailSettings } from './mailer';
+import { renderDocPdf, renderPaymentPdf, renderStatementPdf } from './pdf';
 
 type Handler = (req: Request, res: Response) => unknown;
 const h = (fn: Handler) => async (req: Request, res: Response, next: NextFunction) => {
@@ -405,13 +407,37 @@ export function createApp() {
     const entityId = q(req, 'entityId');
     return getDb().mails.filter((x) => (!contactId || x.contactId === contactId) && (!entityId || x.entityId === entityId)).slice().reverse();
   }));
-  api.post('/mails', m((req) => {
+  api.get('/mail-settings', h(() => mailSettings()));
+  api.post('/mails', h(async (req) => {
     const db = getDb();
     const b = req.body;
-    const to = (b.to || []).filter(Boolean);
+    const split = (v: unknown) => (Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/)).map((x) => String(x).trim()).filter(Boolean);
+    const to = split(b.to);
+    const cc = split(b.cc);
     if (!to.length) throw new S.HttpError(400, 'Add at least one recipient');
+    const bad = [...to, ...cc].find((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+    if (bad) throw new S.HttpError(400, `"${bad}" is not a valid email address`);
     if (!b.subject) throw new S.HttpError(400, 'Subject is required');
-    const mail = { id: newId('mail'), contactId: b.contactId, entityType: b.entityType, entityId: b.entityId, from: b.from || db.organization.email, to, cc: b.cc || [], subject: b.subject, body: b.body || '', attachments: b.attachments || [], createdAt: now() };
+
+    // Build PDF attachments for whatever the email is about
+    const files: { filename: string; content: Buffer }[] = [];
+    if (b.attachPdf) {
+      const d = b.entityId ? db.docs.find((x) => x.id === b.entityId) : undefined;
+      const pr = b.entityType === 'payment_received' ? db.paymentsReceived.find((x) => x.id === b.entityId) : undefined;
+      const pm = b.entityType === 'payment_made' ? db.paymentsMade.find((x) => x.id === b.entityId) : undefined;
+      if (d) files.push({ filename: `${DOC_META[d.kind].label.replace(/ /g, '-')}-${d.number}.pdf`, content: await renderDocPdf(d) });
+      else if (pr) files.push({ filename: `Payment-Receipt-${pr.number}.pdf`, content: await renderPaymentPdf(pr) });
+      else if (pm) files.push({ filename: `Payment-${pm.number}.pdf`, content: await renderPaymentPdf(pm, true) });
+      else if (b.statement && b.contactId) {
+        const c = db.contacts.find((x) => x.id === b.contactId);
+        if (c) files.push({ filename: `Statement-${c.displayName.replace(/[^\w]+/g, '-')}.pdf`, content: await renderStatementPdf(R.statement(c, b.statement.from, b.statement.to, b.statement.filter || 'all')) });
+      }
+    }
+
+    const settings = mailSettings();
+    if (settings.configured) await deliver({ fromName: db.organization.name, replyTo: db.organization.email, to, cc, subject: b.subject, text: b.body || '', attachments: files });
+
+    const mail = { id: newId('mail'), contactId: b.contactId, entityType: b.entityType, entityId: b.entityId, from: settings.from || db.organization.email, to, cc, subject: b.subject, body: b.body || '', attachments: files.length ? files.map((f) => f.filename) : b.attachments || [], delivered: settings.configured, createdAt: now() };
     db.mails.push(mail);
     // emailing a document marks it as sent
     const d = b.entityId ? db.docs.find((x) => x.id === b.entityId) : undefined;
@@ -425,6 +451,7 @@ export function createApp() {
       d.emailRecipients = Array.from(new Set([...(d.emailRecipients || []), ...to]));
       logActivity(db, d.kind, d.id, d.contactId, `${DOC_META[d.kind].label} emailed`, `${DOC_META[d.kind].label} ${d.number} emailed to ${to.join(', ')}`);
     } else if (b.contactId) logActivity(db, 'contact', b.contactId, b.contactId, 'Email sent', b.subject);
+    S.commit();
     return mail;
   }));
 
