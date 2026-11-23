@@ -8,9 +8,9 @@ let seq = 0;
 
 function push(kind: Toast['kind'], text: string) {
   const t = { id: ++seq, kind, text };
-  toasts = [...toasts, t];
+  toasts = [...toasts, t].slice(-3);
   listeners.forEach((l) => l(toasts));
-  setTimeout(() => dismiss(t.id), kind === 'error' ? 6000 : 3500);
+  setTimeout(() => dismiss(t.id), kind === 'error' ? 6000 : 2500);
 }
 function dismiss(id: number) {
   toasts = toasts.filter((t) => t.id !== id);
