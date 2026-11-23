@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [new URL('./client/index.html', import.meta.url).pathname, new URL('./client/src', import.meta.url).pathname + '/**/*.{ts,tsx}'],
+  // Paths are resolved relative to this file, so it works on Windows, macOS and Linux.
+  content: { relative: true, files: ['./client/index.html', './client/src/**/*.{ts,tsx}'] },
   theme: {
     extend: {
       colors: {
