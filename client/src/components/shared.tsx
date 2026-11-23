@@ -91,6 +91,8 @@ export interface EmailOptions {
   attachmentOptions?: { key: string; label: string; defaultChecked?: boolean }[];
   showPayNow?: boolean;
   onSent?: () => void;
+  /** Extra fields for the server, e.g. the statement period to render as PDF. */
+  extra?: Record<string, unknown>;
 }
 
 export function EmailModal(o: EmailOptions) {
@@ -100,9 +102,10 @@ export function EmailModal(o: EmailOptions) {
   const [subject, setSubject] = useState(o.subject);
   const [body, setBody] = useState(o.body);
   const [att, setAtt] = useState<Record<string, boolean>>(() => Object.fromEntries((o.attachmentOptions || []).map((a) => [a.key, a.defaultChecked !== false])));
+  const settings = useApi<{ configured: boolean; from?: string }>('/mail-settings').data;
   const send = useAction(
     () =>
-      api('/mails', {
+      api<{ delivered: boolean }>('/mails', {
         body: {
           to: to.split(/[,;\s]+/).filter(Boolean),
           cc: cc.split(/[,;\s]+/).filter(Boolean),
@@ -112,9 +115,11 @@ export function EmailModal(o: EmailOptions) {
           entityType: o.entityType,
           entityId: o.entityId,
           attachments: (o.attachmentOptions || []).filter((a) => att[a.key]).map((a) => a.label),
+          attachPdf: (o.attachmentOptions || []).some((a) => att[a.key] && a.key !== 'unpaid'),
+          ...o.extra,
         },
       }),
-    'Your email has been sent.',
+    (r) => (r.delivered ? 'Your email has been sent.' : 'Email saved in Creatign Books but not delivered: email sending is not set up (see README).'),
   );
   return (
     <Modal
@@ -141,14 +146,14 @@ export function EmailModal(o: EmailOptions) {
           <button className="btn-secondary" onClick={o.onClose}>
             Cancel
           </button>
-          <span className="ml-auto text-xxs text-slate-400">Emails are logged in Creatign Books (no external mail server is configured).</span>
+          {settings && !settings.configured && <span className="ml-auto max-w-[260px] text-right text-xxs text-amber-700">Email sending is not set up, so this will only be saved here. Add your Gmail details to .env (see README).</span>}
         </>
       }
     >
       <div className="space-y-3">
         <Field label="From">
           <div className="pt-1.5 text-slate-700">
-            {org.name} &lt;{org.email}&gt;
+            {org.name} &lt;{settings?.from || org.email}&gt;
           </div>
         </Field>
         <Field label="Send To" required>
