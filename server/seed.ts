@@ -1,4 +1,5 @@
 import type { Account, Contact, Database, Item } from '../shared/types';
+import { addDays, today } from '../shared/format';
 import { ACCOUNT_IDS as A } from '../shared/docmeta';
 import { builtInTemplates } from '../shared/pdfTemplate';
 import { builtInEmailTemplates } from '../shared/email';
@@ -128,6 +129,9 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     paymentNotices: [],
     projects: [],
     timeEntries: [],
+    users: [{ id: 'usr_admin', name: 'Jeeva V', email: 'accounts@creatign.example', role: 'Admin', status: 'active', createdAt: ts() }],
+    timers: [],
+    budgets: [],
     counters: {},
     pdfTemplates: builtInTemplates(),
     preferences: {
@@ -156,7 +160,53 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
       contact({ id: 'ven_murugan', kind: 'vendor', displayName: 'Sri Murugan Printers', companyName: 'Sri Murugan Printers', firstName: 'Murugan', email: 'orders@srimuruganprinters.in', workPhone: '+91 422 255 6677', billingAddress: { street1: '8, Oppanakara Street', city: 'Coimbatore', state: 'Tamil Nadu', pin: '641001', country: 'India' }, msmeRegistered: true, paymentTerms: 'net_30', gstTreatment: 'registered_business', gstin: '33AAKFS1234M1Z5', placeOfSupply: 'Tamil Nadu' }),
       contact({ id: 'ven_cloudhost', kind: 'vendor', displayName: 'CloudHost India', companyName: 'CloudHost India LLP', email: 'billing@cloudhost.example', paymentTerms: 'due_on_receipt', gstTreatment: 'registered_business', gstin: '29AAGFC1234K1Z2', placeOfSupply: 'Karnataka' }),
     );
-    db.projects.push({ id: 'prj_site', name: 'Test Project', customerId: 'cus_test', billingMethod: 'hourly', rate: 1500, budgetHours: 40, status: 'active', createdAt: ts() });
+    db.users.push({ id: 'usr_priya', name: 'Priya S', email: 'priya@creatign.example', role: 'Staff', status: 'active', createdAt: ts() });
+    db.projects.push(
+      {
+        id: 'prj_site',
+        name: 'Test Project',
+        code: 'TP-01',
+        customerId: 'cus_test',
+        billingMethod: 'project_hours',
+        rate: 1500,
+        description: 'Company website redesign',
+        budgetHoursType: 'total',
+        budgetHours: 40,
+        users: [{ userId: 'usr_admin' }, { userId: 'usr_priya' }],
+        tasks: [
+          { id: 'tsk_design', name: 'Design', description: 'Wireframes and visual design', billable: true },
+          { id: 'tsk_dev', name: 'Development', description: 'Front-end build', billable: true },
+          { id: 'tsk_meet', name: 'Client meetings', billable: false },
+        ],
+        watchlist: true,
+        attachments: [],
+        status: 'active',
+        createdAt: ts(),
+      },
+      {
+        id: 'prj_brand',
+        name: 'Brand Refresh',
+        code: 'BR-01',
+        customerId: 'cus_ananya',
+        billingMethod: 'fixed',
+        rate: 100000,
+        description: 'Logo, colours and stationery',
+        budgetHoursType: 'none',
+        users: [{ userId: 'usr_admin' }],
+        tasks: [{ id: 'tsk_logo', name: 'Logo design', billable: true }],
+        watchlist: false,
+        attachments: [],
+        status: 'active',
+        createdAt: ts(),
+      },
+    );
+    const te = (id: string, projectId: string, taskId: string, userId: string, daysAgo: number, hours: number, notes?: string, billable = true) =>
+      db.timeEntries.push({ id, projectId, taskId, userId, date: addDays(today(), -daysAgo), hours, notes, billable, invoiced: false, createdAt: ts() });
+    te('te_1', 'prj_site', 'tsk_design', 'usr_admin', 3, 2.5, 'Home page wireframes');
+    te('te_2', 'prj_site', 'tsk_design', 'usr_priya', 2, 3, 'Visual design');
+    te('te_3', 'prj_site', 'tsk_dev', 'usr_priya', 1, 4.25, 'Header and footer');
+    te('te_4', 'prj_site', 'tsk_meet', 'usr_admin', 1, 1, 'Weekly review', false);
+    te('te_5', 'prj_brand', 'tsk_logo', 'usr_admin', 0, 2, 'Logo concepts');
   }
   return db;
 }

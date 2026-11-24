@@ -321,6 +321,17 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
     if (!existing || existing.startOn !== doc.startOn) doc.nextDate = doc.startOn;
     if (doc.neverExpires) doc.endsOn = undefined;
   }
+  // project link: the id is the source of truth, the name is kept for display and older documents
+  if (body.projectId === null || body.projectId === '') {
+    doc.projectId = undefined;
+    doc.projectName = str(body.projectName);
+  }
+  if (doc.projectId) {
+    const prj = db.projects.find((x) => x.id === doc.projectId);
+    if (!prj) throw bad('Select a valid project');
+    doc.projectName = prj.name;
+  } else if (doc.projectName) doc.projectId = db.projects.find((x) => x.name === doc.projectName)?.id;
+  if (doc.projectFee != null) doc.projectFee = round2(n(doc.projectFee));
   applyTotals(doc);
   if (doc.total < 0) throw bad('The total cannot be negative');
 
@@ -396,6 +407,11 @@ export function deleteDoc(id: string) {
     e.invoiceId = undefined;
     e.status = e.billable ? 'unbilled' : 'non_billable';
   }
+  // billed time goes back to Unbilled
+  for (const t of db.timeEntries) if (t.invoiceId === id) {
+    t.invoiced = false;
+    t.invoiceId = undefined;
+  }
   logActivity(db, d.kind, d.id, d.contactId, `${DOC_META[d.kind].label} ${d.number} deleted`);
 }
 
@@ -425,6 +441,7 @@ export function convertTemplate(sourceId: string, to: DocKind): Partial<TxnDoc> 
     paymentTerms: src.paymentTerms,
     salesperson: src.salesperson,
     projectName: src.projectName,
+    projectId: src.projectId,
     subject: src.subject,
     lineItems: src.lineItems.map((l) => {
       const item = db.items.find((i) => i.id === l.itemId);

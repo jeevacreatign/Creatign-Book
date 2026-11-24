@@ -243,6 +243,9 @@ export interface TxnDoc {
   paymentTerms?: PaymentTerms;
   salesperson?: string;
   projectName?: string;
+  projectId?: ID;
+  /** part of this invoice billed against a fixed-cost project (defaults to the sub total) */
+  projectFee?: number;
   subject?: string;
   deliveryMethod?: string;
   shipmentPreference?: string;
@@ -494,6 +497,7 @@ export interface Journal {
   sourceType: JournalSource;
   sourceId?: ID;
   contactId?: ID;
+  projectId?: ID;
   reference?: string;
   notes?: string;
   lines: JournalLine[];
@@ -563,28 +567,114 @@ export interface ShareLink {
   createdAt: string;
 }
 
+export type ProjectBillingMethod = 'fixed' | 'project_hours' | 'task_hours' | 'staff_hours';
+export type ProjectBudgetHours = 'none' | 'total' | 'per_task' | 'per_staff';
+
+/** People who log time (Zoho "users"). */
+export interface User {
+  id: ID;
+  name: string;
+  email?: string;
+  role: 'Admin' | 'Staff' | 'Timesheet Staff';
+  status: 'active' | 'inactive';
+  createdAt: string;
+}
+
+export interface ProjectTask {
+  id: ID;
+  name: string;
+  description?: string;
+  /** used by "Based on Task Hours" */
+  ratePerHour?: number;
+  /** used when the hours budget is per task */
+  budgetHours?: number;
+  billable: boolean;
+}
+
+export interface ProjectUser {
+  userId: ID;
+  /** used by "Based on Staff Hours" */
+  ratePerHour?: number;
+  /** used when the hours budget is per staff */
+  budgetHours?: number;
+}
+
 export interface Project {
   id: ID;
   name: string;
+  code?: string;
   customerId?: ID;
-  billingMethod: 'fixed' | 'hourly';
+  billingMethod: ProjectBillingMethod;
+  /** Fixed: total project cost. Project hours: rate per hour. Unused for task/staff hours. */
   rate: number;
-  budgetHours?: number;
   description?: string;
+  costBudget?: number;
+  revenueBudget?: number;
+  budgetHoursType?: ProjectBudgetHours;
+  /** total project hours when budgetHoursType is 'total' */
+  budgetHours?: number;
+  users: ProjectUser[];
+  tasks: ProjectTask[];
+  watchlist: boolean;
+  attachments: Attachment[];
   status: 'active' | 'inactive';
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface TimeEntry {
   id: ID;
   projectId: ID;
-  date: string;
+  taskId?: ID;
+  /** legacy free-text task name for entries logged before tasks existed */
   task?: string;
+  userId?: ID;
+  date: string;
+  /** decimal hours; the UI shows HH:MM */
   hours: number;
+  startTime?: string;
+  endTime?: string;
   notes?: string;
   billable: boolean;
   invoiced: boolean;
+  invoiceId?: ID;
   createdAt: string;
+  updatedAt?: string;
+}
+
+/** The running timer (one per user). Elapsed = accumulatedMs + (now - startedAt) while running. */
+export interface RunningTimer {
+  id: ID;
+  userId: ID;
+  projectId?: ID;
+  taskId?: ID;
+  notes?: string;
+  billable: boolean;
+  /** when set, stopping the timer adds the time to this entry (row "Start" in the timesheet) */
+  entryId?: ID;
+  startedAt?: string;
+  accumulatedMs: number;
+  running: boolean;
+  createdAt: string;
+}
+
+export type BudgetPeriod = 'monthly' | 'quarterly' | 'yearly';
+export interface BudgetLine {
+  accountId: ID;
+  /** one amount per period bucket, in order */
+  amounts: number[];
+}
+export interface Budget {
+  id: ID;
+  name: string;
+  /** first day of the fiscal year, e.g. 2026-04-01 */
+  fiscalYearStart: string;
+  period: BudgetPeriod;
+  projectId?: ID;
+  includeBalanceSheet: boolean;
+  lines: BudgetLine[];
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Database {
@@ -608,6 +698,9 @@ export interface Database {
   paymentNotices: PaymentNotice[];
   projects: Project[];
   timeEntries: TimeEntry[];
+  users: User[];
+  timers: RunningTimer[];
+  budgets: Budget[];
   counters: Record<string, number>;
   preferences: Record<string, unknown>;
   pdfTemplates: PdfTemplate[];
