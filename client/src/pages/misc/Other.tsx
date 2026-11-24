@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, Wallet, CreditCard, FileText, Upload } from 'lucide-react';
+import { APPROVAL_KINDS } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
 import { fmtDate, fmtDateTime, money, today } from '@shared/format';
 import type { Attachment, Contact, Organization, PaymentMade, PaymentReceived, Project, TimeEntry, TxnDoc } from '@shared/types';
@@ -307,6 +308,43 @@ function Preferences() {
   );
 }
 
+function Approvals() {
+  const boot = useBoot();
+  const [on, setOn] = useState<Record<string, boolean>>(boot.approvals || {});
+  const save = useAction(() => api('/preferences', { method: 'PUT', body: { approvals: on } }), 'Approval preferences saved');
+  return (
+    <div className="max-w-2xl">
+      <div className="mb-1 text-[15px] font-semibold">Transaction Approval</div>
+      <div className="mb-4 text-slate-600">
+        When approval is on for a module, new transactions are saved as <b>Draft</b>. Submit them for approval to move them to <b>Pending Approval</b>; once approved they can be sent, confirmed or opened. Pending transactions stay out of your books and reports until then.
+      </div>
+      <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+        {APPROVAL_KINDS.map((k) => (
+          <label key={k} className="flex cursor-pointer items-center justify-between px-4 py-2.5">
+            <span>{DOC_META[k].plural}</span>
+            <span className="flex items-center gap-2 text-xs text-slate-500">
+              {on[k] ? 'Approval required' : 'No approval'}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!on[k]}
+                aria-label={`Require approval for ${DOC_META[k].plural}`}
+                onClick={() => setOn({ ...on, [k]: !on[k] })}
+                className={clsx('relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition', on[k] ? 'bg-brand-600' : 'bg-slate-300')}
+              >
+                <span className={clsx('inline-block h-4 w-4 rounded-full bg-white shadow transition', on[k] ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+              </button>
+            </span>
+          </label>
+        ))}
+      </div>
+      <button className="btn-primary mt-4" onClick={() => save.mutate()}>
+        Save
+      </button>
+    </div>
+  );
+}
+
 function Features() {
   const features = ['Quotes', 'Sales Orders', 'Delivery Challans', 'Recurring Invoices', 'Purchase Orders', 'Recurring Bills', 'Vendor Credits', 'Time Tracking', 'Projects', 'Customer Portal', 'Vendor Portal'];
   return (
@@ -384,6 +422,7 @@ export function Settings() {
   const tabs = [
     { to: '/settings', label: 'Organization Profile', end: true },
     { to: '/settings/preferences', label: 'Preferences' },
+    { to: '/settings/approvals', label: 'Approvals' },
     { to: '/settings/features', label: 'Configure Features' },
     { to: '/settings/import', label: 'Import Data' },
     { to: '/settings/data', label: 'Data & Backup' },
@@ -402,6 +441,7 @@ export function Settings() {
         <Routes>
           <Route index element={<OrgProfile />} />
           <Route path="preferences" element={<Preferences />} />
+          <Route path="approvals" element={<Approvals />} />
           <Route path="features" element={<Features />} />
           <Route path="import" element={<ImportData />} />
           <Route path="data" element={<DataAdmin />} />

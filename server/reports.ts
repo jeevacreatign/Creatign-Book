@@ -1,4 +1,5 @@
 // Dashboard, statements and financial reports, all derived from documents and the ledger.
+import { isUnposted } from '../shared/approval';
 import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { daysBetween, monthsIn, periodRange, round2, today, type PeriodKey } from '../shared/format';
 import type { Account, Contact, Database, Journal } from '../shared/types';
@@ -47,10 +48,10 @@ function aging(docs: { dueDate?: string; date: string; balance: number }[]) {
 }
 
 function openInvoices(db: Database) {
-  return db.docs.filter((d) => d.kind === 'invoice' && !['draft', 'void', 'paid'].includes(d.status) && d.balance > 0);
+  return db.docs.filter((d) => d.kind === 'invoice' && !['void', 'paid'].includes(d.status) && !isUnposted(d.status) && d.balance > 0);
 }
 function openBills(db: Database) {
-  return db.docs.filter((d) => d.kind === 'bill' && !['draft', 'void', 'paid'].includes(d.status) && d.balance > 0);
+  return db.docs.filter((d) => d.kind === 'bill' && !['void', 'paid'].includes(d.status) && !isUnposted(d.status) && d.balance > 0);
 }
 
 // --------------------------------------------------------------- dashboard
@@ -194,7 +195,7 @@ export function contactIncome(c: Contact, period: PeriodKey = 'last_6_months', b
   const months = monthsIn(r).map((m) => ({ month: m.label, key: m.key, amount: 0 }));
   if (c.kind === 'customer') {
     if (basis === 'accrual') {
-      for (const d of db.docs) if (d.contactId === c.id && d.kind === 'invoice' && !['draft', 'void'].includes(d.status)) {
+      for (const d of db.docs) if (d.contactId === c.id && d.kind === 'invoice' && d.status !== 'void' && !isUnposted(d.status)) {
         const b = months.find((m) => d.date.startsWith(m.key));
         if (b) b.amount += d.subTotal - d.discountAmount;
       }
@@ -205,7 +206,7 @@ export function contactIncome(c: Contact, period: PeriodKey = 'last_6_months', b
       }
     }
   } else {
-    for (const d of db.docs) if (d.contactId === c.id && d.kind === 'bill' && !['draft', 'void'].includes(d.status) && basis === 'accrual') {
+    for (const d of db.docs) if (d.contactId === c.id && d.kind === 'bill' && d.status !== 'void' && !isUnposted(d.status) && basis === 'accrual') {
       const b = months.find((m) => d.date.startsWith(m.key));
       if (b) b.amount += d.total;
     }
@@ -235,7 +236,7 @@ export function statement(c: Contact, from: string, to: string, filter: 'all' | 
   };
   if (c.openingBalance) add(db.organization.migrationDate || '2026-04-01', 'Opening Balance', '', 'Opening balance', c.openingBalance, 0);
   for (const d of db.docs) {
-    if (d.contactId !== c.id || ['draft', 'void'].includes(d.status)) continue;
+    if (d.contactId !== c.id || (d.status === 'void' || isUnposted(d.status))) continue;
     if (filter === 'outstanding' && d.balance <= 0) continue;
     if (isCus && d.kind === 'invoice') add(d.date, 'Invoice', d.number, `Due on ${d.dueDate ?? d.date}`, d.total, 0, d.id);
     if (isCus && d.kind === 'credit_note') add(d.date, 'Credit Note', d.number, '', 0, d.total, d.id);
@@ -370,7 +371,7 @@ export function agingReport(kind: 'receivables' | 'payables') {
 export function salesByCustomer(from: string, to: string) {
   const db = getDb();
   const m = new Map<string, { count: number; sales: number }>();
-  for (const d of db.docs) if (d.kind === 'invoice' && !['draft', 'void'].includes(d.status) && d.date >= from && d.date <= to) {
+  for (const d of db.docs) if (d.kind === 'invoice' && d.status !== 'void' && !isUnposted(d.status) && d.date >= from && d.date <= to) {
     const cur = m.get(d.contactId) || { count: 0, sales: 0 };
     cur.count++;
     cur.sales += d.subTotal - d.discountAmount;
@@ -382,7 +383,7 @@ export function salesByCustomer(from: string, to: string) {
 export function salesByItem(from: string, to: string) {
   const db = getDb();
   const m = new Map<string, { qty: number; amount: number }>();
-  for (const d of db.docs) if (d.kind === 'invoice' && !['draft', 'void'].includes(d.status) && d.date >= from && d.date <= to)
+  for (const d of db.docs) if (d.kind === 'invoice' && d.status !== 'void' && !isUnposted(d.status) && d.date >= from && d.date <= to)
     for (const l of d.lineItems) {
       const k = l.itemId || l.name;
       const cur = m.get(k) || { qty: 0, amount: 0 };

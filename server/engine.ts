@@ -2,6 +2,7 @@
 // rebuilds the double-entry general ledger. Derived state is recomputed from
 // scratch after every mutation, so the ledger can never drift from the documents.
 import { computeTotals } from '../shared/calc';
+import { isUnposted } from '../shared/approval';
 import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { nextRecurrence, round2, today, addDays, dueDateFor } from '../shared/format';
 import type { Database, Journal, JournalLine, JournalSource, TxnDoc, Expense } from '../shared/types';
@@ -64,7 +65,7 @@ export function recompute(db: Database = getDb()) {
     applyTotals(d);
     const paid = round2((paidOn.get(d.id) || 0) + (d.writeOff?.amount || 0));
     d.amountPaid = paid;
-    if (d.status === 'draft' || d.status === 'void') {
+    if (isUnposted(d.status) || d.status === 'void') {
       d.balance = d.status === 'void' ? 0 : d.total;
       continue;
     }
@@ -93,12 +94,12 @@ export function recompute(db: Database = getDb()) {
       const invs = liveInvoices.filter((i) => i.salesOrderId === d.id);
       const invoicedAmt = sum(invs.map((i) => i.subTotal));
       d.invoiceStatus = invs.length === 0 ? 'not_invoiced' : invoicedAmt + 0.004 >= d.subTotal ? 'invoiced' : 'partially_invoiced';
-      const posted = invs.filter((i) => i.status !== 'draft');
+      const posted = invs.filter((i) => !isUnposted(i.status));
       const due = sum(posted.map((i) => i.balance));
       const paidAmt = sum(posted.map((i) => i.total - i.balance));
       d.paymentStatus = posted.length === 0 || paidAmt <= 0 ? 'unpaid' : due <= 0.004 ? 'paid' : 'partially_paid';
       d.shipmentStatus = d.shipmentStatus || 'pending';
-      if (d.status !== 'draft' && d.status !== 'void') d.status = d.invoiceStatus === 'invoiced' && d.shipmentStatus === 'fulfilled' ? 'closed' : 'confirmed';
+      if (!isUnposted(d.status) && d.status !== 'void') d.status = d.invoiceStatus === 'invoiced' && d.shipmentStatus === 'fulfilled' ? 'closed' : 'confirmed';
     }
     if (d.kind === 'delivery_challan') {
       const inv = liveInvoices.some((i) => i.deliveryChallanId === d.id);
@@ -108,7 +109,7 @@ export function recompute(db: Database = getDb()) {
       const bills = liveBills.filter((b) => b.purchaseOrderId === d.id);
       const billedAmt = sum(bills.map((b) => b.subTotal));
       d.billedStatus = bills.length === 0 ? 'not_billed' : billedAmt + 0.004 >= d.subTotal ? 'billed' : 'partially_billed';
-      if (d.status !== 'draft' && d.status !== 'cancelled') d.status = d.billedStatus === 'billed' ? 'billed' : d.billedStatus === 'partially_billed' ? 'partially_billed' : 'issued';
+      if (!isUnposted(d.status) && d.status !== 'cancelled') d.status = d.billedStatus === 'billed' ? 'billed' : d.billedStatus === 'partially_billed' ? 'partially_billed' : 'issued';
     }
   }
   for (const d of db.docs) {

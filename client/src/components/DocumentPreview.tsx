@@ -50,6 +50,37 @@ function OrgHeader({ org, title, number, template }: { org: Organization; title:
   );
 }
 
+const RIBBON_COLORS: Record<string, string> = {
+  draft: 'bg-slate-500',
+  pending_approval: 'bg-amber-500',
+  approved: 'bg-emerald-600',
+  rejected: 'bg-red-500',
+  void: 'bg-slate-400',
+  cancelled: 'bg-slate-400',
+  declined: 'bg-red-500',
+  expired: 'bg-red-500',
+  overdue: 'bg-orange-500',
+  partially_paid: 'bg-amber-500',
+  partially_billed: 'bg-amber-500',
+  due_today: 'bg-amber-500',
+  paid: 'bg-emerald-600',
+  closed: 'bg-emerald-600',
+  accepted: 'bg-emerald-600',
+  invoiced: 'bg-emerald-600',
+  billed: 'bg-emerald-600',
+  delivered: 'bg-emerald-600',
+};
+
+/** Diagonal status ribbon in the top-left corner of the preview (screen only, never printed). */
+export function StatusRibbon({ status }: { status: string }) {
+  const label = status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return (
+    <div className="no-print pointer-events-none absolute left-0 top-0 h-28 w-28 overflow-hidden" aria-label={`Status: ${label}`}>
+      <div className={clsx('absolute left-[-50px] top-[22px] w-[170px] -rotate-45 py-[3px] text-center text-[11px] font-medium tracking-wide text-white shadow', RIBBON_COLORS[status] || 'bg-sky-600')}>{label}</div>
+    </div>
+  );
+}
+
 export function DocumentPreview({ doc, org, contact, template = 'standard' }: { doc: TxnDoc; org: Organization; contact?: Contact; template?: Template }) {
   const meta = DOC_META[doc.kind];
   const sales = meta.side === 'sales';
@@ -71,7 +102,8 @@ export function DocumentPreview({ doc, org, contact, template = 'standard' }: { 
   const adj = Math.round((doc.total - (doc.subTotal - doc.discountAmount - doc.tdsAmount + doc.tcsAmount)) * 100) / 100;
   const grid = template === 'spreadsheet';
   return (
-    <div className="print-area mx-auto max-w-[820px] bg-white p-10 text-[12.5px] text-slate-800 shadow-sm ring-1 ring-slate-200">
+    <div className="print-area relative mx-auto max-w-[820px] overflow-hidden bg-white p-10 text-[12.5px] text-slate-800 shadow-sm ring-1 ring-slate-200">
+      {!meta.recurring && doc.status && <StatusRibbon status={doc.status} />}
       {doc.status === 'void' && <div className="mb-4 rounded border border-slate-300 bg-slate-50 py-1 text-center text-xs font-bold tracking-widest text-slate-500">VOID</div>}
       <OrgHeader org={org} title={meta.title} number={doc.number || doc.profileName || ''} template={template} />
       <div className="flex justify-between gap-6 pb-6">

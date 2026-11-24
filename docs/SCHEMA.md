@@ -115,6 +115,7 @@ Derived on read: `outstanding` (receivable or payable) and `unusedCredits`.
 | Inputs to totals | `discountPercent, tdsRate, tcsRate, adjustment, adjustmentLabel?, roundOff?` |
 | Computed totals | `subTotal, discountAmount, tdsAmount, tcsAmount, total, balance` |
 | Status | `status` (per kind, below), `invoiceStatus?, billedStatus?, shipmentStatus?, paymentStatus?, amountPaid?, creditsUsed?, received?, locked, sentAt?` |
+| Approval | `approvedAt?, approvedBy?, rejection?: { reason?, at, by }` |
 | Text | `customerNotes?, terms?, notes?, emailRecipients[], attachments[]` |
 | Links | `quoteId?, salesOrderId?, deliveryChallanId?, purchaseOrderId?, invoiceId? (credit note against invoice), recurringProfileId?` |
 | Credits | `creditApplications[]: { id, invoiceId, amount, date }`, `refunds[]: { id, amount, date, mode, referenceNumber?, accountId, description? }` |
@@ -133,6 +134,8 @@ Statuses per kind:
 | Delivery challan | draft, open, delivered, invoiced, returned |
 | Credit note / Vendor credit | draft, open, closed, void |
 | Purchase order | draft, issued (open), billed, partially_billed, closed, cancelled; received flag |
+
+Approval workflow (`shared/approval.ts`): for quotes, sales orders, invoices, credit notes, purchase orders, bills and vendor credits, when `preferences.approvals[kind]` is on (default: sales orders only), a document moves `draft → pending_approval → approved` (or `pending_approval → rejected → pending_approval`) before it can reach its first open status (sent / confirmed / open / issued). Actions: `submit_for_approval`, `approve`, `reject { reason }`. `draft, pending_approval, approved, rejected` are all *unposted*: no journal, no receivable/payable, excluded from reports.
 
 ### PaymentReceived
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, X, ScanLine, ListPlus, Settings2 } from 'lucide-react';
 import { computeTotals, lineAmount } from '@shared/calc';
+import { isUnposted } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
 import { dueDateFor, money, num, today, addDays } from '@shared/format';
 import { PAYMENT_TERMS, TCS_RATES, TDS_RATES, type Contact, type DocKind, type Item, type LineItem, type TxnDoc } from '@shared/types';
@@ -25,6 +26,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
   const boot = useBoot();
   const meta = DOC_META[kind];
   const ui = DOC_UI[kind];
+  const approvals = !meta.recurring && !!boot.approvals?.[kind];
   const sales = meta.side === 'sales';
   const fromId = search.get('from');
   const contactParam = search.get('contactId');
@@ -128,7 +130,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
   }
 
   const has = (f: (typeof ui.fields)[number]) => ui.fields.includes(f);
-  const contactInvoices = openInvoices.filter((i) => i.contactId === d.contactId && !['draft', 'void'].includes(i.status));
+  const contactInvoices = openInvoices.filter((i) => i.contactId === d.contactId && i.status !== 'void' && !isUnposted(i.status || 'draft'));
   const recurringTarget = kind === 'recurring_invoice' ? 'Invoice' : 'Bill';
   const adjustedForRound = totals.roundOffAmount;
 
@@ -459,10 +461,16 @@ export function DocForm({ kind }: { kind: DocKind }) {
             {ui.saveLabels.draft}
           </button>
         )}
-        <button className="btn-primary" disabled={saving} onClick={() => save(editing && d.status !== 'draft' ? 'open' : ui.saveLabels.send ? 'send' : 'open')}>
-          {editing && d.status !== 'draft' ? 'Save' : ui.saveLabels.send ?? ui.saveLabels.open}
-        </button>
-        {ui.saveLabels.send && (!editing || d.status === 'draft') && ui.saveLabels.open !== 'Save' && (
+        {approvals ? (
+          <button className="btn-primary" disabled={saving} title="Sends this transaction for approval" onClick={() => save('open')}>
+            {editing && d.status === 'pending_approval' ? 'Save' : editing && d.status === 'approved' ? 'Save and Resubmit' : editing && !isUnposted(d.status || 'draft') ? 'Save' : 'Save and Submit'}
+          </button>
+        ) : (
+          <button className="btn-primary" disabled={saving} onClick={() => save(editing && d.status !== 'draft' ? 'open' : ui.saveLabels.send ? 'send' : 'open')}>
+            {editing && d.status !== 'draft' ? 'Save' : ui.saveLabels.send ?? ui.saveLabels.open}
+          </button>
+        )}
+        {!approvals && ui.saveLabels.send && (!editing || d.status === 'draft') && ui.saveLabels.open !== 'Save' && (
           <button className="btn-secondary" disabled={saving} onClick={() => save('open')}>
             {ui.saveLabels.open}
           </button>
