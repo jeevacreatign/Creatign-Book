@@ -440,7 +440,7 @@ function journalProjectId(db: Database, j: Journal) {
   return d ? docProjectId(db, d) : undefined;
 }
 
-function budgetView(db: Database, b: Budget) {
+export function budgetView(db: Database, b: Budget) {
   const buckets = budgetBuckets(b.fiscalYearStart, b.period);
   const journals = db.journals.filter((j) => !b.projectId || journalProjectId(db, j) === b.projectId);
   const lines = b.lines.map((l) => {

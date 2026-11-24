@@ -14,6 +14,7 @@ import { normalizeTimeTracking, registerProjectRoutes } from './projects';
 import { lockGuard, registerAccountantRoutes } from './accountant';
 import { registerBankingRoutes } from './banking';
 import * as R from './reports';
+import { CATEGORIES as CATALOG_CATEGORIES, catalog as reportCatalog, runReport } from './reportCatalog';
 import * as S from './services';
 import { mailSettings, savedSmtp, verifySmtp, type SmtpSettings } from './mailer';
 import { composeDefaults, emailTemplates, isEmail, previewEmail, publicOrigin, resendMail, sendEmail } from './email';
@@ -782,6 +783,31 @@ export function createApp() {
     const items = db.items.filter((i) => matches(i.name, needle)).slice(0, 8).map((i) => ({ type: 'Item', title: i.name, subtitle: i.type, path: `/items/${i.id}` }));
     const projects = db.projects.filter((x) => matches(x.name, needle) || matches(x.code, needle)).slice(0, 8).map((x) => ({ type: 'Project', title: x.name, subtitle: S.contactName(db, x.customerId), path: `/time-tracking/projects/${x.id}` }));
     return [...contacts, ...items, ...projects, ...docs];
+  }));
+  // Reports Center: catalogue, generic report data and saved custom reports
+  api.get('/report-catalog', h(() => ({ categories: CATALOG_CATEGORIES, reports: reportCatalog(), saved: getDb().savedReports })));
+  api.get('/report-data/:key', h((req) => {
+    try {
+      return runReport(getDb(), p(req, 'key'), Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, typeof v === 'string' && v ? v : undefined])));
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) throw new S.HttpError(404, 'Unknown report');
+      throw e;
+    }
+  }));
+  api.post('/saved-reports', m((req) => {
+    const b = req.body || {};
+    const nm = String(b.name || '').trim();
+    if (!nm) throw new S.HttpError(400, 'Report Name is required');
+    if (!reportCatalog().some((r) => r.key === b.report)) throw new S.HttpError(400, 'Unknown report');
+    const db = getDb();
+    if (db.savedReports.some((x) => x.name.toLowerCase() === nm.toLowerCase())) throw new S.HttpError(400, 'A custom report with this name already exists');
+    const params = Object.fromEntries(Object.entries((b.params || {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string' && v).map(([k, v]) => [k, String(v)]));
+    const r = { id: newId('srep'), name: nm.slice(0, 120), report: String(b.report), params, hiddenColumns: Array.isArray(b.hiddenColumns) ? b.hiddenColumns.map(String) : [], createdAt: now() };
+    db.savedReports.push(r);
+    return r;
+  }));
+  api.delete('/saved-reports/:id', m((req) => {
+    getDb().savedReports = getDb().savedReports.filter((x) => x.id !== p(req, 'id'));
   }));
   api.get('/reports/:name', h((req) => {
     const fy = getDb().organization.fiscalYearStartMonth;
