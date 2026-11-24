@@ -29,7 +29,7 @@ npm run dev
 * App: http://localhost:5173
 * API: http://localhost:4000/api (Vite proxies `/api` and `/uploads` to it)
 
-On first start the server creates `server/data/db.json` with the Creatign organisation, a chart of accounts and a little sample data (4 items, customers *Test Company* and *Ananya Textiles*, vendors, one project), so every screen has something to show.
+On first start the server creates `server/data/db.json` with the Creatign organisation, a chart of accounts and a little sample data (4 items, customers *Test Company* and *Ananya Textiles*, vendors, two projects with tasks, users and time entries), so every screen has something to show.
 
 | Command | What it does |
 |---|---|
@@ -109,7 +109,7 @@ server/
 client/src/
   components/  layout (sidebar + top bar), form controls, document preview, shared panels
   pages/       Home, items, contacts, docs (all 10 sales/purchase documents), payments,
-               expenses, misc (banking, accountant, reports, time tracking, settings, print)
+               expenses, time (projects, timesheet, timer), misc (banking, accountant, reports, settings, print)
   email.ts     email templates, placeholders, branded HTML, attachments, email log
   mailer.ts    transports: Gmail OAuth, SMTP (settings or .env), outbox
   portal.ts    customer portal API, invitations, sessions, shared links, payment notices
@@ -124,7 +124,7 @@ docs/SCHEMA.md       architecture and data model
 * **Items**: goods and services with sales and purchase information.
 * **Sales**: Customers, Quotes, Sales Orders, Invoices, Recurring Invoices, Delivery Challans, Payments Received, Credit Notes.
 * **Purchases**: Vendors, Expenses (including mileage and bulk), Recurring Expenses, Purchase Orders, Bills, Recurring Bills, Payments Made, Vendor Credits.
-* **Time Tracking**: projects and timesheets, with invoicing of billable hours.
+* **Time Tracking** (Zoho-style, see `docs/TIME-TRACKING-ZOHO.md`): projects with four billing methods (fixed cost, project hours, task hours, staff hours), tasks, users, hours and cost budgets and a dashboard watchlist; a project page with Overview, Timesheet, Purchases, Sales, Budget Configuration, Journals, Activity Logs and Comments; a Timesheet with list, calendar and summary views, filters, weekly logs and a running timer in the top bar; invoicing of unbilled time (per project, task, user or entry) and fixed-cost project fees.
 * **Banking**, **Accountant** (chart of accounts, manual journals), **Reports**, **Documents**, **Settings**.
 * **Payroll** and **Payment Gateway** appear in the sidebar as placeholders for future integrations.
 

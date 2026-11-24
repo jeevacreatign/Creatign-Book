@@ -1,15 +1,15 @@
 // Time tracking, documents, settings, app placeholders, print pages and the public share page.
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
-import { Plus, Trash2, Wallet, CreditCard, FileText, Upload } from 'lucide-react';
+import { Wallet, CreditCard, FileText, Upload } from 'lucide-react';
 import { APPROVAL_KINDS } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
-import { fmtDate, fmtDateTime, money, today } from '@shared/format';
-import type { Attachment, Contact, Organization, PaymentMade, PaymentReceived, Project, TimeEntry, TxnDoc } from '@shared/types';
+import { fmtDate, fmtDateTime, money } from '@shared/format';
+import type { Attachment, Contact, Organization, PaymentMade, PaymentReceived, TxnDoc } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { toast } from '../../lib/toast';
-import { Checkbox, ContactPicker, DateInput, Field, Modal, PageHeader, Select, Spinner, Status, clsx } from '../../components/ui';
+import { Field, Modal, PageHeader, Select, Spinner, clsx } from '../../components/ui';
 import { DocumentPreview, ReceiptPreview } from '../../components/DocumentPreview';
 import { TemplatesSettings, useDocTemplate } from '../../components/pdf/Customize';
 import type { PdfTemplate } from '@shared/pdfTemplate';
@@ -18,166 +18,6 @@ import EmailSettings from '../settings/Emails';
 import type { ExpenseDetailData } from '../expenses/ExpenseDetail';
 import PortalSettingsPage from '../settings/Portal';
 
-// ------------------------------------------------------------ time tracking
-
-type PRow = Project & { customerName?: string; hours: number };
-
-function Projects() {
-  const { data = [] } = useApi<PRow[]>('/projects');
-  const [open, setOpen] = useState(false);
-  const [f, setF] = useState<Partial<Project>>({ billingMethod: 'hourly', rate: 1000 });
-  const save = useAction(() => api('/projects', { body: f }), 'Project created');
-  const invoice = useAction((id: string) => api<TxnDoc>(`/projects/${id}/invoice`, { body: {} }), 'Draft invoice created from unbilled hours');
-  const del = useAction((id: string) => api(`/projects/${id}`, { method: 'DELETE' }), 'Project deleted');
-  return (
-    <div>
-      <PageHeader title="Projects">
-        <button className="btn-primary" onClick={() => setOpen(true)}>
-          <Plus size={15} /> New Project
-        </button>
-      </PageHeader>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Project Name</th>
-            <th>Customer Name</th>
-            <th>Billing Method</th>
-            <th className="text-right">Rate</th>
-            <th className="text-right">Logged Hours</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((p) => (
-            <tr key={p.id}>
-              <td className="font-medium">{p.name}</td>
-              <td>{p.customerName}</td>
-              <td className="capitalize">{p.billingMethod === 'hourly' ? 'Based on project hours' : 'Fixed cost'}</td>
-              <td className="text-right">{money(p.rate)}</td>
-              <td className="text-right">
-                {p.hours}
-                {p.budgetHours ? ` / ${p.budgetHours}` : ''}
-              </td>
-              <td className="text-right">
-                <button className="link mr-3 text-xs" onClick={() => invoice.mutate(p.id, { onSuccess: (inv) => (window.location.href = `/sales/invoices/${inv.id}`) })}>
-                  Invoice unbilled hours
-                </button>
-                <button className="text-slate-400 hover:text-red-500" onClick={() => del.mutate(p.id)} aria-label="Delete">
-                  <Trash2 size={13} />
-                </button>
-              </td>
-            </tr>
-          ))}
-          {!data.length && (
-            <tr>
-              <td colSpan={6} className="py-10 text-center text-slate-400">
-                No projects yet.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-      <Modal open={open} onClose={() => setOpen(false)} title="New Project" footer={<><button className="btn-primary" onClick={() => save.mutate(undefined, { onSuccess: () => setOpen(false) })}>Save</button><button className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button></>}>
-        <div className="space-y-3">
-          <Field label="Project Name" required>
-            <input className="input" value={f.name || ''} onChange={(e) => setF({ ...f, name: e.target.value })} />
-          </Field>
-          <Field label="Customer Name" required>
-            <ContactPicker kind="customer" value={f.customerId} onChange={(v) => setF({ ...f, customerId: v || undefined })} />
-          </Field>
-          <Field label="Billing Method">
-            <Select value={f.billingMethod} onChange={(e) => setF({ ...f, billingMethod: e.target.value as 'hourly' })} options={[{ value: 'hourly', label: 'Based on project hours' }, { value: 'fixed', label: 'Fixed cost for project' }]} />
-          </Field>
-          <Field label={f.billingMethod === 'fixed' ? 'Total Project Cost' : 'Rate per Hour'}>
-            <input type="number" className="input" value={f.rate ?? ''} onChange={(e) => setF({ ...f, rate: Number(e.target.value) })} />
-          </Field>
-          <Field label="Budget Hours">
-            <input type="number" className="input" value={f.budgetHours ?? ''} onChange={(e) => setF({ ...f, budgetHours: Number(e.target.value) })} />
-          </Field>
-        </div>
-      </Modal>
-    </div>
-  );
-}
-
-function Timesheet() {
-  const { data: projects = [] } = useApi<PRow[]>('/projects');
-  const { data = [] } = useApi<(TimeEntry & { projectName?: string })[]>('/time-entries');
-  const [f, setF] = useState<Partial<TimeEntry>>({ date: today(), hours: 1, billable: true });
-  const save = useAction(() => api('/time-entries', { body: f }), 'Time logged');
-  const del = useAction((id: string) => api(`/time-entries/${id}`, { method: 'DELETE' }), 'Entry deleted');
-  return (
-    <div>
-      <PageHeader title="Timesheet" />
-      <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 px-5 py-4">
-        <Field label="Date" inline={false}>
-          <DateInput className="w-40" value={f.date} onChange={(v) => setF({ ...f, date: v })} />
-        </Field>
-        <Field label="Project" inline={false} required>
-          <Select className="w-56" value={f.projectId || ''} onChange={(e) => setF({ ...f, projectId: e.target.value })} placeholder="Select a project" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
-        </Field>
-        <Field label="Task" inline={false}>
-          <input className="input w-56" value={f.task || ''} onChange={(e) => setF({ ...f, task: e.target.value })} />
-        </Field>
-        <Field label="Hours" inline={false} required>
-          <input type="number" step="0.25" className="input w-24" value={f.hours ?? ''} onChange={(e) => setF({ ...f, hours: Number(e.target.value) })} />
-        </Field>
-        <div className="pb-1.5">
-          <Checkbox checked={!!f.billable} onChange={(v) => setF({ ...f, billable: v })} label="Billable" />
-        </div>
-        <button className="btn-primary" onClick={() => save.mutate()}>
-          Log Time
-        </button>
-      </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Project</th>
-            <th>Task</th>
-            <th className="text-right">Hours</th>
-            <th>Billing</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((t) => (
-            <tr key={t.id}>
-              <td>{fmtDate(t.date)}</td>
-              <td>{t.projectName}</td>
-              <td>{t.task}</td>
-              <td className="text-right">{t.hours}</td>
-              <td>
-                <Status status={t.invoiced ? 'invoiced' : t.billable ? 'unbilled' : 'non_billable'} />
-              </td>
-              <td className="text-right">
-                <button className="text-slate-400 hover:text-red-500" onClick={() => del.mutate(t.id)} aria-label="Delete">
-                  <Trash2 size={13} />
-                </button>
-              </td>
-            </tr>
-          ))}
-          {!data.length && (
-            <tr>
-              <td colSpan={6} className="py-10 text-center text-slate-400">
-                No time logged yet.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-export function TimeTracking() {
-  return (
-    <Routes>
-      <Route path="timesheet" element={<Timesheet />} />
-      <Route path="*" element={<Projects />} />
-    </Routes>
-  );
-}
 
 // ------------------------------------------------------------ documents
 

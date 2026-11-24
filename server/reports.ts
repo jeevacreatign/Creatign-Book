@@ -4,6 +4,7 @@ import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { daysBetween, monthsIn, periodRange, round2, today, type PeriodKey } from '../shared/format';
 import type { Account, Contact, Database, Journal } from '../shared/types';
 import { getDb } from './db';
+import { stats as projectStats } from './projects';
 import { contactSummary } from './services';
 
 const sum = (ns: number[]) => round2(ns.reduce((a, b) => a + (Number(b) || 0), 0));
@@ -136,10 +137,13 @@ export function dashboard(params: { cashPeriod?: PeriodKey; incomePeriod?: Perio
     .filter((a) => CASH_TYPES.has(a.subType) || a.subType === 'credit_card')
     .map((a) => ({ id: a.id, name: a.name, subType: a.subType, balance: accountBalance(db, a.id) }));
 
-  const projects = db.projects.map((p) => {
-    const hrs = db.timeEntries.filter((t) => t.projectId === p.id).reduce((s, t) => s + t.hours, 0);
-    return { id: p.id, name: p.name, customer: db.contacts.find((c) => c.id === p.customerId)?.displayName, hours: round2(hrs), budgetHours: p.budgetHours, unbilled: round2(db.timeEntries.filter((t) => t.projectId === p.id && t.billable && !t.invoiced).reduce((s, t) => s + t.hours * p.rate, 0)) };
-  });
+  // dashboard watchlist (Zoho: "Add to dashboard watchlist" on the project)
+  const projects = db.projects
+    .filter((p) => p.watchlist && p.status === 'active')
+    .map((p) => {
+      const st = projectStats(db, p);
+      return { id: p.id, name: p.name, customer: db.contacts.find((c) => c.id === p.customerId)?.displayName, hours: st.loggedHours, budgetHours: st.budgetHours || undefined, unbilledHours: st.unbilledHours, unbilled: st.unbilledAmount, billed: st.billedAmount };
+    });
 
   return {
     receivables,

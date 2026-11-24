@@ -10,6 +10,7 @@ import { CUSTOM_FIELD_TYPES, builtInTemplates, normalizeTemplate, resolveTemplat
 import type { Account, Attachment, DocKind, Journal, PaymentMade, Project, TimeEntry, TxnDoc } from '../shared/types';
 import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
+import { normalizeTimeTracking, registerProjectRoutes } from './projects';
 import * as R from './reports';
 import * as S from './services';
 import { mailSettings, savedSmtp, verifySmtp, type SmtpSettings } from './mailer';
@@ -580,7 +581,7 @@ export function createApp() {
     if (Math.abs(dr - cr) > 0.004) throw new S.HttpError(400, `Debits (${dr.toFixed(2)}) and credits (${cr.toFixed(2)}) must be equal`);
     const n = (db.counters.manual_journal || 0) + 1;
     db.counters.manual_journal = n;
-    const j: Journal = { id: newId('mj'), number: `MJ-${String(n).padStart(5, '0')}`, date: b.date || today(), sourceType: 'manual', reference: b.reference, notes: b.notes, lines, createdAt: now() };
+    const j: Journal = { id: newId('mj'), number: `MJ-${String(n).padStart(5, '0')}`, date: b.date || today(), sourceType: 'manual', reference: b.reference, notes: b.notes, projectId: b.projectId && db.projects.some((x) => x.id === b.projectId) ? b.projectId : undefined, lines, createdAt: now() };
     db.journals.push(j);
     return j;
   }));
@@ -815,53 +816,8 @@ export function createApp() {
     return out.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
   }));
 
-  // ------------------------------------------------------------ projects & time
-  api.get('/projects', h(() => {
-    const db = getDb();
-    return db.projects.map((x) => ({ ...x, customerName: S.contactName(db, x.customerId), hours: db.timeEntries.filter((t) => t.projectId === x.id).reduce((s, t) => s + t.hours, 0) }));
-  }));
-  api.post('/projects', m((req) => {
-    const b = req.body as Partial<Project>;
-    if (!b.name) throw new S.HttpError(400, 'Project Name is required');
-    const x: Project = { id: newId('prj'), name: b.name, customerId: b.customerId, billingMethod: b.billingMethod || 'hourly', rate: Number(b.rate) || 0, budgetHours: Number(b.budgetHours) || undefined, description: b.description, status: 'active', createdAt: now() };
-    getDb().projects.push(x);
-    return x;
-  }));
-  api.put('/projects/:id', m((req) => {
-    const x = getDb().projects.find((y) => y.id === p(req, 'id'));
-    if (!x) throw new S.HttpError(404, 'Project not found');
-    return Object.assign(x, req.body, { id: x.id });
-  }));
-  api.delete('/projects/:id', m((req) => {
-    const db = getDb();
-    db.projects = db.projects.filter((x) => x.id !== p(req, 'id'));
-    db.timeEntries = db.timeEntries.filter((t) => t.projectId !== p(req, 'id'));
-  }));
-  api.get('/time-entries', h((req) => {
-    const db = getDb();
-    return db.timeEntries.filter((t) => !q(req, 'projectId') || t.projectId === q(req, 'projectId')).map((t) => ({ ...t, projectName: db.projects.find((x) => x.id === t.projectId)?.name })).sort((a, b) => b.date.localeCompare(a.date));
-  }));
-  api.post('/time-entries', m((req) => {
-    const b = req.body as Partial<TimeEntry>;
-    if (!b.projectId || !(Number(b.hours) > 0)) throw new S.HttpError(400, 'Project and hours are required');
-    const t: TimeEntry = { id: newId('te'), projectId: b.projectId, date: b.date || today(), task: b.task, hours: Number(b.hours), notes: b.notes, billable: b.billable !== false, invoiced: false, createdAt: now() };
-    getDb().timeEntries.push(t);
-    return t;
-  }));
-  api.delete('/time-entries/:id', m((req) => {
-    getDb().timeEntries = getDb().timeEntries.filter((t) => t.id !== p(req, 'id'));
-  }));
-  api.post('/projects/:id/invoice', m((req) => {
-    const db = getDb();
-    const prj = db.projects.find((y) => y.id === p(req, 'id'));
-    if (!prj?.customerId) throw new S.HttpError(400, 'Associate a customer with this project first');
-    const entries = db.timeEntries.filter((t) => t.projectId === prj.id && t.billable && !t.invoiced);
-    if (!entries.length) throw new S.HttpError(400, 'There are no unbilled hours for this project');
-    const hours = entries.reduce((s, t) => s + t.hours, 0);
-    const inv = S.saveDoc('invoice', { contactId: prj.customerId, projectName: prj.name, lineItems: [{ id: newId('li'), name: `${prj.name} - billable hours`, quantity: hours, unit: 'hrs', rate: prj.rate, amount: 0 }] } as Partial<TxnDoc>, 'draft');
-    entries.forEach((t) => (t.invoiced = true));
-    return inv;
-  }));
+  // ------------------------------------------------------------ projects & time (server/projects.ts)
+  registerProjectRoutes(api, h, m);
 
   // ------------------------------------------------------------ dashboard, search & reports
   api.get('/dashboard', h((req) => R.dashboard({ cashPeriod: q(req, 'cashPeriod') as PeriodKey, incomePeriod: q(req, 'incomePeriod') as PeriodKey, expensePeriod: q(req, 'expensePeriod') as PeriodKey, basis: q(req, 'basis') as 'cash' })));
@@ -876,7 +832,8 @@ export function createApp() {
       .map((d) => ({ type: DOC_META[d.kind].label, title: `${d.number}`, subtitle: S.contactName(db, d.contactId), path: `${DOC_META[d.kind].path}/${d.id}` }));
     const contacts = db.contacts.filter((c) => matches(c.displayName, needle) || matches(c.email, needle)).slice(0, 8).map((c) => ({ type: c.kind === 'customer' ? 'Customer' : 'Vendor', title: c.displayName, subtitle: c.email, path: `/${c.kind === 'customer' ? 'sales/customers' : 'purchases/vendors'}/${c.id}` }));
     const items = db.items.filter((i) => matches(i.name, needle)).slice(0, 8).map((i) => ({ type: 'Item', title: i.name, subtitle: i.type, path: `/items/${i.id}` }));
-    return [...contacts, ...items, ...docs];
+    const projects = db.projects.filter((x) => matches(x.name, needle) || matches(x.code, needle)).slice(0, 8).map((x) => ({ type: 'Project', title: x.name, subtitle: S.contactName(db, x.customerId), path: `/time-tracking/projects/${x.id}` }));
+    return [...contacts, ...items, ...projects, ...docs];
   }));
   api.get('/reports/:name', h((req) => {
     const fy = getDb().organization.fiscalYearStartMonth;
@@ -934,7 +891,7 @@ function sanitize(html: string) {
 }
 
 export function boot() {
-  getDb();
+  normalizeTimeTracking(getDb());
   runRecurring(getDb());
   recompute(getDb());
   S.commit();

@@ -15,7 +15,8 @@ import PaymentsReceived from './pages/payments/PaymentsReceived';
 import PaymentsMade from './pages/payments/PaymentsMade';
 import Expenses, { RecurringExpenses } from './pages/expenses/Expenses';
 import { Accountant, Banking, Reports } from './pages/misc/Accounting';
-import { AppPlaceholder, Documents, PrintDoc, PrintExpense, PrintPayment, PrintStatement, Settings, TimeTracking } from './pages/misc/Other';
+import { AppPlaceholder, Documents, PrintDoc, PrintExpense, PrintPayment, PrintStatement, Settings } from './pages/misc/Other';
+import TimeTracking from './pages/time';
 import SharePage from './customer/SharePage';
 import PortalApp from './customer/Portal';
 

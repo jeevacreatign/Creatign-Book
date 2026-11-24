@@ -78,6 +78,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
       destinationOfSupply: sales ? undefined : boot.organization.state,
       taxInclusive: false,
       contactId: contactParam || undefined,
+      projectId: search.get('projectId') || undefined,
       ...(template || {}),
     };
     if (template?.lineItems) base.lineItems = template.lineItems.map((l) => ({ ...l }));
@@ -309,7 +310,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
               <Combo className="max-w-sm" allowFree freeValue={d.salesperson} onFree={(v) => set({ salesperson: v })} value={d.salesperson} onChange={(v) => set({ salesperson: v })} placeholder="Select or add salesperson" options={(prefs.salespersons || []).map((s) => ({ value: s, label: s }))} />
             </Field>
           )}
-          {has('project') && <ProjectField value={d.projectName} customerId={d.contactId} onChange={(v) => set({ projectName: v })} label={kind === 'recurring_invoice' ? 'Associate Project(s) Hours' : 'Project Name'} />}
+          {has('project') && <ProjectField value={d.projectId} name={d.projectName} customerId={sales ? d.contactId : undefined} onChange={(projectId, projectName) => set({ projectId: projectId as string, projectName })} label={kind === 'recurring_invoice' ? 'Associate Project(s) Hours' : 'Project Name'} />}
           {has('subject') && (
             <Field label="Subject">
               <textarea className="input max-w-xl" rows={2} placeholder={`Let your ${sales ? 'customer' : 'vendor'} know what this ${meta.label} is for`} value={d.subject || ''} onChange={(e) => set({ subject: e.target.value })} />
@@ -544,12 +545,13 @@ function TotalLine({ label, value, bold }: { label: string; value: number; bold?
   );
 }
 
-function ProjectField({ value, onChange, customerId, label }: { value?: string; onChange: (v: string) => void; customerId?: string; label: string }) {
-  const { data = [] } = useApi<{ id: string; name: string; customerId?: string }[]>('/projects');
-  const opts = data.filter((p) => !customerId || !p.customerId || p.customerId === customerId).map((p) => ({ value: p.name, label: p.name }));
+/** Project link: stores the project id (and its name for display). Purchases list every active project. */
+function ProjectField({ value, name, onChange, customerId, label }: { value?: string; name?: string; onChange: (id: string | null, name?: string) => void; customerId?: string; label: string }) {
+  const { data = [] } = useApi<{ id: string; name: string; customerId?: string; customerName?: string; status: string }[]>('/projects?view=all');
+  const opts = data.filter((p) => p.id === value || (p.status === 'active' && (!customerId || p.customerId === customerId))).map((p) => ({ value: p.id, label: p.name, sub: p.customerName }));
   return (
     <Field label={label}>
-      <Combo className="max-w-sm" allowFree freeValue={value} onFree={onChange} value={value} onChange={onChange} placeholder={customerId ? 'Select a project' : 'Select a customer to associate a project'} options={opts} />
+      <Combo className="max-w-sm" value={value} onChange={(id) => onChange(id || null, data.find((p) => p.id === id)?.name)} allowFree={!value} freeValue={value ? undefined : name} onFree={(text) => onChange(null, text)} placeholder={opts.length ? 'Select a project' : customerId ? 'No projects for this customer' : 'Select a project'} options={opts} />
     </Field>
   );
 }

@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import { useOrg } from '../lib/app';
 import { api, qs } from '../api';
 import { useOutside } from './ui';
+import { TimerChip } from '../pages/time/common';
 
 type NavItem = { to: string; label: string };
 const SALES: NavItem[] = [
@@ -138,7 +139,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 }
 
 const QUICK_CREATE: { group: string; items: NavItem[] }[] = [
-  { group: 'General', items: [{ to: '/items/new', label: 'Item' }, { to: '/accountant/manual-journals/new', label: 'Journal Entry' }, { to: '/time-tracking/timesheet', label: 'Log Time' }] },
+  { group: 'General', items: [{ to: '/items/new', label: 'Item' }, { to: '/accountant/manual-journals/new', label: 'Journal Entry' }, { to: '/time-tracking/timesheet?new=1', label: 'Log Time' }, { to: '/time-tracking/projects/new', label: 'Project' }] },
   { group: 'Sales', items: [{ to: '/sales/customers/new', label: 'Customer' }, { to: '/sales/quotes/new', label: 'Quote' }, { to: '/sales/sales-orders/new', label: 'Sales Order' }, { to: '/sales/invoices/new', label: 'Invoice' }, { to: '/sales/recurring-invoices/new', label: 'Recurring Invoice' }, { to: '/sales/delivery-challans/new', label: 'Delivery Challan' }, { to: '/sales/payments-received/new', label: 'Customer Payment' }, { to: '/sales/credit-notes/new', label: 'Credit Note' }] },
   { group: 'Purchases', items: [{ to: '/purchases/vendors/new', label: 'Vendor' }, { to: '/purchases/expenses/new', label: 'Expense' }, { to: '/purchases/recurring-expenses/new', label: 'Recurring Expense' }, { to: '/purchases/purchase-orders/new', label: 'Purchase Order' }, { to: '/purchases/bills/new', label: 'Bill' }, { to: '/purchases/recurring-bills/new', label: 'Recurring Bill' }, { to: '/purchases/payments-made/new', label: 'Vendor Payment' }, { to: '/purchases/vendor-credits/new', label: 'Vendor Credit' }] },
 ];
@@ -241,6 +242,7 @@ function Topbar() {
       </button>
       <GlobalSearch />
       <div className="flex-1" />
+      <TimerChip />
       <div ref={orgRef} className="relative">
         <button className="flex items-center gap-1.5 rounded px-2 py-1 text-[13px] hover:bg-white/10" onClick={() => setOrgOpen((o) => !o)}>
           <Building2 size={14} className="text-slate-300" />

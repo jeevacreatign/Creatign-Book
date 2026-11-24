@@ -205,7 +205,7 @@ function ExpenseForm() {
   const cloneId = search.get('clone');
   const { data: existing } = useApi<Expense>(id ? `/expenses/${id}` : cloneId ? `/expenses/${cloneId}` : null);
   const [tab, setTab] = useState<'record' | 'mileage' | 'bulk'>((search.get('tab') as 'bulk') || 'record');
-  const blank = (): Partial<Expense> => ({ date: today(), paidThroughAccountId: 'acc_petty_cash', vendorId: search.get('vendorId') || undefined, customerId: search.get('customerId') || undefined, itemized: false, lines: [], receipts: [], billable: false, reportingTags: {}, taxInclusive: true, destinationOfSupply: boot.organization.state, expenseType: 'service', ratePerKm: Number(boot.preferences.mileageRatePerKm) || 8 });
+  const blank = (): Partial<Expense> => ({ date: today(), paidThroughAccountId: 'acc_petty_cash', vendorId: search.get('vendorId') || undefined, customerId: search.get('customerId') || undefined, projectId: search.get('projectId') || undefined, billable: Boolean(search.get('projectId')), itemized: false, lines: [], receipts: [], reportingTags: {}, taxInclusive: true, destinationOfSupply: boot.organization.state, expenseType: 'service', ratePerKm: Number(boot.preferences.mileageRatePerKm) || 8 });
   const [f, setF] = useState<Partial<Expense> | null>(id || cloneId ? null : blank());
   const [bulk, setBulk] = useState<Partial<Expense>[]>([blank(), blank(), blank()]);
   const [saving, setSaving] = useState(false);
