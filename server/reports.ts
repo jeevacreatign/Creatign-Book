@@ -4,6 +4,7 @@ import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { daysBetween, monthsIn, periodRange, round2, today, type PeriodKey } from '../shared/format';
 import type { Account, Contact, Database, Journal } from '../shared/types';
 import { getDb } from './db';
+import { ledger, type Basis } from './ledger';
 import { stats as projectStats } from './projects';
 import { contactSummary } from './services';
 
@@ -271,9 +272,9 @@ export function statement(c: Contact, from: string, to: string, filter: 'all' | 
 
 // --------------------------------------------------------------- financial reports
 
-function balancesBy(db: Database, r: { from?: string; to: string }) {
+function balancesBy(db: Database, r: { from?: string; to: string }, basis: Basis = 'accrual') {
   const out = new Map<string, { debit: number; credit: number }>();
-  for (const j of db.journals) {
+  for (const j of ledger(db, basis)) {
     if (j.date > r.to || (r.from && j.date < r.from)) continue;
     for (const l of j.lines) {
       const cur = out.get(l.accountId) || { debit: 0, credit: 0 };
@@ -285,9 +286,9 @@ function balancesBy(db: Database, r: { from?: string; to: string }) {
   return out;
 }
 
-export function profitAndLoss(from: string, to: string) {
+export function profitAndLoss(from: string, to: string, basis: Basis = 'accrual') {
   const db = getDb();
-  const b = balancesBy(db, { from, to });
+  const b = balancesBy(db, { from, to }, basis);
   const section = (pred: (a: Account) => boolean, normal: 'credit' | 'debit') =>
     db.accounts
       .filter(pred)
@@ -308,9 +309,9 @@ export function profitAndLoss(from: string, to: string) {
   return { from, to, operatingIncome, cogs, grossProfit, operatingExpense, operatingProfit, otherIncome, otherExpense, netProfit };
 }
 
-export function balanceSheet(asOf: string) {
+export function balanceSheet(asOf: string, basis: Basis = 'accrual') {
   const db = getDb();
-  const b = balancesBy(db, { to: asOf });
+  const b = balancesBy(db, { to: asOf }, basis);
   const rows = (type: Account['type']) =>
     db.accounts
       .filter((a) => a.type === type)
@@ -319,7 +320,7 @@ export function balanceSheet(asOf: string) {
         return { accountId: a.id, name: a.name, subType: a.subType, amount: round2(signed(a, v.debit, v.credit)) };
       })
       .filter((x) => Math.abs(x.amount) > 0.004);
-  const pl = profitAndLoss('1900-01-01', asOf);
+  const pl = profitAndLoss('1900-01-01', asOf, basis);
   const assets = rows('asset');
   const liabilities = rows('liability');
   const equity = rows('equity');
@@ -328,9 +329,9 @@ export function balanceSheet(asOf: string) {
   return { asOf, assets, liabilities, equity, totalAssets: t(assets), totalLiabilities: t(liabilities), totalEquity: t(equity), totalLiabilitiesAndEquity: round2(t(liabilities) + t(equity)) };
 }
 
-export function trialBalance(asOf: string) {
+export function trialBalance(asOf: string, basis: Basis = 'accrual') {
   const db = getDb();
-  const b = balancesBy(db, { to: asOf });
+  const b = balancesBy(db, { to: asOf }, basis);
   const rows = db.accounts
     .map((a) => {
       const v = b.get(a.id) || { debit: 0, credit: 0 };

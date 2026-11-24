@@ -460,7 +460,7 @@ function saveBudget(db: Database, body: Partial<Budget>, existing?: Budget): Bud
   const fiscalYearStart = str(body.fiscalYearStart) ?? existing?.fiscalYearStart;
   if (!fiscalYearStart || !/^\d{4}-\d{2}-01$/.test(fiscalYearStart)) throw bad('Fiscal Year is required');
   const period = body.period ?? existing?.period ?? 'monthly';
-  if (!['monthly', 'quarterly', 'yearly'].includes(period)) throw bad('Budget Period is required');
+  if (!['monthly', 'quarterly', 'half_yearly', 'yearly'].includes(period)) throw bad('Budget Period is required');
   const projectId = str(body.projectId) ?? existing?.projectId;
   if (projectId) getProject(db, projectId);
   if (db.budgets.some((x) => x.name.toLowerCase() === name.toLowerCase() && x.projectId === projectId && x.id !== existing?.id)) throw bad(`A budget named "${name}" already exists`);

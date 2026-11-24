@@ -143,9 +143,9 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const mon = (x: Date) => MONTHS[x.getMonth()];
 
 /** Period buckets of a budget: 12 months, 4 quarters or 1 year from the fiscal year start. */
-export function budgetBuckets(fyStart: string, period: 'monthly' | 'quarterly' | 'yearly'): { from: string; to: string; label: string }[] {
+export function budgetBuckets(fyStart: string, period: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly'): { from: string; to: string; label: string }[] {
   const d = parseISO(fyStart);
-  const step = period === 'monthly' ? 1 : period === 'quarterly' ? 3 : 12;
+  const step = period === 'monthly' ? 1 : period === 'quarterly' ? 3 : period === 'half_yearly' ? 6 : 12;
   const out: { from: string; to: string; label: string }[] = [];
   for (let i = 0; i < 12; i += step) {
     const a = new Date(d.getFullYear(), d.getMonth() + i, 1);

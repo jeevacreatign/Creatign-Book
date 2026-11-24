@@ -6,6 +6,7 @@ import type { Account, Contact } from '@shared/types';
 import { useApi } from '../api';
 
 export { clsx };
+import { accountTypeLabel } from '@shared/accountant';
 
 // ------------------------------------------------------------ layout bits
 
@@ -91,6 +92,15 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'text-slate-400',
   stopped: 'text-slate-500',
   inactive: 'text-slate-400',
+  published: 'text-emerald-600',
+  uncategorized: 'text-amber-600',
+  categorized: 'text-emerald-600',
+  matched: 'text-sky-600',
+  excluded: 'text-slate-400',
+  reconciled: 'text-emerald-600',
+  associated: 'text-emerald-600',
+  unassociated: 'text-amber-600',
+  locked: 'text-red-500',
 };
 
 export function Status({ status, dueDate, className }: { status: string; dueDate?: string; className?: string }) {
@@ -199,8 +209,7 @@ export function Radio<T extends string>({ value, onChange, options, name }: { va
 }
 
 export function AccountSelect({ accounts, value, onChange, filter, placeholder = 'Select an account', className, disabled }: { accounts: Account[]; value?: string; onChange: (v: string) => void; filter?: (a: Account) => boolean; placeholder?: string; className?: string; disabled?: boolean }) {
-  const GROUP: Record<string, string> = { cash: 'Cash', bank: 'Bank', credit_card: 'Credit Card', accounts_receivable: 'Accounts Receivable', accounts_payable: 'Accounts Payable', other_current_asset: 'Other Current Asset', fixed_asset: 'Fixed Asset', other_current_liability: 'Other Current Liability', equity: 'Equity', income: 'Income', other_income: 'Other Income', cost_of_goods_sold: 'Cost Of Goods Sold', expense: 'Expense', other_expense: 'Other Expense' };
-  const opts = accounts.filter((a) => a.active && (!filter || filter(a))).map((a) => ({ value: a.id, label: a.name, group: GROUP[a.subType] }));
+  const opts = accounts.filter((a) => a.active && (!filter || filter(a))).map((a) => ({ value: a.id, label: a.name, group: accountTypeLabel(a.subType) }));
   return <Select options={opts} value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={className} disabled={disabled} />;
 }
 

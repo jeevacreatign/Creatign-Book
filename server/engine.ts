@@ -124,7 +124,7 @@ export function recompute(db: Database = getDb()) {
     d.childCount = db.docs.filter((c) => c.recurringProfileId === d.id).length;
     if (d.status === 'active' && !d.neverExpires && d.endsOn && d.endsOn < t && (!d.nextDate || d.nextDate > d.endsOn)) d.status = 'expired';
   }
-  for (const e of db.recurringExpenses) {
+  for (const e of [...db.recurringExpenses, ...(db.recurringJournals ?? [])]) {
     if (e.status === 'active' && !e.neverExpires && e.endsOn && e.endsOn < t && (!e.nextDate || e.nextDate > e.endsOn)) e.status = 'expired';
   }
 
@@ -187,8 +187,11 @@ function purchaseDocLines(d: TxnDoc, reverse = false): JournalLine[] {
   return reverse ? lines.map((l) => ({ ...l, debit: l.credit, credit: l.debit })) : lines;
 }
 
+/** Banking transaction types that bring money into the bank/cash/card account. */
+export const BANK_MONEY_IN = new Set(['deposit', 'other_income', 'interest_income', 'owner_contribution', 'transfer_in', 'expense_refund']);
+
 export function rebuildJournals(db: Database = getDb()) {
-  const manual = db.journals.filter((j) => j.sourceType === 'manual');
+  const manual = (db.manualJournals ?? []).filter((j) => j.status !== 'draft').map((j) => ({ ...j, sourceType: 'manual' as const }));
   const out: Journal[] = [];
   const add = (sourceType: JournalSource, sourceId: string, date: string, lines: JournalLine[], reference?: string, contactId?: string, suffix = '') => {
     const t = tidy(lines);
@@ -246,6 +249,13 @@ export function rebuildJournals(db: Database = getDb()) {
     if (e.reverseCharge && e.taxAmount) lines.push(jl(GST_ACCOUNTS.reverseChargePayable, 0, e.taxAmount, 'Reverse charge'));
     lines.push(jl(e.paidThroughAccountId, 0, e.amount, undefined, e.vendorId));
     add('expense', e.id, e.date, lines, e.invoiceNumber, e.vendorId);
+  }
+
+  for (const t of db.bankTransactions ?? []) {
+    const lines = BANK_MONEY_IN.has(t.type)
+      ? [jl(t.accountId, t.amount, 0, t.description), jl(t.offsetAccountId, 0, t.amount, t.description, t.contactId)]
+      : [jl(t.offsetAccountId, t.amount, 0, t.description, t.contactId), jl(t.accountId, 0, t.amount, t.description)];
+    add('bank_transaction', t.id, t.date, lines, t.referenceNumber, t.contactId);
   }
 
   const all = [...out, ...manual].sort((a, b) => (a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)));
@@ -316,6 +326,21 @@ export function runRecurring(db: Database = getDb(), upTo = today()): number {
       logActivity(db, p.kind, p.id, p.contactId, `${DOC_META[child.kind].label} ${child.number} created from the recurring profile`);
     }
     p.nextDate = next;
+  }
+  for (const r of db.recurringJournals ?? []) {
+    if (r.status !== 'active') continue;
+    let next = r.nextDate || r.startOn;
+    let guard = 0;
+    while (next <= upTo && guard++ < 120) {
+      if (!r.neverExpires && r.endsOn && next > r.endsOn) break;
+      const n = (db.counters.manual_journal || 0) + 1;
+      db.counters.manual_journal = n;
+      db.manualJournals.push({ id: newId('mj'), number: `MJ-${String(n).padStart(5, '0')}`, date: next, sourceType: 'manual', status: 'published', reportingMethod: r.reportingMethod, reference: r.reference, notes: r.notes, lines: r.lines.map((l) => ({ ...l })), recurringProfileId: r.id, attachments: [], createdBy: 'Recurring profile', createdAt: now() });
+      created++;
+      r.lastGeneratedDate = next;
+      next = nextRecurrence(next, r.repeatEvery);
+    }
+    r.nextDate = next;
   }
   for (const r of db.recurringExpenses) {
     if (r.status !== 'active') continue;

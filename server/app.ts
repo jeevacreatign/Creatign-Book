@@ -11,6 +11,7 @@ import type { Account, Attachment, DocKind, Journal, PaymentMade, Project, TimeE
 import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import { normalizeTimeTracking, registerProjectRoutes } from './projects';
+import { lockGuard, registerAccountantRoutes } from './accountant';
 import * as R from './reports';
 import * as S from './services';
 import { mailSettings, savedSmtp, verifySmtp, type SmtpSettings } from './mailer';
@@ -89,6 +90,7 @@ export function createApp() {
 
   const api = express.Router();
   api.use(freshness);
+  api.use(lockGuard);
 
   // ------------------------------------------------------------ org & setup
   api.get('/bootstrap', h(() => {
@@ -213,32 +215,8 @@ export function createApp() {
     return { ok: true };
   }));
 
-  // ------------------------------------------------------------ accounts
-  api.get('/accounts', h(() => getDb().accounts.map((a) => ({ ...a, balance: R.accountBalance(getDb(), a.id) }))));
-  api.post('/accounts', m((req) => {
-    const db = getDb();
-    const b = req.body as Partial<Account>;
-    if (!b.name || !b.type || !b.subType) throw new S.HttpError(400, 'Account name and type are required');
-    if (db.accounts.some((a) => a.name.toLowerCase() === b.name!.toLowerCase())) throw new S.HttpError(400, 'An account with this name already exists');
-    const a: Account = { id: newId('acc'), code: b.code || '', name: b.name, type: b.type, subType: b.subType, description: b.description, active: true };
-    db.accounts.push(a);
-    return a;
-  }));
-  api.put('/accounts/:id', m((req) => {
-    const a = getDb().accounts.find((x) => x.id === p(req, 'id'));
-    if (!a) throw new S.HttpError(404, 'Account not found');
-    const { name, code, description, active } = req.body as Partial<Account>;
-    Object.assign(a, { name: name ?? a.name, code: code ?? a.code, description, active: active ?? a.active });
-    return a;
-  }));
-  api.delete('/accounts/:id', m((req) => {
-    const db = getDb();
-    const a = db.accounts.find((x) => x.id === p(req, 'id'));
-    if (!a) throw new S.HttpError(404, 'Account not found');
-    if (a.system) throw new S.HttpError(400, 'System accounts cannot be deleted');
-    if (db.journals.some((j) => j.lines.some((l) => l.accountId === a.id))) throw new S.HttpError(400, 'This account has transactions and cannot be deleted');
-    db.accounts = db.accounts.filter((x) => x.id !== a.id);
-  }));
+  // ------------------------------------------------------------ accountant (server/accountant.ts)
+  registerAccountantRoutes(api, h, m);
 
   // ------------------------------------------------------------ items
   api.get('/items', h((req) => {
@@ -560,38 +538,6 @@ export function createApp() {
   }));
   api.post('/recurring-expenses/:id/actions/:action', m((req) => S.recurringExpenseAction(p(req, 'id'), p(req, 'action'))));
 
-  // ------------------------------------------------------------ journals
-  api.get('/journals', h((req) => {
-    const db = getDb();
-    const kind = q(req, 'kind');
-    return db.journals.filter((j) => !kind || (kind === 'manual' ? j.sourceType === 'manual' : true)).slice().reverse();
-  }));
-  api.get('/journals/:id', h((req) => {
-    const j = getDb().journals.find((x) => x.id === p(req, 'id'));
-    if (!j) throw new S.HttpError(404, 'Journal not found');
-    return j;
-  }));
-  api.post('/journals', m((req) => {
-    const db = getDb();
-    const b = req.body as Partial<Journal>;
-    const lines = (b.lines || []).filter((l) => l.accountId && (Number(l.debit) || Number(l.credit))).map((l) => ({ ...l, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 }));
-    const dr = lines.reduce((s, l) => s + l.debit, 0);
-    const cr = lines.reduce((s, l) => s + l.credit, 0);
-    if (lines.length < 2) throw new S.HttpError(400, 'A journal needs at least two lines');
-    if (Math.abs(dr - cr) > 0.004) throw new S.HttpError(400, `Debits (${dr.toFixed(2)}) and credits (${cr.toFixed(2)}) must be equal`);
-    const n = (db.counters.manual_journal || 0) + 1;
-    db.counters.manual_journal = n;
-    const j: Journal = { id: newId('mj'), number: `MJ-${String(n).padStart(5, '0')}`, date: b.date || today(), sourceType: 'manual', reference: b.reference, notes: b.notes, projectId: b.projectId && db.projects.some((x) => x.id === b.projectId) ? b.projectId : undefined, lines, createdAt: now() };
-    db.journals.push(j);
-    return j;
-  }));
-  api.delete('/journals/:id', m((req) => {
-    const db = getDb();
-    const j = db.journals.find((x) => x.id === p(req, 'id'));
-    if (!j || j.sourceType !== 'manual') throw new S.HttpError(400, 'Only manual journals can be deleted');
-    db.journals = db.journals.filter((x) => x.id !== j.id);
-  }));
-
   // ------------------------------------------------------------ comments, activity, mail
   api.get('/comments', h((req) => getDb().comments.filter((c) => c.entityId === q(req, 'entityId')).slice().reverse()));
   api.post('/comments', m((req) => {
@@ -842,11 +788,11 @@ export function createApp() {
     const to = q(req, 'to') || r.to;
     switch (p(req, 'name')) {
       case 'profit-and-loss':
-        return R.profitAndLoss(from, to);
+        return R.profitAndLoss(from, to, q(req, 'basis') === 'cash' ? 'cash' : 'accrual');
       case 'balance-sheet':
-        return R.balanceSheet(to);
+        return R.balanceSheet(to, q(req, 'basis') === 'cash' ? 'cash' : 'accrual');
       case 'trial-balance':
-        return R.trialBalance(to);
+        return R.trialBalance(to, q(req, 'basis') === 'cash' ? 'cash' : 'accrual');
       case 'general-ledger':
         return R.generalLedger(from, to, q(req, 'accountId'));
       case 'journal':
