@@ -9,7 +9,8 @@ import { api, qs, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { AccountSelect, DateInput, Dropdown, Field, KV, MenuItem, Modal, MoneyInput, Pill, Select, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 import { EmailModal, JournalTable, ShareModal, Timeline, Comments } from '../../components/shared';
-import { AddressBlock, DocumentPreview, TEMPLATES, type Template } from '../../components/DocumentPreview';
+import { AddressBlock, DocumentPreview } from '../../components/DocumentPreview';
+import { CustomizeMenu, useDocTemplate } from '../../components/pdf/Customize';
 
 type Related = {
   quote?: TxnDoc;
@@ -27,15 +28,62 @@ export type DocDetailData = TxnDoc & { contactName: string; contact?: Contact; r
 
 const pdfLabel = (k: DocKind) => `${DOC_META[k].label.replace('Recurring ', '')} PDF`;
 
+function DocPdf({ d, preferences }: { d: DocDetailData; preferences: Record<string, unknown> }) {
+  const { organization: org } = useBoot();
+  const template = useDocTemplate(d.kind, d.templateId);
+  return <DocumentPreview doc={d} org={org} contact={d.contact} template={template} preferences={preferences} />;
+}
+
+/** Plain (non-PDF) view of a transaction, like Zoho's details view with "Show PDF View" off. */
+function DocSummary({ d }: { d: DocDetailData }) {
+  const meta = DOC_META[d.kind];
+  return (
+    <div className="rounded-md border border-slate-200 bg-white">
+      <div className="grid grid-cols-2 gap-x-10 gap-y-1 p-5">
+        <KV k={meta.numberLabel} v={d.number || d.profileName} />
+        <KV k={meta.dateLabel} v={fmtDate(d.date)} />
+        <KV k={meta.side === 'sales' ? 'Customer' : 'Vendor'} v={d.contactName} />
+        {d.dueDate && <KV k="Due Date" v={fmtDate(d.dueDate)} />}
+        {d.referenceNumber && <KV k="Reference#" v={d.referenceNumber} />}
+        {d.salesperson && <KV k="Salesperson" v={d.salesperson} />}
+      </div>
+      <table className="table border-t border-slate-200">
+        <thead>
+          <tr>
+            <th>Item & Description</th>
+            <th className="text-right">Qty</th>
+            <th className="text-right">Rate</th>
+            <th className="text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {d.lineItems.map((l) => (
+            <tr key={l.id}>
+              <td>
+                <div className="font-medium">{l.name}</div>
+                {l.description && <div className="text-xs text-slate-500">{l.description}</div>}
+              </td>
+              <td className="text-right">{l.quantity} {l.unit}</td>
+              <td className="text-right">{money(l.rate)}</td>
+              <td className="text-right">{money(l.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="flex justify-end p-5 text-[14px] font-semibold">Total {money(d.total)}</div>
+    </div>
+  );
+}
+
 export function DocDetail({ kind }: { kind: DocKind }) {
   const { id } = useParams();
   const [search, setSearch] = useSearchParams();
   const navigate = useNavigate();
-  const { organization: org, accounts, approvals: approvalPrefs } = useBoot();
+  const { organization: org, accounts, approvals: approvalPrefs, preferences } = useBoot();
   const meta = DOC_META[kind];
   const { data: d, isLoading, error } = useApi<DocDetailData>(`/docs/${id}`);
   const [tab, setTab] = useState<string>('document');
-  const [template, setTemplate] = useState<Template>('standard');
+  const [pdfView, setPdfView] = useState(true);
   const [emailOpen, setEmailOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [modal, setModal] = useState<null | 'refund' | 'apply' | 'writeoff' | 'expected' | 'cancelItems' | 'reject'>(null);
@@ -309,10 +357,10 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         )}
         {!meta.recurring && (
           <Dropdown button={() => <ToolbarBtn icon={<FileText size={14} />}>PDF/Print <ChevronDown size={12} /></ToolbarBtn>}>
-            <MenuItem icon={<FileText size={13} />} onClick={() => window.open(`/print/doc/${d.id}?template=${template}`, '_blank')}>
+            <MenuItem icon={<FileText size={13} />} onClick={() => window.open(`/print/doc/${d.id}`, '_blank')}>
               PDF
             </MenuItem>
-            <MenuItem icon={<Printer size={13} />} onClick={() => window.open(`/print/doc/${d.id}?template=${template}&auto=1`, '_blank')}>
+            <MenuItem icon={<Printer size={13} />} onClick={() => window.open(`/print/doc/${d.id}?auto=1`, '_blank')}>
               Print
             </MenuItem>
           </Dropdown>
@@ -382,12 +430,17 @@ export function DocDetail({ kind }: { kind: DocKind }) {
                 <Pill status={d.status} />
                 {d.sentAt && <span className="text-xs text-slate-500">Sent {fmtDateTime(d.sentAt)}</span>}
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                PDF Template:
-                <Select className="h-7 w-48 text-xs" value={template} onChange={(e) => setTemplate(e.target.value as Template)} options={TEMPLATES} />
+              <div className="flex items-center gap-4">
+                <label className="flex cursor-pointer items-center gap-2 text-[13px] italic text-slate-600">
+                  Show PDF View
+                  <button type="button" role="switch" aria-checked={pdfView} onClick={() => setPdfView((v) => !v)} className={clsx('relative h-5 w-9 rounded-full transition-colors', pdfView ? 'bg-brand-600' : 'bg-slate-300')}>
+                    <span className={clsx('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', pdfView ? 'left-[18px]' : 'left-0.5')} />
+                  </button>
+                </label>
+                {pdfView && <CustomizeMenu doc={d} kind={kind} />}
               </div>
             </div>
-            <DocumentPreview doc={d} org={org} contact={d.contact} template={template} />
+            {pdfView ? <DocPdf d={d} preferences={preferences} /> : <DocSummary d={d} />}
             <MoreInformation d={d} />
           </div>
         )}

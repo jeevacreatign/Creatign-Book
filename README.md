@@ -150,14 +150,26 @@ Settings → **Approvals** turns approval on or off per module (Quotes, Sales Or
 
 Documents that are draft, pending approval, approved or rejected never post to the ledger, receivables/payables or reports. Editing an approved document sends it back for approval.
 
+### D. PDF templates (Zoho-style Customize)
+
+Every transaction's **Details** tab shows the PDF preview with a **Show PDF View** switch and a **Customize** button:
+
+* **Change Template** opens a drawer with a live thumbnail of each template rendered with the current document. Click one to use it for this document, or the star to make it the default for the module.
+* **Edit Template** opens the full-screen editor: General (name, paper size A5 / A4 / Letter, orientation, margins, layout, font, colours, background), Header & Footer, Transaction Details, Table, Total and Other Details (notes, terms, bank details, signature). **Select Color Theme** recolours the template; the preview updates live and **Refresh Preview** redraws it.
+* **Update Logo & Address** uploads the organisation logo (jpg, png, gif, bmp up to 1 MB) and edits the address, phone, fax, website and industry printed on PDFs.
+* **Manage Custom Fields** adds fields to the module's form (text, number, date, dropdown, …); fields marked *Show in all PDFs* print with the document details. The **Preferences** tab sets the module's default template, notes and terms.
+* **Terms & Conditions** edits the notes and terms of this document, with *Use this in future for all … of all customers* to make them the default.
+
+Six designs ship with the app: Standard, Modern, Classic, Bold, Minimal and Spreadsheet. Settings → **PDF Templates** lists them with New, Clone, Edit and Delete, and picks a default template per module. The browser print view and the PDF attached to emails are drawn from the same template, with embedded fonts that print ₹.
+
 ### Automated check
 
-`npm test` runs the workflows end to end through the API (30 tests, including email and approvals): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
+`npm test` runs the workflows end to end through the API (49 tests, including email, approvals and PDF templates): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
 
 ## Notes and limits
 
-* **Email** is delivered over SMTP once `.env` is set up (see *Sending email*); otherwise it is only recorded in the app. Attached PDFs show amounts as `Rs.` because the built-in PDF fonts have no ₹ symbol.
-* **PDF** uses the browser's print-to-PDF from the PDF/Print buttons (pages under `/print/...`).
+* **Email** is delivered over SMTP once `.env` is set up (see *Sending email*); otherwise it is only recorded in the app. Attached PDFs use the document's PDF template and the fonts in `client/public/fonts`.
+* **PDF** uses the browser's print-to-PDF from the PDF/Print buttons (pages under `/print/...`), sized to the template's paper and margins. Emailed PDFs embed JPG and PNG logos only, and page numbers appear on emailed PDFs only.
 * **Share links** open a public read-only view at `/share/<token>`.
 * Recurring invoices, bills and expenses generate due documents when the server starts, on the first request each day, and from **More → Generate due invoices now**.
 * Single organisation and single user. GST tax lines, multi-currency, bank feeds and reconciliation are not implemented.

@@ -73,11 +73,20 @@ The JSON store is one `Database` object whose arrays map one-to-one to tables. T
 | shareLinks | ShareLink |
 | projects, timeEntries | Project, TimeEntry |
 | counters | Next number per series, e.g. `INV → 3` |
-| preferences | Salespersons, challan types, delivery methods, default notes and terms, mileage rate |
+| pdfTemplates | PdfTemplate (six built-in, plus your own) |
+| preferences | Salespersons, challan types, delivery methods, default notes and terms, mileage rate, `defaultTemplates` (module → template id), `docDefaults` (module → notes / terms), `customFields` (module → CustomFieldDef[]) |
 
 ### Organization
 
-`id, name, email, phone?, state, country, currencyCode (INR), currencySymbol (₹), dateFormat (dd/MM/yyyy), fiscalYearStartMonth (4), gstin?, pan?, address?, logoText?, migrationDate?`
+`id, name, email, phone?, state, country, currencyCode (INR), currencySymbol (₹), dateFormat (dd/MM/yyyy), fiscalYearStartMonth (4), gstin?, pan?, address?, logoText?, logo? (data: URL), website?, fax?, industry?, migrationDate?`
+
+### PdfTemplate
+
+Defined in `shared/pdfTemplate.ts`; one template drives the on-screen preview, browser print and the emailed PDF.
+
+`id, name, layout (standard | modern | classic | bold | minimal | spreadsheet), builtIn?, paperSize (A4 | A5 | Letter), orientation, margins {top, bottom, left, right} in inches, font, fontSize (pt), textColor, labelColor, theme, accentColor, tintColor, backgroundColor, backgroundImage?, header {…}, details {…}, table {…, labels}, total {…}, other {…}`
+
+A document prints with `TxnDoc.templateId`, else `preferences.defaultTemplates[kind]`, else the Standard template. Custom field values live in `TxnDoc.customFields` keyed by field id; mandatory fields are enforced on save.
 
 ### Account (chart of accounts)
 

@@ -8,7 +8,8 @@ import { useBoot, isCashLike } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { AccountSelect, Checkbox, ContactPicker, DateInput, Dropdown, Field, FormFooter, MenuItem, Modal, MoneyInput, PageHeader, Radio, SearchBox, Select, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 import { Attachments, EmailModal, JournalTable, Timeline } from '../../components/shared';
-import { ReceiptPreview, TEMPLATES, type Template } from '../../components/DocumentPreview';
+import { ReceiptPreview } from '../../components/DocumentPreview';
+import { useDocTemplate, useTemplates } from '../../components/pdf/Customize';
 
 type Row = PaymentReceived & { contactName: string; invoiceNumbers: string[] };
 type Detail = PaymentReceived & { contactName: string; contact?: Contact; invoices: { docId: string; amount: number; doc?: TxnDoc }[]; journals: Journal[] };
@@ -325,7 +326,9 @@ function DetailView() {
   const { data: list = [] } = useApi<Row[]>('/payments-received');
   const { data: p } = useApi<Detail>(`/payments-received/${id}`);
   const [tab, setTab] = useState('receipt');
-  const [template, setTemplate] = useState<Template>('elite');
+  const templates = useTemplates();
+  const [templateId, setTemplateId] = useState<string | undefined>();
+  const tpl = useDocTemplate('payment', templateId);
   const [email, setEmail] = useState(false);
   const [refund, setRefund] = useState(false);
   const confirm = useConfirm();
@@ -376,10 +379,10 @@ function DetailView() {
               </MenuItem>
             </Dropdown>
             <Dropdown button={() => <Tb icon={<FileText size={14} />}>PDF/Print <ChevronDown size={12} /></Tb>}>
-              <MenuItem icon={<FileText size={13} />} onClick={() => window.open(`/print/payment/${p.id}?template=${template}`, '_blank')}>
+              <MenuItem icon={<FileText size={13} />} onClick={() => window.open(`/print/payment/${p.id}?template=${tpl.id}`, '_blank')}>
                 PDF
               </MenuItem>
-              <MenuItem icon={<Printer size={13} />} onClick={() => window.open(`/print/payment/${p.id}?template=${template}&auto=1`, '_blank')}>
+              <MenuItem icon={<Printer size={13} />} onClick={() => window.open(`/print/payment/${p.id}?template=${tpl.id}&auto=1`, '_blank')}>
                 Print
               </MenuItem>
             </Dropdown>
@@ -407,10 +410,10 @@ function DetailView() {
                   </div>
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     Template
-                    <Select className="h-7 w-44 text-xs" value={template} onChange={(e) => setTemplate(e.target.value as Template)} options={TEMPLATES} />
+                    <Select className="h-7 w-48 text-xs" value={tpl.id} onChange={(e) => setTemplateId(e.target.value)} options={templates.map((t) => ({ value: t.id, label: t.name }))} />
                   </div>
                 </div>
-                <ReceiptPreview payment={p} org={org} contact={p.contact} kind="received" template={template} rows={p.invoices.filter((x) => x.doc).map((x) => ({ number: x.doc!.number, date: x.doc!.date, total: x.doc!.total, amount: x.amount }))} />
+                <ReceiptPreview payment={p} org={org} contact={p.contact} kind="received" template={tpl} rows={p.invoices.filter((x) => x.doc).map((x) => ({ number: x.doc!.number, date: x.doc!.date, total: x.doc!.total, amount: x.amount }))} />
               </>
             )}
             {tab === 'journal' && <JournalTable journals={p.journals} />}
