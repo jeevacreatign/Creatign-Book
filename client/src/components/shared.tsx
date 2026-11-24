@@ -1,7 +1,7 @@
 // Cross-module widgets: attachments, email composer, share links, journal table,
 // comments editor, activity timeline and the purchase-module lifecycle diagrams.
 import { useRef, useState, type ReactNode } from 'react';
-import { Bold, Italic, Underline, Paperclip, Upload, Trash2, Link2, ArrowRight, FileText } from 'lucide-react';
+import { Bold, Italic, Underline, Paperclip, Upload, Trash2, Link2, ArrowRight, FileText, FolderOpen } from 'lucide-react';
 import { money, fmtDateTime, fmtDate, today, addDays } from '@shared/format';
 import type { Activity, Attachment, Comment, Journal, ShareLink } from '@shared/types';
 import { api, useAction, useApi, qs } from '../api';
@@ -15,6 +15,7 @@ export function Attachments({ value, onChange, max = 10, maxMB = 10, label = 'At
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
+  const [pick, setPick] = useState(false);
   async function upload(files: FileList | File[]) {
     const list = Array.from(files);
     if (value.length + list.length > max) return toast.error(`You can upload a maximum of ${max} files`);
@@ -51,6 +52,9 @@ export function Attachments({ value, onChange, max = 10, maxMB = 10, label = 'At
         <button type="button" className="btn-secondary btn-sm" disabled={busy} onClick={() => input.current?.click()}>
           <Upload size={13} /> {busy ? 'Uploading…' : 'Upload File'}
         </button>
+        <button type="button" className="btn-ghost btn-sm" disabled={value.length >= max} onClick={() => setPick(true)}>
+          <FolderOpen size={13} /> From Documents
+        </button>
         <span className="text-xxs text-slate-500">
           You can upload a maximum of {max} files, {maxMB}MB each
         </span>
@@ -72,7 +76,62 @@ export function Attachments({ value, onChange, max = 10, maxMB = 10, label = 'At
           ))}
         </ul>
       )}
+      {pick && <DocumentsPicker exclude={value.map((a) => a.id)} room={max - value.length} onClose={() => setPick(false)} onPick={(xs) => onChange([...value, ...xs])} />}
     </div>
+  );
+}
+
+/** "Attach from Documents": pick files already uploaded to the Documents inboxes or folders. */
+function DocumentsPicker({ exclude, room, onClose, onPick }: { exclude: string[]; room: number; onClose: () => void; onPick: (a: Attachment[]) => void }) {
+  const [search, setSearch] = useState('');
+  const [sel, setSel] = useState<string[]>([]);
+  const { data = [] } = useApi<(Attachment & { kind: string; trashedAt?: string; folderName?: string; inbox?: string; links: unknown[] })[]>(`/documents${qs({ view: 'all', search })}`);
+  const rows = data.filter((d) => d.kind === 'inbox' && !exclude.includes(d.id));
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      width="max-w-xl"
+      title="Attach from Documents"
+      footer={
+        <>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!sel.length}
+            onClick={() => {
+              onPick(rows.filter((r) => sel.includes(r.id)).map(({ id, name, size, mimeType, url, uploadedAt }) => ({ id, name, size, mimeType, url, uploadedAt })));
+              onClose();
+            }}
+          >
+            Attach {sel.length ? `(${sel.length})` : ''}
+          </button>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+        </>
+      }
+    >
+      <input className="input mb-3" placeholder="Search files" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="max-h-72 overflow-y-auto rounded-md border border-slate-200">
+        {rows.map((r) => (
+          <label key={r.id} className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-3 py-2 text-[13px] last:border-0 hover:bg-slate-50">
+            <input
+              type="checkbox"
+              className="accent-brand-600"
+              checked={sel.includes(r.id)}
+              disabled={!sel.includes(r.id) && sel.length >= room}
+              onChange={(e) => setSel(e.target.checked ? [...sel, r.id] : sel.filter((x) => x !== r.id))}
+            />
+            <FileText size={14} className="text-slate-400" />
+            <span className="min-w-0 flex-1 truncate">{r.name}</span>
+            <span className="text-xxs text-slate-400">{r.folderName ?? (r.inbox === 'bank_statements' ? 'Bank Statements' : 'Files')}</span>
+            {r.links.length > 0 && <span className="text-xxs text-emerald-600">In use</span>}
+          </label>
+        ))}
+        {!rows.length && <div className="px-3 py-8 text-center text-[13px] text-slate-500">No files in Documents. Upload files under Documents first.</div>}
+      </div>
+    </Modal>
   );
 }
 

@@ -13,6 +13,7 @@ import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import { normalizeTimeTracking, registerProjectRoutes } from './projects';
 import { lockGuard, registerAccountantRoutes } from './accountant';
 import { registerBankingRoutes } from './banking';
+import { registerDocumentRoutes } from './documents';
 import * as R from './reports';
 import { CATEGORIES as CATALOG_CATEGORIES, catalog as reportCatalog, runReport } from './reportCatalog';
 import * as S from './services';
@@ -754,16 +755,7 @@ export function createApp() {
     const files = (req.files as Express.Multer.File[]) || [];
     return files.map<Attachment>((f) => ({ id: path.parse(f.filename).name, name: f.originalname, size: f.size, mimeType: f.mimetype, url: `/uploads/${f.filename}`, uploadedAt: now() }));
   }));
-  api.get('/documents', h(() => {
-    const db = getDb();
-    const out: (Attachment & { source: string; sourceId: string; sourceLabel: string })[] = [];
-    for (const d of db.docs) for (const a of d.attachments) out.push({ ...a, source: d.kind, sourceId: d.id, sourceLabel: `${DOC_META[d.kind].label} ${d.number}` });
-    for (const c of db.contacts) for (const a of c.documents) out.push({ ...a, source: c.kind, sourceId: c.id, sourceLabel: c.displayName });
-    for (const e of db.expenses) for (const a of e.receipts) out.push({ ...a, source: 'expense', sourceId: e.id, sourceLabel: `Expense ${e.date}` });
-    for (const x of db.paymentsReceived) for (const a of x.attachments) out.push({ ...a, source: 'payment_received', sourceId: x.id, sourceLabel: `Payment #${x.number}` });
-    for (const x of db.paymentsMade) for (const a of x.attachments) out.push({ ...a, source: 'payment_made', sourceId: x.id, sourceLabel: `Payment #${x.number}` });
-    return out.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
-  }));
+  registerDocumentRoutes(api, h, m, upload.array('files', 10));
 
   // ------------------------------------------------------------ projects & time (server/projects.ts)
   registerProjectRoutes(api, h, m);

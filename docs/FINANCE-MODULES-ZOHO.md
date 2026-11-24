@@ -80,4 +80,5 @@ Not built: filing GSTR-1/3B with the GST portal (needs a GSP), Zoho Sheet export
 | New Folder: name, permissions (all users with access / custom) | None | Done (custom permission is stored; there is no multi-user login yet) |
 | Bank Statements inbox: upload statements and Add Statements to Bank | None | Upload CSV statements and import them into a bank account from the inbox |
 | Autoscan (OCR via Veryfi), email forwarding address | None | Not built: needs a paid OCR provider and an inbound mail server |
-| All Documents includes files attached anywhere in the books | Yes | Yes, with filters by type and association |
+| All Documents includes files attached anywhere in the books | Yes | Yes, with search and an Associated / Unassociated filter |
+| Attach from Documents on a transaction form (invoice, bill, payment, journal, contact) | None | Done. The file shows as associated once the transaction is saved, and drops back to unassociated if the transaction is deleted |
