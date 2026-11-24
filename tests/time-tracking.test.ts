@@ -154,6 +154,12 @@ describe('projects', () => {
       const inv = await api().post(`/api/projects/${r.body.id}/invoice`).send({ groupBy: 'staff' });
       expect(inv.body.subTotal).toBe(9000);
       expect(inv.body.lineItems).toHaveLength(2);
+      // voiding the invoice returns its time to Unbilled
+      await api().post(`/api/docs/${inv.body.id}/actions/mark_sent`);
+      expect((await api().post(`/api/docs/${inv.body.id}/actions/void`)).status).toBe(200);
+      const d = (await api().get(`/api/projects/${r.body.id}`)).body;
+      expect(d.unbilledHours).toBe(5);
+      expect(d.billedAmount).toBe(0);
     });
   });
 

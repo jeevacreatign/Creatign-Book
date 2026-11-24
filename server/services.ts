@@ -562,6 +562,13 @@ export function docAction(id: string, action: string, body: Record<string, unkno
       if (d.kind === 'bill' && db.paymentsMade.some((p) => p.status === 'paid' && p.allocations.some((a) => a.docId === d.id))) throw bad('Delete the payments recorded for this bill before voiding it');
       if (db.docs.some((c) => c.creditApplications.some((a) => a.invoiceId === d.id))) throw bad('Remove the credits applied to this document before voiding it');
       if ((d.kind === 'credit_note' || d.kind === 'vendor_credit') && (d.creditApplications.length || d.refunds.length)) throw bad('Remove applied credits and refunds before voiding');
+      // a void invoice no longer bills its time: the entries go back to Unbilled
+      if (d.kind === 'invoice')
+        for (const t of db.timeEntries)
+          if (t.invoiceId === d.id) {
+            t.invoiced = false;
+            t.invoiceId = undefined;
+          }
     }
     if (action === 'revert_to_draft' && (d.amountPaid || 0) > 0) throw bad('Documents with payments cannot be reverted to draft');
     if (action === 'revert_to_draft' && (d.kind === 'credit_note' || d.kind === 'vendor_credit') && (d.creditApplications.length || d.refunds.length)) throw bad('Remove applied credits and refunds first');

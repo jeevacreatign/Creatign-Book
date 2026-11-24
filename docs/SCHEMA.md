@@ -74,7 +74,7 @@ The JSON store is one `Database` object whose arrays map one-to-one to tables. T
 | emailTemplates | EmailTemplate (one built-in per kind, plus your own) |
 | portalUsers, portalSessions | PortalUser, PortalSession (customer portal sign-in) |
 | paymentNotices | PaymentNotice (payments customers report from the portal or a shared link) |
-| projects, timeEntries | Project, TimeEntry |
+| projects, timeEntries, users, timers, budgets | Project, TimeEntry, User, RunningTimer, Budget |
 | counters | Next number per series, e.g. `INV → 3` |
 | pdfTemplates | PdfTemplate (six built-in, plus your own) |
 | preferences | `smtp` (SMTP settings, password encrypted), `portal` (PortalSettings), salespersons, challan types, delivery methods, default notes and terms, mileage rate, `defaultTemplates` (module → template id), `docDefaults` (module → notes / terms), `customFields` (module → CustomFieldDef[]) |
@@ -122,7 +122,7 @@ Derived on read: `outstanding` (receivable or payable) and `unusedCredits`.
 |---|---|
 | Identity | `id, kind, number (QT-/SO-/INV-/RI-/DC-/CN-/PO-/BILL-/RB-/VC- + 5 digits; bills use the vendor's bill#), referenceNumber?, orderNumber?` |
 | Party and dates | `contactId → Contact, date, dueDate?, expiryDate?, expectedShipmentDate?, deliveryDate?, paymentTerms?, accountId? (AR or AP)` |
-| Sales/delivery detail | `salesperson?, projectName?, subject?, deliveryMethod?, shipmentPreference?, challanType?, deliveryAddressType?, deliveryCustomerId?, billingAddress?, shippingAddress?` |
+| Sales/delivery detail | `salesperson?, projectId?, projectName?, projectFee?, subject?, deliveryMethod?, shipmentPreference?, challanType?, deliveryAddressType?, deliveryCustomerId?, billingAddress?, shippingAddress?` |
 | Lines | `lineItems[]: { id, itemId? → Item, name, description?, accountId? → Account, quantity, unit?, rate, discountPercent?, customerId? → Contact, amount }` |
 | Inputs to totals | `discountPercent, tdsRate, tcsRate, adjustment, adjustmentLabel?, roundOff?` |
 | Computed totals | `subTotal, discountAmount, tdsAmount, tcsAmount, total, balance` |
@@ -184,8 +184,12 @@ JournalLine: `accountId → Account, debit, credit, description?, contactId?`
 * **PortalSession**: `id, tokenHash (sha256 of the cookie value), userId, createdAt, expiresAt (14 days), lastSeenAt`
 * **PaymentNotice**: `id, contactId, invoiceId, amount, date, mode, reference, note?, submittedBy, submittedEmail?, via (portal | link), status (pending | recorded | dismissed), paymentId?, createdAt, resolvedAt?`. Recording one creates a PaymentReceived applied to the invoice.
 * **TxnDoc** customer fields: `viewedAt?` (first opened by the customer), `customerResponse? { action: accepted | declined, by, email?, comment?, at, via: portal | link }` on quotes.
-* **Project**: `id, name, customerId?, billingMethod (fixed | hourly), rate, budgetHours?, description?, status, createdAt`
-* **TimeEntry**: `id, projectId, date, task?, hours, notes?, billable, invoiced, createdAt`
+* **Project**: `id, name, code?, customerId, billingMethod (fixed | project_hours | task_hours | staff_hours), rate (project cost or hourly rate), description?, costBudget?, revenueBudget?, budgetHoursType (none | total | per_task | per_staff), budgetHours?, users[{userId, ratePerHour?, budgetHours?}], tasks[{id, name, description?, ratePerHour?, budgetHours?, billable}], watchlist, attachments[], status, createdAt, updatedAt?`. Old `hourly` projects load as `project_hours`.
+* **TimeEntry**: `id, projectId, taskId?, userId, date, hours (decimal; shown as HH:MM), startTime?, endTime?, notes?, billable, invoiced, invoiceId?, createdAt`. Billing status is derived: Invoiced, Unbilled (billable) or Non-Billable. Deleting or voiding the invoice returns its entries to Unbilled; invoiced entries cannot be edited (except notes) or deleted.
+* **User**: `id, name, email?, role (Admin | Staff | Timesheet Staff), status`. The first active Admin is the current user (the app has no sign-in yet).
+* **RunningTimer**: `id, userId, projectId?, taskId?, notes?, billable, entryId? (resume an entry), startedAt?, accumulatedMs, running`. Stopping creates an entry or adds the time to `entryId`.
+* **Budget**: `id, name, fiscalYearStart, period (monthly | quarterly | yearly), projectId?, includeBalanceSheet, lines[{accountId, amounts[]}]`. Actuals come from journals whose source document, expense or manual journal is linked to the project.
+* **Journal** also carries `projectId?` for manual journals tagged to a project.
 
 ### Relationships
 
@@ -201,7 +205,8 @@ PurchaseOrder ─convert→ Bill ←allocations── PaymentMade
                      VendorCredit ──refunds
 RecurringInvoice 1──* Invoice     RecurringBill 1──* Bill
 RecurringExpense 1──* Expense     Expense ─convert→ Invoice
-Project 1──* TimeEntry ─invoice→ Invoice
+Project 1──* TimeEntry ─invoiceId→ Invoice (projectId, projectFee)
+Project 1──* Budget; Project ←projectId─ Docs, Expenses, manual Journals
 TxnDoc / Payment / Expense 1──* Journal 1──* JournalLine *──1 Account
 ```
 

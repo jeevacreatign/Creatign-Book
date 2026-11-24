@@ -551,14 +551,7 @@ function ProjectField({ value, name, onChange, customerId, label }: { value?: st
   const opts = data.filter((p) => p.id === value || (p.status === 'active' && (!customerId || p.customerId === customerId))).map((p) => ({ value: p.id, label: p.name, sub: p.customerName }));
   return (
     <Field label={label}>
-      <div className="flex max-w-sm items-center gap-2">
-        <Combo className="flex-1" value={value} onChange={(id) => onChange(id || null, data.find((p) => p.id === id)?.name)} allowFree={!value} freeValue={value ? undefined : name} onFree={(text) => onChange(null, text)} placeholder={opts.length ? 'Select a project' : customerId ? 'No projects for this customer' : 'Select a project'} options={opts} />
-        {(value || name) && (
-          <button type="button" className="text-xs text-slate-400 hover:text-red-500" onClick={() => onChange(null, undefined)} aria-label="Remove project">
-            Clear
-          </button>
-        )}
-      </div>
+      <Combo className="max-w-sm" value={value} onChange={(id) => onChange(id || null, data.find((p) => p.id === id)?.name)} allowFree={!value} freeValue={value ? undefined : name} onFree={(text) => onChange(null, text)} placeholder={opts.length ? 'Select a project' : customerId ? 'No projects for this customer' : 'Select a project'} options={opts} />
     </Field>
   );
 }

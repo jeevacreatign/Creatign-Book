@@ -121,8 +121,8 @@ function ChartTip({ active, payload, label }: { active?: boolean; payload?: { na
   );
 }
 
-  const navigate = useNavigate();
 function Dashboard() {
+  const navigate = useNavigate();
   const [cashPeriod, setCashPeriod] = useState<PeriodKey>('this_fiscal_year');
   const [incomePeriod, setIncomePeriod] = useState<PeriodKey>('this_fiscal_year');
   const [expensePeriod, setExpensePeriod] = useState<PeriodKey>('this_fiscal_year');
