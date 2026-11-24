@@ -8,7 +8,8 @@ import { PAYMENT_MODES, PAYMENT_TERMS, type Contact, type DocKind, type Journal,
 import { api, qs, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { AccountSelect, DateInput, Dropdown, Field, KV, MenuItem, Modal, MoneyInput, Pill, Select, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
-import { EmailModal, JournalTable, ShareModal, Timeline, Comments } from '../../components/shared';
+import { EmailModal, JournalTable, MailLog, ShareModal, Timeline, Comments } from '../../components/shared';
+import { CustomerActivity, InvoiceNotices } from '../../components/portal/PaymentNotices';
 import { AddressBlock, DocumentPreview } from '../../components/DocumentPreview';
 import { CustomizeMenu, useDocTemplate } from '../../components/pdf/Customize';
 
@@ -310,6 +311,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         ...(kind === 'invoice' || kind === 'bill' ? [{ value: 'payments', label: 'Payments' }] : []),
         ...(kind === 'credit_note' || kind === 'vendor_credit' ? [{ value: 'payments', label: sales ? 'Invoices Credited' : 'Bills Credited' }] : []),
         ...(meta.posts ? [{ value: 'journal', label: 'Journal' }] : []),
+        { value: 'emails', label: 'Emails' },
         { value: 'comments', label: 'Comments' },
         { value: 'activity', label: 'Activity' },
       ];
@@ -401,6 +403,8 @@ export function DocDetail({ kind }: { kind: DocKind }) {
             </span>
           </div>
         )}
+        {(kind === 'quote' || kind === 'invoice' || kind === 'sales_order' || kind === 'credit_note') && <CustomerActivity response={d.customerResponse} viewedAt={d.viewedAt} />}
+        {kind === 'invoice' && <InvoiceNotices invoiceId={d.id} />}
         {approvals && <WhatsNext d={d} kind={kind} run={run} onReject={() => setModal('reject')} onSend={() => setEmailOpen(true)} onEdit={() => navigate(`${meta.path}/${d.id}/edit`)} />}
         {kind === 'invoice' && unpaid && (
           <div className="mb-3 flex items-center justify-between rounded-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px]">
@@ -448,6 +452,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         {tab === 'invoices' && <ChildList docs={d.related.children.filter((c) => c.kind === (kind === 'purchase_order' ? 'bill' : 'invoice') || (kind === 'quote' && c.kind === 'sales_order'))} />}
         {tab === 'payments' && <PaymentsTab d={d} kind={kind} />}
         {tab === 'journal' && <JournalTable journals={d.journals} />}
+        {tab === 'emails' && <MailLog entityId={d.id} compact emptyText={`No emails sent for this ${meta.label.toLowerCase()} yet.`} />}
         {tab === 'comments' && <Comments entityType={kind} entityId={d.id} />}
         {tab === 'activity' && <Timeline entityId={d.id} />}
       </div>

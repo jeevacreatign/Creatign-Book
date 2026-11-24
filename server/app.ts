@@ -12,7 +12,11 @@ import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import * as R from './reports';
 import * as S from './services';
-import { deliver, mailSettings } from './mailer';
+import { mailSettings, savedSmtp, verifySmtp, type SmtpSettings } from './mailer';
+import { composeDefaults, emailTemplates, isEmail, previewEmail, publicOrigin, resendMail, sendEmail } from './email';
+import { encryptSecret } from './secrets';
+import { portalRouter, publicShareRoutes, staffPortalRoutes } from './portal';
+import { EMAIL_TEMPLATE_KINDS, builtInEmailTemplates, type EmailTemplate, type EmailTemplateKind } from '../shared/email';
 import { consumeGoogleAuthorizationState, createGoogleAuthorizationUrl, disconnectGoogleAccount, finishGoogleAuthorization, googleOAuthResultPage } from './google-mail';
 import { renderDocPdf, renderPaymentPdf, renderStatementPdf } from './pdf';
 
@@ -35,6 +39,30 @@ const m = (fn: Handler) =>
 
 const q = (req: Request, k: string) => (typeof req.query[k] === 'string' ? (req.query[k] as string) : undefined);
 const p = (req: Request, k: string) => String(req.params[k]);
+
+const origin = (req: Request) => publicOrigin(req.get('origin') || undefined);
+
+/** Log rows without the stored HTML (fetched one at a time for previews). */
+function listMail<T extends { html?: string }>(m: T) {
+  const { html: _html, ...rest } = m;
+  return rest;
+}
+
+function validTemplate(t: EmailTemplate): EmailTemplate {
+  const name = String(t.name || '').trim();
+  const subject = String(t.subject || '').trim();
+  const body = String(t.body || '');
+  if (!name) throw new S.HttpError(400, 'Template name is required');
+  if (!subject) throw new S.HttpError(400, 'Subject is required');
+  if (/[\r\n]/.test(subject)) throw new S.HttpError(400, 'Subject cannot contain line breaks');
+  if (!body.trim()) throw new S.HttpError(400, 'Email body is required');
+  if (body.length > 20000) throw new S.HttpError(400, 'The email body is too long');
+  return { ...t, name: name.slice(0, 120), subject: subject.slice(0, 300), body };
+}
+
+function setDefaultTemplate(t: EmailTemplate) {
+  for (const x of emailTemplates()) if (x.kind === t.kind) x.isDefault = x.id === t.id;
+}
 
 function matches(text: string | undefined, needle?: string) {
   return !needle || (text || '').toLowerCase().includes(needle.toLowerCase());
@@ -386,7 +414,18 @@ export function createApp() {
     if (!x) throw new S.HttpError(404, 'Payment not found');
     return { ...x, contactName: S.contactName(db, x.contactId), contact: db.contacts.find((c) => c.id === x.contactId), invoices: x.allocations.map((a) => ({ ...a, doc: db.docs.find((d) => d.id === a.docId) })), journals: journalsFor(x.id) };
   }));
-  api.post('/payments-received', m((req) => S.savePaymentReceived(req.body)));
+  api.post('/payments-received', h(async (req) => {
+    const pmt = S.savePaymentReceived(req.body);
+    S.commit();
+    const c = getDb().contacts.find((x) => x.id === pmt.contactId);
+    if (req.body.sendThankYou && c?.email) {
+      // the payment is saved either way; a failed email shows up in the email log
+      const d = composeDefaults({ entityType: 'payment_received', entityId: pmt.id });
+      await sendEmail({ entityType: 'payment_received', entityId: pmt.id, to: d.to, subject: d.subject, body: d.body, templateId: d.templateId, attachPdf: true }, origin(req)).catch(() => undefined);
+      S.commit();
+    }
+    return pmt;
+  }));
   api.put('/payments-received/:id', m((req) => S.savePaymentReceived(req.body, p(req, 'id'))));
   api.delete('/payments-received/:id', m((req) => {
     const db = getDb();
@@ -552,7 +591,14 @@ export function createApp() {
   api.get('/mails', h((req) => {
     const contactId = q(req, 'contactId');
     const entityId = q(req, 'entityId');
-    return getDb().mails.filter((x) => (!contactId || x.contactId === contactId) && (!entityId || x.entityId === entityId)).slice().reverse();
+    const status = q(req, 'status');
+    const search = q(req, 'search');
+    const rows = getDb()
+      .mails.filter((x) => (!contactId || x.contactId === contactId) && (!entityId || x.entityId === entityId) && (!status || (x.status || (x.delivered ? 'sent' : 'outbox')) === status))
+      .filter((x) => !search || matches(`${x.subject} ${x.to.join(' ')}`, search))
+      .slice()
+      .reverse();
+    return rows.slice(0, Number(q(req, 'limit')) || 500).map(listMail);
   }));
   api.get('/mail-settings', h(() => mailSettings()));
   api.get('/mail/google/start', (req, res) => {
@@ -589,77 +635,138 @@ export function createApp() {
     }
   });
   api.delete('/mail/google/account', h(() => disconnectGoogleAccount()));
+  api.get('/mails/:id', h((req) => {
+    const mail = getDb().mails.find((x) => x.id === p(req, 'id'));
+    if (!mail) throw new S.HttpError(404, 'Email not found');
+    return mail;
+  }));
+  api.get('/mail/compose', h((req) => {
+    const from = q(req, 'statementFrom');
+    const to = q(req, 'statementTo');
+    return composeDefaults({ entityType: q(req, 'entityType'), entityId: q(req, 'entityId'), contactId: q(req, 'contactId'), templateId: q(req, 'templateId'), statement: from && to ? { from, to, filter: (q(req, 'statementFilter') as 'all') || 'all' } : undefined });
+  }));
+  api.post('/mail/preview', h((req, res) => {
+    res.type('html').set('Cache-Control', 'no-store').send(previewEmail(req.body, origin(req)));
+  }));
   api.post('/mails', h(async (req) => {
     const db = getDb();
     const b = req.body;
-    const split = (v: unknown) => (Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/)).map((x) => String(x).trim()).filter(Boolean);
-    const to = split(b.to);
-    const cc = split(b.cc);
-    if (!to.length) throw new S.HttpError(400, 'Add at least one recipient');
-    const bad = [...to, ...cc].find((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
-    if (bad) throw new S.HttpError(400, `"${bad}" is not a valid email address`);
-    if (!b.subject) throw new S.HttpError(400, 'Subject is required');
     const about = b.entityId ? db.docs.find((x) => x.id === b.entityId) : undefined;
     if (about && approvalEnabled(db.preferences, about.kind) && needsApproval(about.status)) {
       throw new S.HttpError(400, `Approve this ${DOC_META[about.kind].label.toLowerCase()} before sending it`);
     }
+    try {
+      const mail = await sendEmail({ ...b, attachPdf: b.attachPdf ?? false }, origin(req));
+      S.commit();
+      return listMail(mail);
+    } catch (e) {
+      S.commit(); // keep the failed attempt in the log
+      throw e;
+    }
+  }));
+  api.post('/mails/:id/resend', h(async (req) => {
+    try {
+      const mail = await resendMail(p(req, 'id'), origin(req));
+      S.commit();
+      return listMail(mail);
+    } catch (e) {
+      S.commit();
+      throw e;
+    }
+  }));
 
-    // Build PDF attachments for whatever the email is about
-    const files: { filename: string; content: Buffer }[] = [];
-    if (b.attachPdf) {
-      const d = b.entityId ? db.docs.find((x) => x.id === b.entityId) : undefined;
-      const pr = b.entityType === 'payment_received' ? db.paymentsReceived.find((x) => x.id === b.entityId) : undefined;
-      const pm = b.entityType === 'payment_made' ? db.paymentsMade.find((x) => x.id === b.entityId) : undefined;
-      if (d) files.push({ filename: `${DOC_META[d.kind].label.replace(/ /g, '-')}-${d.number}.pdf`, content: await renderDocPdf(d) });
-      else if (pr) files.push({ filename: `Payment-Receipt-${pr.number}.pdf`, content: await renderPaymentPdf(pr) });
-      else if (pm) files.push({ filename: `Payment-${pm.number}.pdf`, content: await renderPaymentPdf(pm, true) });
-      else if (b.statement && b.contactId) {
-        const c = db.contacts.find((x) => x.id === b.contactId);
-        if (c) files.push({ filename: `Statement-${c.displayName.replace(/[^\w]+/g, '-')}.pdf`, content: await renderStatementPdf(R.statement(c, b.statement.from, b.statement.to, b.statement.filter || 'all')) });
+  // ------------------------------------------------------------ email settings & templates
+  api.put('/mail-settings', h((req) => {
+    const db = getDb();
+    const b = req.body as Partial<SmtpSettings> & { password?: string; clearPassword?: boolean };
+    const cur = savedSmtp();
+    const security = (['ssl', 'starttls', 'none'] as const).includes(b.security as 'ssl') ? (b.security as SmtpSettings['security']) : cur.security;
+    const next: SmtpSettings = {
+      ...cur,
+      enabled: b.enabled ?? cur.enabled,
+      host: String(b.host ?? cur.host).trim(),
+      port: Number(b.port ?? cur.port) || (security === 'ssl' ? 465 : 587),
+      security,
+      user: String(b.user ?? cur.user ?? '').trim() || undefined,
+      fromName: String(b.fromName ?? cur.fromName ?? '').trim() || undefined,
+      fromEmail: String(b.fromEmail ?? cur.fromEmail ?? '').trim() || undefined,
+      replyTo: String(b.replyTo ?? cur.replyTo ?? '').trim() || undefined,
+    };
+    if (b.password) next.passEnc = encryptSecret(String(b.password).replace(/\s+/g, ''));
+    if (b.clearPassword) next.passEnc = undefined;
+    if (next.enabled) {
+      if (!next.host) throw new S.HttpError(400, 'Enter the SMTP server host');
+      if (!(next.port > 0 && next.port < 65536)) throw new S.HttpError(400, 'Enter a valid SMTP port');
+      const fromEmail = next.fromEmail || next.user;
+      if (!fromEmail || !isEmail(fromEmail)) throw new S.HttpError(400, 'Enter the email address messages are sent from');
+    }
+    for (const e of [next.fromEmail, next.replyTo]) if (e && !isEmail(e)) throw new S.HttpError(400, `"${e}" is not a valid email address`);
+    db.preferences.smtp = next;
+    S.commit();
+    return mailSettings();
+  }));
+  api.post('/mail-settings/test', h(async (req) => {
+    const db = getDb();
+    const to = String(req.body.to || db.organization.email || '').trim();
+    if (!isEmail(to)) throw new S.HttpError(400, 'Enter an email address to send the test to');
+    const settings = mailSettings();
+    if (settings.provider === 'smtp') {
+      try {
+        await verifySmtp();
+      } catch (e) {
+        throw new S.HttpError(502, `Could not sign in to the SMTP server: ${e instanceof Error ? e.message : e}`);
       }
     }
-
-    const settings = mailSettings();
-    if (settings.configured) await deliver({ fromName: db.organization.name, replyTo: db.organization.email, to, cc, subject: b.subject, text: b.body || '', attachments: files });
-
-    const mail = { id: newId('mail'), contactId: b.contactId, entityType: b.entityType, entityId: b.entityId, from: settings.from || db.organization.email, to, cc, subject: b.subject, body: b.body || '', attachments: files.length ? files.map((f) => f.filename) : b.attachments || [], delivered: settings.configured, createdAt: now() };
-    db.mails.push(mail);
-    // emailing a document marks it as sent
-    const d = b.entityId ? db.docs.find((x) => x.id === b.entityId) : undefined;
-    if (d) {
-      d.sentAt = d.sentAt || now();
-      const ready = d.status === 'draft' || d.status === 'approved';
-      if (d.kind === 'quote' && ready) d.status = 'sent';
-      if (d.kind === 'sales_order' && ready) d.status = 'confirmed';
-      if (d.kind === 'invoice' && ready) d.status = 'open';
-      if (d.kind === 'purchase_order' && ready) d.status = 'issued';
-      if ((d.kind === 'credit_note' || d.kind === 'vendor_credit') && ready) d.status = 'open';
-      d.emailRecipients = Array.from(new Set([...(d.emailRecipients || []), ...to]));
-      logActivity(db, d.kind, d.id, d.contactId, `${DOC_META[d.kind].label} emailed`, `${DOC_META[d.kind].label} ${d.number} emailed to ${to.join(', ')}`);
-    } else if (b.contactId) logActivity(db, 'contact', b.contactId, b.contactId, 'Email sent', b.subject);
+    const mail = await sendEmail({ to: [to], subject: `Test email from ${db.organization.name}`, body: `This is a test email from Creatign Books.\n\nIf you can read this, email sending is working and your customers will receive invoices, quotes and portal invitations from ${settings.from || db.organization.email}.` }, origin(req)).catch((e) => {
+      S.commit();
+      throw e;
+    });
     S.commit();
-    return mail;
+    return listMail(mail);
+  }));
+  api.get('/email-templates', h(() => {
+    const t = emailTemplates();
+    return t;
+  }));
+  api.post('/email-templates', h((req) => {
+    const db = getDb();
+    const kind = req.body.kind as EmailTemplateKind;
+    if (!EMAIL_TEMPLATE_KINDS.some((k) => k.kind === kind)) throw new S.HttpError(400, 'Choose what the template is for');
+    const tpl = validTemplate({ id: newId('etpl'), kind, name: req.body.name, subject: req.body.subject, body: req.body.body, isDefault: false, updatedAt: now() });
+    emailTemplates().push(tpl);
+    if (req.body.isDefault) setDefaultTemplate(tpl);
+    S.commit();
+    return tpl;
+  }));
+  api.put('/email-templates/:id', h((req) => {
+    const t = emailTemplates().find((x) => x.id === p(req, 'id'));
+    if (!t) throw new S.HttpError(404, 'Template not found');
+    Object.assign(t, validTemplate({ ...t, name: req.body.name ?? t.name, subject: req.body.subject ?? t.subject, body: req.body.body ?? t.body }), { updatedAt: now() });
+    if (req.body.isDefault) setDefaultTemplate(t);
+    S.commit();
+    return t;
+  }));
+  api.post('/email-templates/:id/restore', h((req) => {
+    const t = emailTemplates().find((x) => x.id === p(req, 'id'));
+    const original = builtInEmailTemplates().find((x) => x.id === t?.id);
+    if (!t || !original) throw new S.HttpError(404, 'Only built-in templates can be restored');
+    Object.assign(t, { name: original.name, subject: original.subject, body: original.body, updatedAt: now() });
+    S.commit();
+    return t;
+  }));
+  api.delete('/email-templates/:id', h((req) => {
+    const db = getDb();
+    const t = emailTemplates().find((x) => x.id === p(req, 'id'));
+    if (!t) throw new S.HttpError(404, 'Template not found');
+    if (t.builtIn) throw new S.HttpError(400, 'Built-in templates cannot be deleted. Edit or restore them instead.');
+    db.emailTemplates = db.emailTemplates.filter((x) => x.id !== t.id);
+    if (t.isDefault) setDefaultTemplate(emailTemplates().find((x) => x.kind === t.kind)!);
+    S.commit();
   }));
 
-  // ------------------------------------------------------------ share links (public portal)
-  api.get('/share-links', h((req) => getDb().shareLinks.filter((s) => s.entityId === q(req, 'entityId'))));
-  api.post('/share-links', m((req) => {
-    const db = getDb();
-    const link = { id: newId('shr'), token: newId('t').slice(2) + newId('t').slice(2), entityType: req.body.entityType, entityId: req.body.entityId, expiresOn: req.body.expiresOn, active: true, createdAt: now() };
-    db.shareLinks.push(link);
-    return link;
-  }));
-  api.post('/share-links/disable-all', m((req) => {
-    for (const s of getDb().shareLinks) if (s.entityId === req.body.entityId) s.active = false;
-  }));
-  api.get('/public/share/:token', h((req) => {
-    const db = getDb();
-    const link = db.shareLinks.find((s) => s.token === p(req, 'token'));
-    if (!link || !link.active || (link.expiresOn && link.expiresOn < today())) throw new S.HttpError(404, 'This link has expired or was disabled');
-    const d = db.docs.find((x) => x.id === link.entityId);
-    if (!d) throw new S.HttpError(404, 'Document not found');
-    return { doc: { ...d, contactName: S.contactName(db, d.contactId), contact: db.contacts.find((c) => c.id === d.contactId) }, organization: db.organization, template: resolveTemplate(db.pdfTemplates, db.preferences, d.kind, d.templateId), preferences: { customFields: db.preferences.customFields } };
-  }));
+  // ------------------------------------------------------------ share links & customer portal
+  publicShareRoutes(api);
+  staffPortalRoutes(api, () => S.commit());
 
   // ------------------------------------------------------------ uploads
   const upload = multer({
@@ -782,6 +889,7 @@ export function createApp() {
     }
   }));
 
+  app.use('/api/portal', portalRouter());
   app.use('/api', api);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
   app.use((err: Error & { status?: number; code?: string }, _req: Request, res: Response, _next: NextFunction) => {

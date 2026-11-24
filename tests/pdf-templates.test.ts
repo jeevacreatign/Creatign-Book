@@ -197,6 +197,10 @@ describe('organization logo and PDFs', () => {
   it('shares the document template on public links', async () => {
     const { getDb } = await import('../server/db');
     const d = getDb().docs.find((x) => x.kind === 'sales_order')!;
+    // drafts are never shared with customers
+    const draft = await api().post('/api/share-links').send({ entityType: 'sales_order', entityId: d.id });
+    if (d.status === 'draft') expect(draft.status).toBe(400);
+    d.status = 'confirmed';
     const link = await api().post('/api/share-links').send({ entityType: 'sales_order', entityId: d.id, visibility: 'public' });
     const r = await api().get(`/api/public/share/${link.body.token}`);
     expect(r.body.template.id).toBe('tpl_bold');
