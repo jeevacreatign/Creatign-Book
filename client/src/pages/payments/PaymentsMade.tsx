@@ -490,10 +490,125 @@ function VendorRefund({ p, onClose }: { p: Detail; onClose: () => void }) {
   );
 }
 
+/** Zoho's Bulk Payments: pay several bills (from one or more vendors) in one go. */
+function BulkPayment() {
+  const [search] = useSearchParams();
+  const navigate = useNavigate();
+  const { accounts } = useBoot();
+  const ids = (search.get('bills') || '').split(',').filter(Boolean);
+  const { data: bills = [], isLoading } = useApi<(TxnDoc & { contactName: string })[]>('/docs?kind=bill&status=unpaid');
+  const picked = bills.filter((b) => ids.includes(b.id));
+  const [date, setDate] = useState(today());
+  const [mode, setMode] = useState('Bank Transfer');
+  const [paidThrough, setPaidThrough] = useState('acc_bank_hdfc');
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [refs, setRefs] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const amt = (b: TxnDoc) => (amounts[b.id] !== undefined ? Number(amounts[b.id]) || 0 : b.balance);
+  const vendors = Array.from(new Set(picked.map((b) => b.contactId)));
+  const total = round2(picked.reduce((s2, b) => s2 + amt(b), 0));
+  async function save() {
+    setSaving(true);
+    try {
+      const payments = vendors
+        .map((v) => {
+          const list = picked.filter((b) => b.contactId === v && amt(b) > 0);
+          return { contactId: v, date, mode, paidThroughAccountId: paidThrough, referenceNumber: refs[v] || undefined, amount: round2(list.reduce((s2, b) => s2 + amt(b), 0)), allocations: list.map((b) => ({ docId: b.id, amount: amt(b) })) };
+        })
+        .filter((p) => p.amount > 0);
+      const saved = await api<PaymentMade[]>('/payments-made/bulk', { body: { payments } });
+      toast.success(`${saved.length} payment(s) recorded`);
+      navigate('/purchases/payments-made');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  if (isLoading) return <Spinner />;
+  return (
+    <div className="flex min-h-full flex-col">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+        <h1 className="text-lg">Bulk Payments</h1>
+        <button className="btn-ghost w-8 px-0" onClick={() => navigate(-1)} aria-label="Close">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="flex-1 px-5 py-4">
+        <div className="mb-4 grid max-w-4xl gap-4 sm:grid-cols-3">
+          <Field label="Payment Date" required inline={false}>
+            <DateInput value={date} onChange={setDate} />
+          </Field>
+          <Field label="Payment Mode" inline={false}>
+            <Select value={mode} onChange={(e) => setMode(e.target.value)} options={PAYMENT_MODES.map((m) => ({ value: m, label: m }))} />
+          </Field>
+          <Field label="Paid Through" required inline={false}>
+            <AccountSelect accounts={accounts} value={paidThrough} onChange={setPaidThrough} filter={isCashLike} />
+          </Field>
+        </div>
+        {!picked.length ? (
+          <div className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">None of the selected bills have a balance due. Select open bills from the Bills list.</div>
+        ) : (
+          <table className="table rounded-md border border-slate-200">
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>Bill#</th>
+                <th>Bill Date</th>
+                <th>Due Date</th>
+                <th className="text-right">Balance Due</th>
+                <th className="w-40 text-right">Payment</th>
+                <th className="w-40">Reference#</th>
+              </tr>
+            </thead>
+            <tbody>
+              {picked.map((b, i) => {
+                const firstOfVendor = picked.findIndex((x) => x.contactId === b.contactId) === i;
+                return (
+                  <tr key={b.id}>
+                    <td className="font-medium">{firstOfVendor ? b.contactName : ''}</td>
+                    <td>{b.number}</td>
+                    <td>{fmtDate(b.date)}</td>
+                    <td>{fmtDate(b.dueDate)}</td>
+                    <td className="text-right tabular-nums">{money(b.balance)}</td>
+                    <td>
+                      <input type="number" className="input text-right" value={amounts[b.id] ?? String(b.balance)} onChange={(e) => setAmounts({ ...amounts, [b.id]: e.target.value })} />
+                    </td>
+                    <td>{firstOfVendor && <input className="input" placeholder="Reference#" value={refs[b.contactId] || ''} onChange={(e) => setRefs({ ...refs, [b.contactId]: e.target.value })} />}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="font-semibold">
+                <td colSpan={5} className="text-right">
+                  Total ({vendors.length} vendor{vendors.length === 1 ? '' : 's'})
+                </td>
+                <td className="text-right tabular-nums">{money(total)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        )}
+        <div className="mt-2 text-xs text-slate-500">One payment is recorded for each vendor and applied to their bills.</div>
+      </div>
+      <div className="sticky bottom-0 flex gap-2 border-t border-slate-200 bg-white px-5 py-3">
+        <button className="btn-primary" disabled={saving || !picked.length || total <= 0} onClick={save}>
+          Record Payments
+        </button>
+        <button className="btn-secondary" onClick={() => navigate(-1)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function PaymentsMade() {
   return (
     <Routes>
       <Route index element={<List />} />
+      <Route path="bulk" element={<BulkPayment />} />
       <Route path="new" element={<><List /><PaymentDrawer /></>} />
       <Route path=":id/edit" element={<><DetailView /><PaymentDrawer /></>} />
       <Route path=":id" element={<DetailView />} />

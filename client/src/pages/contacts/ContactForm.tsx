@@ -1,3 +1,5 @@
+import { StateSelect, TreatmentSelect } from '../../components/gst';
+import { stateFromGstin, treatmentNeedsGstin } from '@shared/gst';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2, X, Mail, Phone } from 'lucide-react';
@@ -153,6 +155,17 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
         <div className="max-w-5xl">
           {tab === 'other' && (
             <div className="max-w-3xl space-y-3.5">
+              <Field label="GST Treatment" required>
+                <TreatmentSelect className="max-w-xs" value={f.gstTreatment} onChange={(v) => set({ gstTreatment: v || undefined })} />
+              </Field>
+              {treatmentNeedsGstin(f.gstTreatment) && (
+                <Field label="GSTIN / UIN" required>
+                  <input className="input max-w-xs uppercase" maxLength={15} placeholder="33ABCDE1234F1Z5" value={f.gstin || ''} onChange={(e) => { const g = e.target.value.toUpperCase(); set({ gstin: g, ...(g.length >= 2 && stateFromGstin(g) ? { placeOfSupply: stateFromGstin(g) } : {}) }); }} />
+                </Field>
+              )}
+              <Field label={kind === 'vendor' ? 'Source of Supply' : 'Place of Supply'} required>
+                <StateSelect className="max-w-xs" value={f.placeOfSupply} onChange={(v) => set({ placeOfSupply: v })} />
+              </Field>
               <Field label="PAN">
                 <input className="input max-w-xs uppercase" value={f.pan || ''} onChange={(e) => set({ pan: e.target.value.toUpperCase() })} maxLength={10} />
               </Field>

@@ -12,6 +12,8 @@ import { EmailModal, JournalTable, MailLog, ShareModal, Timeline, Comments } fro
 import { CustomerActivity, InvoiceNotices } from '../../components/portal/PaymentNotices';
 import { AddressBlock, DocumentPreview } from '../../components/DocumentPreview';
 import { CustomizeMenu, useDocTemplate } from '../../components/pdf/Customize';
+import { TaxRows } from '../../components/gst';
+import { isIntraState, taxLabel, treatmentLabel } from '@shared/gst';
 
 type Related = {
   quote?: TxnDoc;
@@ -47,6 +49,11 @@ function DocSummary({ d }: { d: DocDetailData }) {
         {d.dueDate && <KV k="Due Date" v={fmtDate(d.dueDate)} />}
         {d.referenceNumber && <KV k="Reference#" v={d.referenceNumber} />}
         {d.salesperson && <KV k="Salesperson" v={d.salesperson} />}
+        {d.gstTreatment && <KV k="GST Treatment" v={treatmentLabel(d.gstTreatment)} />}
+        {d.gstin && <KV k="GSTIN" v={d.gstin} />}
+        {d.sourceOfSupply && <KV k="Source of Supply" v={d.sourceOfSupply} />}
+        {d.destinationOfSupply && <KV k="Destination of Supply" v={d.destinationOfSupply} />}
+        {d.reverseCharge && <KV k="Reverse Charge" v="Yes" />}
       </div>
       <table className="table border-t border-slate-200">
         <thead>
@@ -54,6 +61,7 @@ function DocSummary({ d }: { d: DocDetailData }) {
             <th>Item & Description</th>
             <th className="text-right">Qty</th>
             <th className="text-right">Rate</th>
+            {d.lineItems.some((l) => l.taxId) && <th className="text-right">Tax</th>}
             <th className="text-right">Amount</th>
           </tr>
         </thead>
@@ -66,12 +74,17 @@ function DocSummary({ d }: { d: DocDetailData }) {
               </td>
               <td className="text-right">{l.quantity} {l.unit}</td>
               <td className="text-right">{money(l.rate)}</td>
+              {d.lineItems.some((x) => x.taxId) && <td className="text-right text-xs">{taxLabel(l.taxId, isIntraState(d.sourceOfSupply, d.destinationOfSupply, d.gstTreatment))}{l.taxAmount ? <div className="text-slate-500">{money(l.taxAmount)}</div> : null}</td>}
               <td className="text-right">{money(l.amount)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div className="flex justify-end p-5 text-[14px] font-semibold">Total {money(d.total)}</div>
+      <div className="ml-auto w-80 p-5">
+        <div className="flex justify-between py-1 text-[13px]"><span>Sub Total</span><span>{money(d.subTotal)}</span></div>
+        <TaxRows rows={d.taxBreakdown} reverseCharge={d.reverseCharge} inclusive={d.taxInclusive} />
+        <div className="mt-1 flex justify-between border-t border-slate-200 pt-2 text-[14px] font-semibold"><span>Total</span><span>{money(d.total)}</span></div>
+      </div>
     </div>
   );
 }
@@ -405,6 +418,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         )}
         {(kind === 'quote' || kind === 'invoice' || kind === 'sales_order' || kind === 'credit_note') && <CustomerActivity response={d.customerResponse} viewedAt={d.viewedAt} />}
         {kind === 'invoice' && <InvoiceNotices invoiceId={d.id} />}
+        {kind === 'bill' && unpaid && d.balance > 0 && <BillCredits d={d} />}
         {approvals && <WhatsNext d={d} kind={kind} run={run} onReject={() => setModal('reject')} onSend={() => setEmailOpen(true)} onEdit={() => navigate(`${meta.path}/${d.id}/edit`)} />}
         {kind === 'invoice' && unpaid && (
           <div className="mb-3 flex items-center justify-between rounded-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px]">
@@ -949,6 +963,94 @@ function RefundModal({ d, onClose, accounts }: { d: DocDetailData; onClose: () =
           <textarea className="input" rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
         </Field>
       </div>
+    </Modal>
+  );
+}
+
+type VendorCredit = { id: string; source: 'credit' | 'payment'; number: string; date: string; available: number };
+
+/** Zoho's "Credits Available" strip on a bill: vendor credits and unused payments/advances can be applied here. */
+function BillCredits({ d }: { d: DocDetailData }) {
+  const { data: credits = [] } = useApi<TxnDoc[]>(`/docs${qs({ kind: 'vendor_credit', contactId: d.contactId, status: 'open' })}`);
+  const { data: payments = [] } = useApi<{ id: string; number: string; date: string; unusedAmount: number; status: string }[]>(`/payments-made${qs({ contactId: d.contactId })}`);
+  const [open, setOpen] = useState(false);
+  const list: VendorCredit[] = [
+    ...credits.filter((c) => c.balance > 0).map((c) => ({ id: c.id, source: 'credit' as const, number: c.number, date: c.date, available: c.balance })),
+    ...payments.filter((p) => p.status === 'paid' && p.unusedAmount > 0).map((p) => ({ id: p.id, source: 'payment' as const, number: `Payment #${p.number}`, date: p.date, available: p.unusedAmount })),
+  ];
+  const total = list.reduce((s2, c) => s2 + c.available, 0);
+  if (!list.length) return null;
+  return (
+    <>
+      <div className="mb-3 flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-[13px]">
+        <span>
+          <span className="font-semibold">Credits Available:</span> {money(total)} from {list.length} credit{list.length === 1 ? '' : 's'} and advance payment{list.length === 1 ? '' : 's'}.
+        </span>
+        <button className="btn-primary btn-sm" onClick={() => setOpen(true)}>
+          Apply
+        </button>
+      </div>
+      {open && <ApplyToBillModal d={d} list={list} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function ApplyToBillModal({ d, list, onClose }: { d: DocDetailData; list: VendorCredit[]; onClose: () => void }) {
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const total = Object.values(amounts).reduce((s2, v) => s2 + (Number(v) || 0), 0);
+  const save = useAction(async () => {
+    for (const c of list) {
+      const a = Number(amounts[c.id]) || 0;
+      if (a <= 0) continue;
+      if (c.source === 'credit') await api(`/docs/${c.id}/apply-credits`, { body: { applications: [{ invoiceId: d.id, amount: a }] } });
+      else await api(`/payments-made/${c.id}/apply`, { body: { allocations: [{ docId: d.id, amount: a }] } });
+    }
+  }, 'Credits applied');
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Apply credits for ${d.number}`}
+      width="max-w-3xl"
+      footer={
+        <>
+          <button className="btn-primary" disabled={!total || total > d.balance + 0.004} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+            Save
+          </button>
+          <button className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <span className="ml-auto text-[13px]">
+            Amount to Credit: <b>{money(total)}</b> · Bill Balance: <b>{money(d.balance - total)}</b>
+          </span>
+        </>
+      }
+    >
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Credit Info</th>
+            <th>Date</th>
+            <th className="text-right">Credits Available</th>
+            <th className="w-36 text-right">Amount to Credit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((c) => (
+            <tr key={c.id}>
+              <td>
+                {c.number}
+                <div className="text-xxs text-slate-500">{c.source === 'credit' ? 'Vendor Credit' : 'Excess payment'}</div>
+              </td>
+              <td>{fmtDate(c.date)}</td>
+              <td className="text-right tabular-nums">{money(c.available)}</td>
+              <td>
+                <input type="number" className="input text-right" value={amounts[c.id] ?? ''} onChange={(e) => setAmounts({ ...amounts, [c.id]: e.target.value })} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </Modal>
   );
 }

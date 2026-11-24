@@ -1,3 +1,5 @@
+import { TaxSelect } from '../../components/gst';
+import { taxLabel } from '@shared/gst';
 import { useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, MoreHorizontal, Pencil, Plus, X } from 'lucide-react';
@@ -128,6 +130,18 @@ function ItemForm() {
           <Field label="SKU">
             <input className="input max-w-md" value={f.sku || ''} onChange={(e) => set({ sku: e.target.value })} />
           </Field>
+          <Field label={f.type === 'service' ? 'SAC' : 'HSN Code'}>
+            <input className="input max-w-md" value={f.hsnSac || ''} onChange={(e) => set({ hsnSac: e.target.value })} />
+          </Field>
+          <Field label="Tax Preference" required>
+            <Radio name="taxPref" value={f.taxPreference || 'taxable'} onChange={(v) => set({ taxPreference: v, taxId: v === 'taxable' ? f.taxId : v })} options={[{ value: 'taxable', label: 'Taxable' }, { value: 'exempt', label: 'Exempt' }, { value: 'non_gst', label: 'Non-GST Supply' }, { value: 'out_of_scope', label: 'Out of Scope' }]} />
+          </Field>
+          {(f.taxPreference || 'taxable') === 'taxable' && (
+            <Field label="Default Tax Rate">
+              <TaxSelect className="max-w-md" intra value={f.taxId} onChange={(v) => set({ taxId: v })} />
+              <div className="mt-1 text-xxs text-slate-500">Applied to sales and purchase lines. Intra-state supply splits into CGST and SGST, inter-state uses IGST.</div>
+            </Field>
+          )}
           <Field label="Unit">
             <Combo className="max-w-md" allowFree freeValue={f.unit} onFree={(v) => set({ unit: v })} value={f.unit} onChange={(v) => set({ unit: v })} placeholder="Select or type to add" options={UNITS.map((u) => ({ value: u, label: u }))} />
           </Field>
@@ -247,6 +261,8 @@ function ItemDetailView() {
                   <div className="rounded-md border border-slate-200 p-4">
                     <div className="mb-2 font-semibold">Purchase Information</div>
                     <KV k="Cost Price" v={money(i.costPrice)} />
+                    <KV k="HSN/SAC" v={i.hsnSac} />
+                    <KV k="Tax" v={i.taxId ? taxLabel(i.taxId, true) : i.taxPreference === 'taxable' || !i.taxPreference ? '-' : i.taxPreference} />
                     <KV k="Purchase Account" v={acct(i.purchaseAccountId)} />
                     <KV k="Description" v={i.purchaseDescription} />
                   </div>

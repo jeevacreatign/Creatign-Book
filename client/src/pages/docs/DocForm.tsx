@@ -13,6 +13,8 @@ import { AccountSelect, Checkbox, Combo, ContactPicker, DateInput, Field, FormFo
 import { Attachments } from '../../components/shared';
 import { AddressBlock } from '../../components/DocumentPreview';
 import { DOC_UI } from './config';
+import { GstFields, TaxInclusiveSelect, TaxRows, TaxSelect } from '../../components/gst';
+import { stateFromGstin, treatmentChargesTax } from '@shared/gst';
 import { customFieldsFor, docDefaults, type CustomFieldDef } from '@shared/pdfTemplate';
 
 type Draft = Partial<TxnDoc> & { lineItems: LineItem[] };
@@ -73,13 +75,15 @@ export function DocForm({ kind }: { kind: DocKind }) {
       startOn: meta.recurring ? today() : undefined,
       expiryDate: kind === 'quote' ? addDays(today(), 30) : undefined,
       deliveryAddressType: kind === 'purchase_order' ? 'organization' : undefined,
+      destinationOfSupply: sales ? undefined : boot.organization.state,
+      taxInclusive: false,
       contactId: contactParam || undefined,
       ...(template || {}),
     };
     if (template?.lineItems) base.lineItems = template.lineItems.map((l) => ({ ...l }));
     if (kind === 'invoice' || kind === 'bill') base.dueDate = base.date;
     setD(base);
-  }, [existing, template, next, d, id, fromId, kind, meta.recurring, prefs, sales, contactParam]);
+  }, [existing, template, next, d, id, fromId, kind, meta.recurring, prefs, sales, contactParam, boot.organization.state]);
 
   // keep the contact object (addresses, terms) in sync with the picker
   const { data: contactData } = useApi<Contact>(d?.contactId ? `/contacts/${d.contactId}` : null);
@@ -99,6 +103,11 @@ export function DocForm({ kind }: { kind: DocKind }) {
       if (kind === 'invoice' || kind === 'bill') patch.dueDate = dueDateFor(d.date || today(), c.paymentTerms);
       if (c.tdsRate && !sales) patch.tdsRate = c.tdsRate;
     }
+    if (c && !sales) {
+      patch.gstTreatment = c.gstTreatment || (c.gstin ? 'registered_business' : 'unregistered_business');
+      patch.gstin = c.gstin;
+      patch.sourceOfSupply = c.placeOfSupply || stateFromGstin(c.gstin) || boot.organization.state;
+    }
     setContact(c);
     set(patch);
   };
@@ -112,6 +121,8 @@ export function DocForm({ kind }: { kind: DocKind }) {
       rate: sales ? it.sellingPrice : it.costPrice,
       unit: it.unit,
       accountId: sales ? it.salesAccountId : it.purchaseAccountId,
+      taxId: it.taxId,
+      hsnSac: it.hsnSac,
     });
   };
 
@@ -149,6 +160,9 @@ export function DocForm({ kind }: { kind: DocKind }) {
           <Field label={sales ? 'Customer Name' : 'Vendor Name'} required>
             <ContactPicker kind={sales ? 'customer' : 'vendor'} value={d.contactId} onChange={pickContact} disabled={editing && kind !== 'recurring_invoice' && kind !== 'recurring_bill' && (d.amountPaid ?? 0) > 0} autoFocus={!editing} />
           </Field>
+          {!sales && d.contactId && (
+            <GstFields value={d} onChange={(p) => set(p)} reverseCharge={kind === 'bill' || kind === 'recurring_bill' || kind === 'vendor_credit'} />
+          )}
           {has('addresses') && contact && (
             <div className="grid gap-4 sm:ml-[196px] sm:grid-cols-2">
               <div className="text-xs">
@@ -313,7 +327,10 @@ export function DocForm({ kind }: { kind: DocKind }) {
         {/* ---------------------------------------------------------- item table */}
         <div className="max-w-6xl">
           <div className="flex items-center justify-between rounded-t-md border border-b-0 border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="font-semibold">Item Table</div>
+            <div className="flex items-center gap-4">
+              <div className="font-semibold">Item Table</div>
+              {!sales && <TaxInclusiveSelect value={!!d.taxInclusive} disabled={!!d.reverseCharge} onChange={(v) => set({ taxInclusive: v })} />}
+            </div>
             <div className="flex gap-3 text-xs text-brand-600">
               <button type="button" className="inline-flex items-center gap-1 hover:underline" onClick={() => setBulk(true)}>
                 <ScanLine size={13} /> Scan Item
@@ -332,6 +349,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
                   <th className="w-24 px-2 py-2 text-right font-semibold">Quantity</th>
                   <th className="w-32 px-2 py-2 text-right font-semibold">Rate</th>
                   {ui.lineDiscount && <th className="w-24 px-2 py-2 text-right font-semibold">Discount</th>}
+                  {!sales && <th className="w-40 px-2 py-2 text-left font-semibold">Tax</th>}
                   {ui.lineCustomer && <th className="w-44 px-2 py-2 text-left font-semibold">Customer Details</th>}
                   <th className="w-32 px-3 py-2 text-right font-semibold">Amount</th>
                   <th className="w-8" />
@@ -372,6 +390,12 @@ export function DocForm({ kind }: { kind: DocKind }) {
                         </div>
                       </td>
                     )}
+                    {!sales && (
+                      <td className="px-2 py-2">
+                        <TaxSelect value={l.taxId} intra={totals.intraState} onChange={(v) => setLine(i, { taxId: v })} />
+                        {l.hsnSac && <div className="mt-0.5 text-xxs text-slate-500">HSN/SAC: {l.hsnSac}</div>}
+                      </td>
+                    )}
                     {ui.lineCustomer && (
                       <td className="px-2 py-2">
                         <Select value={l.customerId || ''} onChange={(e) => setLine(i, { customerId: e.target.value || undefined })} placeholder="Select Customer" options={customers.map((c) => ({ value: c.id, label: c.displayName }))} />
@@ -407,6 +431,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
                 </div>
                 <span className="w-28 text-right tabular-nums">-{num(totals.discountAmount)}</span>
               </div>
+              <TaxRows rows={totals.taxBreakdown} reverseCharge={d.reverseCharge} inclusive={!!d.taxInclusive && !d.reverseCharge} />
               <div className="flex items-center justify-between gap-3 py-1.5">
                 <span className="text-slate-600">TDS</span>
                 <Select className="w-44" value={d.tdsRate ?? 0} onChange={(e) => set({ tdsRate: Number(e.target.value), tcsRate: Number(e.target.value) ? 0 : d.tcsRate })} options={TDS_RATES.map((t) => ({ value: t.value, label: t.label }))} />
@@ -432,6 +457,8 @@ export function DocForm({ kind }: { kind: DocKind }) {
                 <span>Total ( ₹ )</span>
                 <span className="tabular-nums">{num(totals.total)}</span>
               </div>
+              {d.reverseCharge && totals.taxAmount > 0 && <div className="mt-2 text-xxs text-amber-700">Tax of {num(totals.taxAmount)} is payable by you under reverse charge and is not part of the amount owed to the vendor.</div>}
+              {!sales && d.gstTreatment && !treatmentChargesTax(d.gstTreatment) && !d.reverseCharge && totals.taxAmount > 0 && <div className="mt-2 text-xxs text-amber-700">Vendors with this GST treatment do not usually charge GST. Check the tax on each line.</div>}
             </div>
           </div>
         </div>

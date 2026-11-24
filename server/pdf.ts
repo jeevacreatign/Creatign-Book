@@ -430,6 +430,8 @@ function itemTable(c: Ctx, m: PdfModel) {
           return { main: l.rate };
         case 'discount':
           return { main: l.discount || '' };
+        case 'tax':
+          return { main: l.tax || '' };
         default:
           return { main: l.amount };
       }

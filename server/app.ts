@@ -7,7 +7,7 @@ import { approvalEnabled, approvalSettings, needsApproval } from '../shared/appr
 import { DOC_META } from '../shared/docmeta';
 import { periodRange, today, type PeriodKey } from '../shared/format';
 import { CUSTOM_FIELD_TYPES, builtInTemplates, normalizeTemplate, resolveTemplate, type CustomFieldDef, type PdfTemplate } from '../shared/pdfTemplate';
-import type { Account, Attachment, DocKind, Journal, Project, TimeEntry, TxnDoc } from '../shared/types';
+import type { Account, Attachment, DocKind, Journal, PaymentMade, Project, TimeEntry, TxnDoc } from '../shared/types';
 import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import * as R from './reports';
@@ -453,6 +453,8 @@ export function createApp() {
     if (!x) throw new S.HttpError(404, 'Payment not found');
     return { ...x, contactName: S.contactName(db, x.contactId), contact: db.contacts.find((c) => c.id === x.contactId), bills: x.allocations.map((a) => ({ ...a, doc: db.docs.find((d) => d.id === a.docId) })), journals: journalsFor(x.id) };
   }));
+  api.post('/payments-made/:id/apply', m((req) => S.applyPaymentMade(p(req, 'id'), (req.body?.allocations as { docId: string; amount: number }[]) || [])));
+  api.post('/payments-made/bulk', m((req) => S.savePaymentsBulk((req.body?.payments as Partial<PaymentMade>[]) || [])));
   api.post('/payments-made/:id/refunds', m((req) => S.refundPaymentMade(p(req, 'id'), req.body)));
   api.delete('/payments-made/:id/refunds/:refundId', m((req) => S.deletePaymentMadeRefund(p(req, 'id'), p(req, 'refundId'))));
   api.post('/payments-made', m((req) => S.savePaymentMade(req.body)));
@@ -513,6 +515,7 @@ export function createApp() {
       vendorName: S.contactName(db, e.vendorId),
       customerName: S.contactName(db, e.customerId),
       profile: profile && { id: profile.id, profileName: profile.profileName, status: profile.status },
+      projectName: e.projectId ? db.projects.find((x) => x.id === e.projectId)?.name : undefined,
       invoice: invoice && { id: invoice.id, number: invoice.number, status: invoice.status },
       journals: journalsFor(e.id),
     };

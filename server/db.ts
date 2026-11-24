@@ -22,7 +22,11 @@ let db: Database;
 
 function emptyDefaults(d: Partial<Database>): Database {
   const seed = seedDatabase({ withSamples: false });
-  return { ...seed, ...d } as Database;
+  const out = { ...seed, ...d } as Database;
+  // add system accounts introduced after this file was created (e.g. GST input/output accounts)
+  const have = new Set(out.accounts.map((a) => a.id));
+  for (const a of seed.accounts) if (a.system && !have.has(a.id)) out.accounts.push({ ...a });
+  return out;
 }
 
 export function loadDb(): Database {

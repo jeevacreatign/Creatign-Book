@@ -4,10 +4,35 @@ import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, FileImage, FileText, ImagePlus, Paperclip, Plus, Tag, Trash2, Upload } from 'lucide-react';
 import { fmtDate, nextRecurrence, today } from '@shared/format';
-import type { Attachment, Expense, RecurringExpense, RepeatEvery } from '@shared/types';
-import { api, useAction } from '../../api';
+import type { Attachment, Expense, ExpenseGst, ExpenseLine, RecurringExpense, RepeatEvery } from '@shared/types';
+import { api, useAction, useApi } from '../../api';
+import { computeTax, isIntraState } from '@shared/gst';
 import { toast } from '../../lib/toast';
-import { Checkbox, DateInput, Drawer, Dropdown, MenuItem, clsx } from '../../components/ui';
+import { Checkbox, DateInput, Drawer, Dropdown, Field, MenuItem, Select, clsx } from '../../components/ui';
+
+// ------------------------------------------------------------ GST preview (mirrors server/engine expenseGst)
+
+export function expenseTaxPreview(f: ExpenseGst & { amount?: number; itemized?: boolean; lines?: ExpenseLine[] }, mileage = false) {
+  const intra = isIntraState(f.sourceOfSupply, f.destinationOfSupply, f.gstTreatment);
+  const inclusive = f.taxInclusive !== false && !f.reverseCharge;
+  const itemized = !!f.itemized && !mileage;
+  const lines = itemized ? (f.lines || []).map((l) => ({ amount: Number(l.amount) || 0, taxId: l.taxId })) : [{ amount: Number(f.amount) || 0, taxId: mileage ? undefined : f.taxId }];
+  const t = computeTax(lines, { intra, inclusive });
+  const gross = lines.reduce((s, l) => s + l.amount, 0);
+  return { intra, breakdown: t.breakdown, taxTotal: t.taxTotal, subTotal: inclusive ? gross - t.taxTotal : gross, total: inclusive || f.reverseCharge ? gross : gross + t.taxTotal };
+}
+
+// ------------------------------------------------------------ projects
+
+export function ProjectPicker({ customerId, value, onChange }: { customerId?: string; value?: string; onChange: (v: string | undefined) => void }) {
+  const { data = [] } = useApi<{ id: string; name: string; customerId?: string; status: string }[]>('/projects');
+  const list = data.filter((p) => p.status !== 'inactive' && (!p.customerId || p.customerId === customerId));
+  return (
+    <Field label="Project">
+      <Select className="max-w-sm" value={value || ''} onChange={(e) => onChange(e.target.value || undefined)} placeholder={list.length ? 'Select a project' : 'No projects for this customer'} options={list.map((p) => ({ value: p.id, label: p.name }))} />
+    </Field>
+  );
+}
 
 // ------------------------------------------------------------ repeat every
 
@@ -271,7 +296,17 @@ export function MakeRecurringDrawer({ expense, onClose }: { expense: Expense & {
         body: {
           ...f,
           accountId: expense.accountId,
-          amount: expense.amount,
+          amount: expense.taxInclusive === false ? expense.subTotal ?? expense.amount : expense.amount,
+          taxId: expense.taxId,
+          taxInclusive: expense.taxInclusive,
+          gstTreatment: expense.gstTreatment,
+          vendorGstin: expense.vendorGstin,
+          sourceOfSupply: expense.sourceOfSupply,
+          destinationOfSupply: expense.destinationOfSupply,
+          reverseCharge: expense.reverseCharge,
+          expenseType: expense.expenseType,
+          hsnSac: expense.hsnSac,
+          projectId: expense.projectId,
           paidThroughAccountId: expense.paidThroughAccountId,
           vendorId: expense.vendorId,
           customerId: expense.customerId,

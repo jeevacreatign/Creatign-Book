@@ -6,10 +6,12 @@ import type { Expense, ExpenseLine } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
 import { useBoot, isCashLike } from '../../lib/app';
 import { toast } from '../../lib/toast';
-import { AccountSelect, Checkbox, ContactPicker, DateInput, Dropdown, Field, FormFooter, MenuItem, MoneyInput, PageHeader, SearchBox, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
+import { AccountSelect, Checkbox, ContactPicker, DateInput, Dropdown, Field, FormFooter, MenuItem, MoneyInput, PageHeader, Radio, SearchBox, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle } from '../../components/shared';
 import { ExpenseSplitView, ViewPicker, useExpenseView, type ExpenseRow as Row } from './ExpenseDetail';
-import { ReceiptDrop, ReportingTags } from './parts';
+import { ProjectPicker, ReceiptDrop, ReportingTags, expenseTaxPreview } from './parts';
+import { GstFields, TaxRows, TaxSelect } from '../../components/gst';
+import { stateFromGstin } from '@shared/gst';
 
 function exportCsv(rows: Row[]) {
   const head = ['Date', 'Expense Account', 'Reference#', 'Vendor Name', 'Paid Through', 'Customer Name', 'Status', 'Amount'];
@@ -203,17 +205,19 @@ function ExpenseForm() {
   const cloneId = search.get('clone');
   const { data: existing } = useApi<Expense>(id ? `/expenses/${id}` : cloneId ? `/expenses/${cloneId}` : null);
   const [tab, setTab] = useState<'record' | 'mileage' | 'bulk'>((search.get('tab') as 'bulk') || 'record');
-  const blank = (): Partial<Expense> => ({ date: today(), paidThroughAccountId: 'acc_petty_cash', vendorId: search.get('vendorId') || undefined, customerId: search.get('customerId') || undefined, itemized: false, lines: [], receipts: [], billable: false, reportingTags: {}, ratePerKm: Number(boot.preferences.mileageRatePerKm) || 8 });
+  const blank = (): Partial<Expense> => ({ date: today(), paidThroughAccountId: 'acc_petty_cash', vendorId: search.get('vendorId') || undefined, customerId: search.get('customerId') || undefined, itemized: false, lines: [], receipts: [], billable: false, reportingTags: {}, taxInclusive: true, destinationOfSupply: boot.organization.state, expenseType: 'service', ratePerKm: Number(boot.preferences.mileageRatePerKm) || 8 });
   const [f, setF] = useState<Partial<Expense> | null>(id || cloneId ? null : blank());
   const [bulk, setBulk] = useState<Partial<Expense>[]>([blank(), blank(), blank()]);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (existing && !f) {
-      if (id) setF(existing);
+      // tax exclusive expenses are edited by their pre-tax amount
+      const typed = existing.taxInclusive === false ? existing.subTotal ?? existing.amount : existing.amount;
+      if (id) setF({ ...existing, amount: typed });
       else {
         // clone: same details, new date, no receipts and no links to invoices or profiles
         const { id: _id, invoiceId: _inv, recurringProfileId: _rp, status: _st, createdAt: _c, updatedAt: _u, ...rest } = existing;
-        setF({ ...rest, date: today(), receipts: [], lines: rest.lines.map((l) => ({ ...l, id: '' })) });
+        setF({ ...rest, amount: typed, date: today(), receipts: [], lines: rest.lines.map((l) => ({ ...l, id: '' })) });
       }
       if (existing.isMileage) setTab('mileage');
     }
@@ -245,6 +249,7 @@ function ExpenseForm() {
 
   const lines = f.lines || [];
   const setLines = (l: ExpenseLine[]) => set({ lines: l, amount: l.reduce((s, x) => s + (Number(x.amount) || 0), 0) });
+  const tax = expenseTaxPreview(f, tab === 'mileage');
 
   return (
     <div className="flex min-h-full flex-col">
@@ -337,6 +342,7 @@ function ExpenseForm() {
                       <tr>
                         <th>Expense Account</th>
                         <th>Notes</th>
+                        <th className="w-40">Tax</th>
                         <th className="w-32 text-right">Amount</th>
                         <th />
                       </tr>
@@ -349,6 +355,9 @@ function ExpenseForm() {
                           </td>
                           <td>
                             <input className="input" value={l.notes || ''} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, notes: e.target.value } : x)))} />
+                          </td>
+                          <td>
+                            <TaxSelect value={l.taxId} intra={tax.intra} onChange={(v) => setLines(lines.map((x, j) => (j === i ? { ...x, taxId: v } : x)))} />
                           </td>
                           <td>
                             <input type="number" className="input text-right" value={l.amount} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, amount: Number(e.target.value) } : x)))} />
@@ -367,7 +376,7 @@ function ExpenseForm() {
                       <Plus size={13} /> Add row
                     </button>
                     <span className="text-[13px]">
-                      Total: <b>{money(lines.reduce((s, l) => s + (Number(l.amount) || 0), 0))}</b>
+                      Total: <b>{money(tax.total)}</b>
                     </span>
                   </div>
                   <button className="link mt-2 text-xs" onClick={() => set({ itemized: false })}>
@@ -385,6 +394,32 @@ function ExpenseForm() {
                   <Field label="Amount" required>
                     <MoneyInput className="max-w-xs" value={f.amount} onChange={(v) => set({ amount: v as unknown as number })} />
                   </Field>
+                  <Field label="Tax">
+                    <TaxSelect className="max-w-xs" value={f.taxId} intra={tax.intra} onChange={(v) => set({ taxId: v })} />
+                  </Field>
+                </>
+              )}
+              {tab === 'record' && (
+                <>
+                  <Field label="Amount Is">
+                    <div className="pt-1.5">
+                      <Radio name="taxInclusive" value={f.taxInclusive === false || f.reverseCharge ? 'exclusive' : 'inclusive'} onChange={(v) => set({ taxInclusive: v === 'inclusive' })} options={[{ value: 'inclusive', label: 'Tax Inclusive' }, { value: 'exclusive', label: 'Tax Exclusive' }]} />
+                    </div>
+                  </Field>
+                  {tax.taxTotal > 0 && (
+                    <div className="max-w-xl rounded-md border border-slate-200 bg-slate-50 px-4 py-2 sm:ml-[196px]">
+                      <div className="flex justify-between py-1 text-[13px]"><span className="text-slate-600">Sub Total</span><span className="tabular-nums">{money(tax.subTotal)}</span></div>
+                      <TaxRows rows={tax.breakdown} reverseCharge={f.reverseCharge} />
+                      <div className="mt-1 flex justify-between border-t border-slate-200 pt-1.5 text-[13px] font-semibold"><span>Total</span><span className="tabular-nums">{money(tax.total)}</span></div>
+                      {f.reverseCharge && <div className="pt-1 text-xxs text-amber-700">The tax is payable by you under reverse charge and is not paid to the vendor.</div>}
+                    </div>
+                  )}
+                  <Field label="Expense Type">
+                    <div className="flex flex-wrap items-center gap-4 pt-1">
+                      <Radio name="expenseType" value={f.expenseType || 'service'} onChange={(v) => set({ expenseType: v })} options={[{ value: 'goods', label: 'Goods' }, { value: 'service', label: 'Services' }]} />
+                      <input className="input w-40" placeholder={f.expenseType === 'goods' ? 'HSN Code' : 'SAC'} value={f.hsnSac || ''} onChange={(e) => set({ hsnSac: e.target.value })} />
+                    </div>
+                  </Field>
                 </>
               )}
               <Field label="Paid Through" required>
@@ -392,9 +427,19 @@ function ExpenseForm() {
               </Field>
               <Field label="Vendor">
                 <div className="max-w-sm">
-                  <ContactPicker kind="vendor" value={f.vendorId} onChange={(v) => set({ vendorId: v || undefined })} />
+                  <ContactPicker
+                    kind="vendor"
+                    value={f.vendorId}
+                    onChange={(v, c) =>
+                      set({
+                        vendorId: v || undefined,
+                        ...(c ? { gstTreatment: c.gstTreatment || (c.gstin ? 'registered_business' : 'unregistered_business'), vendorGstin: c.gstin, sourceOfSupply: c.placeOfSupply || stateFromGstin(c.gstin) || boot.organization.state } : {}),
+                      })
+                    }
+                  />
                 </div>
               </Field>
+              {tab === 'record' && <GstFields value={{ ...f, gstin: f.vendorGstin }} gstinKey="vendorGstin" onChange={(p) => set(p as Partial<Expense>)} />}
               <Field label="Invoice#">
                 <input className="input max-w-sm" value={f.invoiceNumber || ''} onChange={(e) => set({ invoiceNumber: e.target.value })} />
               </Field>
@@ -409,6 +454,7 @@ function ExpenseForm() {
                   <Checkbox checked={!!f.billable} disabled={!f.customerId} onChange={(v) => set({ billable: v })} label="Billable" />
                 </div>
               </Field>
+              {f.customerId && <ProjectPicker customerId={f.customerId} value={f.projectId} onChange={(v) => set({ projectId: v })} />}
               <Field label="Reporting Tags">
                 <div className="max-w-xl pt-1.5">
                   <ReportingTags value={f.reportingTags || {}} onChange={(v) => set({ reportingTags: v })} />
