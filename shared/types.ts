@@ -1,4 +1,6 @@
 import type { PdfTemplate } from './pdfTemplate';
+import type { EmailTemplate } from './email';
+import type { CustomerResponse, PaymentNotice, PortalSession, PortalUser } from './portal';
 // Shared domain model for Creatign Books. Used by both the API server and the React client.
 // All money values are stored as numbers in INR, rounded to 2 decimals.
 // All dates are ISO strings 'yyyy-MM-dd' (timestamps are full ISO strings).
@@ -277,6 +279,11 @@ export interface TxnDoc {
   approvedAt?: string;
   approvedBy?: string;
   rejection?: { reason?: string; at: string; by: string };
+  // customer email and portal
+  /** first time the customer opened it through a shared link or the portal */
+  viewedAt?: string;
+  /** quote accepted/declined by the customer from the portal or a shared link */
+  customerResponse?: CustomerResponse;
   // relationships
   quoteId?: ID;
   salesOrderId?: ID;
@@ -474,10 +481,24 @@ export interface Mail {
   from: string;
   to: string[];
   cc: string[];
+  bcc?: string[];
+  replyTo?: string;
   subject: string;
+  /** plain-text body as written (placeholders filled) */
   body: string;
+  /** branded HTML that was sent (kept so the log can show exactly what the customer saw) */
+  html?: string;
   attachments: string[];
+  templateId?: string;
+  /** sent: accepted by the mail server; outbox: no mail server set up, kept here only; failed: the server refused it */
+  status?: 'sent' | 'outbox' | 'failed';
+  error?: string;
+  provider?: 'google-oauth' | 'smtp' | 'outbox';
+  /** link included in the email, if any */
+  shareLinkId?: ID;
   delivered?: boolean; // false when no mail server was configured (recorded only)
+  /** system: invites, resets and notifications rather than a composed email */
+  system?: boolean;
   createdAt: string;
 }
 
@@ -488,6 +509,10 @@ export interface ShareLink {
   entityId: ID;
   expiresOn?: string;
   active: boolean;
+  /** created by the composer for the email's "View" button */
+  source?: 'manual' | 'email';
+  views?: number;
+  lastViewedAt?: string;
   createdAt: string;
 }
 
@@ -530,6 +555,10 @@ export interface Database {
   activities: Activity[];
   mails: Mail[];
   shareLinks: ShareLink[];
+  emailTemplates: EmailTemplate[];
+  portalUsers: PortalUser[];
+  portalSessions: PortalSession[];
+  paymentNotices: PaymentNotice[];
   projects: Project[];
   timeEntries: TimeEntry[];
   counters: Record<string, number>;

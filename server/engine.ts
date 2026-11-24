@@ -336,8 +336,8 @@ export function runRecurring(db: Database = getDb(), upTo = today()): number {
 
 // ------------------------------------------------------------------ activity
 
-export function logActivity(db: Database, entityType: string, entityId: string, contactId: string | undefined, message: string, detail?: string) {
-  db.activities.push({ id: newId('act'), entityType, entityId, contactId, message, detail, author: db.organization.name, createdAt: now() });
+export function logActivity(db: Database, entityType: string, entityId: string, contactId: string | undefined, message: string, detail?: string, author?: string) {
+  db.activities.push({ id: newId('act'), entityType, entityId, contactId, message, detail, author: author || db.organization.name, createdAt: now() });
 }
 
 export { addDays };

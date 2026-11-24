@@ -71,10 +71,13 @@ The JSON store is one `Database` object whose arrays map one-to-one to tables. T
 | journals | Journal (+ JournalLine) |
 | comments, activities, mails | Comment, Activity, Mail |
 | shareLinks | ShareLink |
+| emailTemplates | EmailTemplate (one built-in per kind, plus your own) |
+| portalUsers, portalSessions | PortalUser, PortalSession (customer portal sign-in) |
+| paymentNotices | PaymentNotice (payments customers report from the portal or a shared link) |
 | projects, timeEntries | Project, TimeEntry |
 | counters | Next number per series, e.g. `INV → 3` |
 | pdfTemplates | PdfTemplate (six built-in, plus your own) |
-| preferences | Salespersons, challan types, delivery methods, default notes and terms, mileage rate, `defaultTemplates` (module → template id), `docDefaults` (module → notes / terms), `customFields` (module → CustomFieldDef[]) |
+| preferences | `smtp` (SMTP settings, password encrypted), `portal` (PortalSettings), salespersons, challan types, delivery methods, default notes and terms, mileage rate, `defaultTemplates` (module → template id), `docDefaults` (module → notes / terms), `customFields` (module → CustomFieldDef[]) |
 
 ### Organization
 
@@ -174,8 +177,13 @@ JournalLine: `accountId → Account, debit, credit, description?, contactId?`
 
 * **Comment**: `id, entityType, entityId, html (sanitised), author, createdAt`
 * **Activity** (timeline): `id, entityType, entityId, contactId?, message, detail?, author, createdAt`
-* **Mail** (email log; no SMTP is configured): `id, contactId?, entityType?, entityId?, from, to[], cc[], subject, body, attachments[], createdAt`
-* **ShareLink**: `id, token, entityType, entityId, expiresOn?, active, createdAt`. Public view at `/share/:token`.
+* **Mail** (email log): `id, contactId?, entityType?, entityId?, from, to[], cc[], bcc[]?, replyTo?, subject, body (placeholders filled), html? (exactly what was sent), attachments[] (file names), templateId?, status (sent | outbox | failed), error?, provider (google-oauth | smtp | outbox), shareLinkId?, system? (invitations, resets, notifications), createdAt`
+* **EmailTemplate**: `id, kind (quote | sales_order | invoice | payment_reminder | credit_note | payment_received | statement | purchase_order | payment_made | portal_invite | portal_reset), name, subject, body, isDefault, builtIn?, updatedAt?`. Placeholders are `%Name%` tokens, listed in `shared/email.ts`.
+* **ShareLink**: `id, token (256-bit random), entityType, entityId, expiresOn?, active, source (manual | email), views, lastViewedAt?, createdAt`. Public view at `/share/:token`; only documents visible to customers (not draft or in approval) can be shared.
+* **PortalUser**: `id, contactId, contactPersonId?, email, name, status (invited | active | disabled), passwordHash (scrypt), inviteTokenHash?, inviteExpiresAt?, invitedAt?, resetTokenHash?, resetExpiresAt?, lastLoginAt?, failedLogins?, lockedUntil?, createdAt, updatedAt`. One login per email; signing in needs the user active, `Contact.portalEnabled` and the portal enabled.
+* **PortalSession**: `id, tokenHash (sha256 of the cookie value), userId, createdAt, expiresAt (14 days), lastSeenAt`
+* **PaymentNotice**: `id, contactId, invoiceId, amount, date, mode, reference, note?, submittedBy, submittedEmail?, via (portal | link), status (pending | recorded | dismissed), paymentId?, createdAt, resolvedAt?`. Recording one creates a PaymentReceived applied to the invoice.
+* **TxnDoc** customer fields: `viewedAt?` (first opened by the customer), `customerResponse? { action: accepted | declined, by, email?, comment?, at, via: portal | link }` on quotes.
 * **Project**: `id, name, customerId?, billingMethod (fixed | hourly), rate, budgetHours?, description?, status, createdAt`
 * **TimeEntry**: `id, projectId, date, task?, hours, notes?, billable, invoiced, createdAt`
 

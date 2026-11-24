@@ -15,7 +15,9 @@ import PaymentsReceived from './pages/payments/PaymentsReceived';
 import PaymentsMade from './pages/payments/PaymentsMade';
 import Expenses, { RecurringExpenses } from './pages/expenses/Expenses';
 import { Accountant, Banking, Reports } from './pages/misc/Accounting';
-import { AppPlaceholder, Documents, PrintDoc, PrintPayment, PrintStatement, Settings, SharePage, TimeTracking } from './pages/misc/Other';
+import { AppPlaceholder, Documents, PrintDoc, PrintPayment, PrintStatement, Settings, TimeTracking } from './pages/misc/Other';
+import SharePage from './customer/SharePage';
+import PortalApp from './customer/Portal';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } } });
 
@@ -38,10 +40,27 @@ function Keyed({ kind }: { kind: DocKind }) {
   return <DocModule key={`${kind}${search.includes('from=') ? search : ''}`} kind={kind} />;
 }
 
-function App() {
+/** Customer-facing pages (shared links, customer portal) never load the staff app. */
+function Root() {
   return (
     <Routes>
       <Route path="/share/:token" element={<SharePage />} />
+      <Route path="/portal/*" element={<PortalApp />} />
+      <Route
+        path="*"
+        element={
+          <AppProvider>
+            <App />
+          </AppProvider>
+        }
+      />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
       <Route path="/print/doc/:id" element={<PrintDoc />} />
       <Route path="/print/payment/:id" element={<PrintPayment />} />
       <Route path="/print/payment-made/:id" element={<PrintPayment made />} />
@@ -78,9 +97,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AppProvider>
-          <App />
-        </AppProvider>
+        <Root />
         <Toaster />
       </BrowserRouter>
     </QueryClientProvider>

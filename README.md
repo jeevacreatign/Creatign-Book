@@ -41,9 +41,16 @@ On first start the server creates `server/data/db.json` with the Creatign organi
 
 Environment variables go in a `.env` file in the project folder (copy `.env.example`): `PORT` (default 4000), `DB_FILE` (default `server/data/db.json`, `:memory:` for no disk) and the email settings below. `.env` is ignored by git, so passwords stay on your computer.
 
-## Sending email (Gmail)
+## Sending email
 
-Without setup, emails are only saved in the app (shown as **Not delivered** in a contact's Mails tab). To deliver them from your Gmail account:
+Email is set up in **Settings → Emails**, which shows which transport is in use and has a **Send Test** button. The app tries, in order:
+
+1. a **Gmail account linked with OAuth** (see below),
+2. **SMTP saved in Settings → Emails** (host, port, STARTTLS / SSL, username, password, From name and address, Reply-To). Works with Gmail app passwords, Zoho Mail, Microsoft 365, Amazon SES, Mailgun and others. The password is encrypted with `APP_SECRET`, or with a random key generated once into `server/data/app-secret.json` (git-ignored; keep it with your backups of `db.json`),
+3. **SMTP from `.env`** (below),
+4. the **outbox**: with nothing set up, emails are kept in **Settings → Emails → Email Log** with the exact HTML the customer would get, marked *Outbox*, and can be sent later with **Retry Sending**. Set `MAIL_TRANSPORT=outbox` to force this during development.
+
+To use Gmail over SMTP from `.env` instead of the Settings screen:
 
 1. Turn on **2-Step Verification** for the Gmail account (Google Account → Security).
 2. Open https://myaccount.google.com/apppasswords, create an app password (name it e.g. *Creatign Books*) and copy the 16 letters. Use this, not your normal Gmail password.
@@ -55,11 +62,23 @@ Without setup, emails are only saved in the app (shown as **Not delivered** in a
    ```
 4. Restart `npm run dev`.
 
-The email dialog then shows your Gmail address as **From**. Emails go out with the document as a PDF attachment: invoices, quotes, sales orders, bills, purchase orders, credit notes, payment receipts and customer/vendor statements. If Gmail rejects the login or can't be reached, the app shows the reason and nothing is marked as sent. For another provider, also set `SMTP_HOST` and `SMTP_PORT`. If your network uses SMTP TLS inspection and the server certificate chain is signed by a private CA, set `SMTP_TLS_CA_FILE` to that CA's PEM file and restart the server. Obtain the certificate from your network administrator; do not disable certificate validation.
+If the mail server rejects the login or can't be reached, the email is logged as **Failed** with the reason and the document is not marked as sent. For another provider, also set `SMTP_HOST` and `SMTP_PORT`. If your network uses SMTP TLS inspection and the server certificate chain is signed by a private CA, set `SMTP_TLS_CA_FILE` to that CA's PEM file and restart the server. Obtain the certificate from your network administrator; do not disable certificate validation.
+
+### Customer emails (Zoho-style)
+
+**Send → Send Email** on a quote, sales order, invoice, credit note, purchase order, payment or statement opens the composer:
+
+* **Template** picker (Settings → Emails → Templates). Each kind has a built-in template that can be edited or restored, and you can add your own and choose the default. Placeholders such as `%CustomerName%`, `%DocumentNumber%`, `%Total%`, `%BalanceDue%`, `%DueDate%`, `%DaysOverdue%`, `%PaymentAmount%`, `%ClosingBalance%` or `%DocumentLink%` are filled in from the transaction. Overdue invoices start from the **Payment Reminder** template.
+* **To / Cc / Bcc** as recipient chips, with the customer's email and contact persons suggested.
+* **Attachments**: the transaction PDF (drawn with its PDF template), the transaction's own attachments, and extra uploaded files (20 MB total).
+* **Add a "View Invoice" button**: creates a secure share link (valid for 90 days by default) so the customer can open the document online, download the PDF, accept a quote or see how to pay.
+* **Preview** shows the branded HTML email: your logo (sent inline so Gmail shows it), a summary card with the amount and dates, your message, the button, and your address in the footer.
+
+Every email is logged with its status (**Sent**, **Outbox**, **Failed**) and the exact HTML. The log is in the **Emails** tab of each transaction, the **Mails** tab of each contact, and **Settings → Emails → Email Log**, with **Send Again / Retry Sending**.
 
 ### Link a Gmail account with OAuth
 
-The **Link Gmail account** action in a contact's Mails tab connects one Gmail sender for the app. Once linked, outgoing app email uses the Gmail API with the `gmail.send` permission; otherwise the SMTP settings above continue to be used.
+**Link Gmail Account** in **Settings → Emails** connects one Gmail sender for the app. Once linked, outgoing app email uses the Gmail API with the `gmail.send` permission; otherwise the SMTP settings above continue to be used.
 
 1. In Google Cloud Console, create/select a project, enable the **Gmail API**, and configure the OAuth consent screen. For an app in Testing mode, add your Gmail address as a test user.
 2. Create an OAuth client ID of type **Web application** and add this authorized redirect URI:
@@ -71,7 +90,7 @@ The **Link Gmail account** action in a contact's Mails tab connects one Gmail se
    GOOGLE_OAUTH_REDIRECT_URI=http://localhost:4000/api/mail/google/callback
    APP_ORIGIN=http://localhost:5173
    ```
-4. Restart the app, open a contact's **Mails** tab, and choose **Link Gmail account**. Google will ask you to authorize sending mail. The refresh token is encrypted locally in `server/data/google-mail-auth.json`; the OAuth client secret must remain in `.env` so the app can decrypt it. **Disconnect** revokes the Google authorization and removes the local token.
+4. Restart the app, open **Settings → Emails**, and choose **Link Gmail Account**. Google will ask you to authorize sending mail. The refresh token is encrypted locally in `server/data/google-mail-auth.json`; the OAuth client secret must remain in `.env` so the app can decrypt it. **Disconnect** revokes the Google authorization and removes the local token.
 
 For deployments on a different host, set the exact public callback URL in both Google Cloud Console and `GOOGLE_OAUTH_REDIRECT_URI`, and set `APP_ORIGIN` to the app's origin. Google OAuth apps left in Testing mode may have refresh tokens expire after seven days; publish/configure the consent screen for continued use.
 
@@ -91,7 +110,11 @@ client/src/
   components/  layout (sidebar + top bar), form controls, document preview, shared panels
   pages/       Home, items, contacts, docs (all 10 sales/purchase documents), payments,
                expenses, misc (banking, accountant, reports, time tracking, settings, print)
-tests/flow.test.ts   end-to-end sales and purchase workflow tests
+  email.ts     email templates, placeholders, branded HTML, attachments, email log
+  mailer.ts    transports: Gmail OAuth, SMTP (settings or .env), outbox
+  portal.ts    customer portal API, invitations, sessions, shared links, payment notices
+client/src/customer/  customer-facing pages: /portal and /share/:token
+tests/               workflow, approval, PDF template, email and portal tests
 docs/SCHEMA.md       architecture and data model
 ```
 
@@ -162,15 +185,29 @@ Every transaction's **Details** tab shows the PDF preview with a **Show PDF View
 
 Six designs ship with the app: Standard, Modern, Classic, Bold, Minimal and Spreadsheet. Settings → **PDF Templates** lists them with New, Clone, Edit and Delete, and picks a default template per module. The browser print view and the PDF attached to emails are drawn from the same template, with embedded fonts that print ₹.
 
+### E. Shared links and the customer portal
+
+**Share links.** **Share** on a sent quote, sales order, invoice or credit note creates a public link (`/share/<token>`) with an expiry date or *Never expires*. The page shows the document, its status and amount, **Download** / **Print** (server PDF), and, if allowed in Settings → Customer Portal, **Accept / Decline** for quotes and **How to pay** plus **I've made a payment** for invoices. The Share dialog lists active links with view counts and lets you disable one or all. Drafts and documents waiting for approval cannot be shared, and the link hides internal notes.
+
+**Customer portal** (`/portal`):
+
+1. **Settings → Customer Portal**: turn the portal on, choose what customers can do (accept quotes, statements, report payments, act from shared links, email me when they do), set the portal name and public URL used in email links, a welcome message, and payment instructions (UPI ID for a QR code and *Pay with UPI* button, bank transfer details).
+2. Open a customer → **More → Customer Portal Access**, tick the primary email and/or contact persons, **Send Invitation**. The invitation email has an **Accept Invitation** button valid for 7 days. If email is not set up, the dialog shows the invitation link to share yourself. Resend, disable, remove a user, or turn off portal access for the customer from the same dialog; the customer's overview shows the portal status.
+3. The customer sets a password and lands on the dashboard: outstanding and overdue amounts, invoices to pay, quotes awaiting a response, recent payments and documents. They can list and open **Quotes, Sales Orders, Invoices, Credit Notes**, download PDFs, **accept or decline** quotes (name and comment recorded), see **how to pay** and **report a payment** with its UTR reference, download **payment receipts**, view and download their **statement** for any period, and change their name and password. **Forgot password** emails a reset link valid for 2 hours.
+4. Back in Creatign Books: the quote shows **Accepted by … via the customer portal** with the comment, and its status changes; documents show **Viewed by the customer**; an invoice with a reported payment shows a banner with **Record Payment** (choose the deposit account; the payment is applied to the invoice) or **Dismiss**. All reported payments are also listed in Settings → Customer Portal → Reported Payments. Everything is in the Activity timeline with the customer's name, and the organisation email gets a notification.
+
+Security: passwords are hashed with scrypt; sessions are random tokens stored hashed, in an HttpOnly SameSite=Lax cookie that expires after 14 days; invitation, reset and share tokens are 256-bit random values (invitation and reset tokens are stored hashed); five wrong passwords lock the account for 15 minutes and sign-in, reset and public actions are rate limited; customers only ever see their own documents that were sent to them.
+
 ### Automated check
 
-`npm test` runs the workflows end to end through the API (49 tests, including email, approvals and PDF templates): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
+`npm test` runs the workflows end to end through the API (65 tests, including email templates and the outbox, shared links, the customer portal, approvals and PDF templates): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
 
 ## Notes and limits
 
-* **Email** is delivered over SMTP once `.env` is set up (see *Sending email*); otherwise it is only recorded in the app. Attached PDFs use the document's PDF template and the fonts in `client/public/fonts`.
+* **Email** is delivered through Gmail or SMTP once set up (see *Sending email*); otherwise it waits in the outbox. Attached PDFs use the document's PDF template and the fonts in `client/public/fonts`. Automatic, scheduled payment reminders are not implemented; send reminders from the invoice (the Payment Reminder template is picked for overdue invoices).
+* **Online payments**: the portal shows UPI and bank details and lets customers report payments for you to confirm; there is no card or net-banking gateway, so nothing is charged online.
+* **Exposing the portal on the internet**: the portal and share links have their own authentication, but the staff app and its `/api` routes do not (Creatign Books is a single-user app). Only publish `/portal`, `/share` and `/api/portal`, `/api/public` through your reverse proxy, or put the staff app behind a VPN or a login, before making the portal public. Set `APP_ORIGIN` (or the Portal URL setting) to the public address so email links point there.
 * **PDF** uses the browser's print-to-PDF from the PDF/Print buttons (pages under `/print/...`), sized to the template's paper and margins. Emailed PDFs embed JPG and PNG logos only, and page numbers appear on emailed PDFs only.
-* **Share links** open a public read-only view at `/share/<token>`.
 * Recurring invoices, bills and expenses generate due documents when the server starts, on the first request each day, and from **More → Generate due invoices now**.
 * Single organisation and single user. GST tax lines, multi-currency, bank feeds and reconciliation are not implemented.
 * The JSON store suits a single small business. For multi-user use, swap `server/db.ts` for a database; the schema in docs/SCHEMA.md maps directly to tables.
