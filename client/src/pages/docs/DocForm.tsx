@@ -13,6 +13,7 @@ import { AccountSelect, Checkbox, Combo, ContactPicker, DateInput, Field, FormFo
 import { Attachments } from '../../components/shared';
 import { AddressBlock } from '../../components/DocumentPreview';
 import { DOC_UI } from './config';
+import { customFieldsFor, docDefaults, type CustomFieldDef } from '@shared/pdfTemplate';
 
 type Draft = Partial<TxnDoc> & { lineItems: LineItem[] };
 
@@ -63,8 +64,10 @@ export function DocForm({ kind }: { kind: DocKind }) {
       adjustment: 0,
       attachments: [],
       lineItems: [blankLine()],
-      customerNotes: kind === 'quote' ? prefs.quoteNotes : sales ? prefs.customerNotes : undefined,
-      terms: kind === 'invoice' ? prefs.invoiceTerms : undefined,
+      customerNotes: sales ? docDefaults(prefs, kind).notes : undefined,
+      notes: sales ? undefined : docDefaults(prefs, kind).notes,
+      terms: docDefaults(prefs, kind).terms,
+      customFields: Object.fromEntries(customFieldsFor(prefs, kind).filter((f) => f.active && f.defaultValue).map((f) => [f.id, f.defaultValue!])),
       repeatEvery: meta.recurring ? { n: 1, unit: 'month' } : undefined,
       neverExpires: meta.recurring ? true : undefined,
       startOn: meta.recurring ? today() : undefined,
@@ -298,6 +301,13 @@ export function DocForm({ kind }: { kind: DocKind }) {
               <textarea className="input max-w-xl" rows={2} placeholder={`Let your ${sales ? 'customer' : 'vendor'} know what this ${meta.label} is for`} value={d.subject || ''} onChange={(e) => set({ subject: e.target.value })} />
             </Field>
           )}
+          {customFieldsFor(prefs, kind)
+            .filter((f) => f.active)
+            .map((f) => (
+              <Field key={f.id} label={f.label} required={f.mandatory}>
+                <CustomFieldInput f={f} value={d.customFields?.[f.id] ?? ''} onChange={(v) => set({ customFields: { ...d.customFields, [f.id]: v } })} />
+              </Field>
+            ))}
         </div>
 
         {/* ---------------------------------------------------------- item table */}
@@ -429,7 +439,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
         <div className="grid max-w-6xl gap-6 lg:grid-cols-2">
           <div>
             <div className="mb-1 text-[13px] text-slate-700">{ui.notesLabel}</div>
-            <textarea className="input" rows={3} value={(sales ? d.customerNotes : d.notes) || ''} onChange={(e) => set(sales ? { customerNotes: e.target.value } : { notes: e.target.value })} placeholder={sales ? 'Will be displayed on the document' : 'It will not be shown in PDF'} />
+            <textarea className="input" rows={3} value={(sales ? d.customerNotes : d.notes) || ''} onChange={(e) => set(sales ? { customerNotes: e.target.value } : { notes: e.target.value })} placeholder={sales || (kind !== 'bill' && kind !== 'recurring_bill') ? 'Will be displayed on the document' : 'It will not be shown in PDF'} />
           </div>
           {kind !== 'bill' && kind !== 'recurring_bill' && (
             <div>
@@ -583,4 +593,19 @@ function BulkItems({ open, onClose, items, sales, onAdd }: { open: boolean; onCl
       </div>
     </Modal>
   );
+}
+
+function CustomFieldInput({ f, value, onChange }: { f: CustomFieldDef; value: string; onChange: (v: string) => void }) {
+  switch (f.dataType) {
+    case 'textarea':
+      return <textarea className="input max-w-xl" rows={2} value={value} onChange={(e) => onChange(e.target.value)} />;
+    case 'date':
+      return <DateInput className="max-w-[200px]" value={value} onChange={onChange} />;
+    case 'checkbox':
+      return <Checkbox checked={value === 'true'} onChange={(v) => onChange(v ? 'true' : '')} label="" />;
+    case 'dropdown':
+      return <Select className="max-w-sm" value={value} onChange={(e) => onChange(e.target.value)} placeholder="Select" options={(f.options || []).map((o) => ({ value: o, label: o }))} />;
+    default:
+      return <input className="input max-w-sm" type={f.dataType === 'number' ? 'number' : f.dataType === 'email' ? 'email' : f.dataType === 'url' ? 'url' : 'text'} value={value} onChange={(e) => onChange(e.target.value)} />;
+  }
 }

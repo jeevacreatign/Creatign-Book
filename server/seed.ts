@@ -1,5 +1,6 @@
 import type { Account, Contact, Database, Item } from '../shared/types';
 import { ACCOUNT_IDS as A } from '../shared/docmeta';
+import { builtInTemplates } from '../shared/pdfTemplate';
 
 const ts = () => new Date().toISOString();
 
@@ -116,7 +117,9 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     projects: [],
     timeEntries: [],
     counters: {},
+    pdfTemplates: builtInTemplates(),
     preferences: {
+      defaultTemplates: {},
       salespersons: ['Jeeva'],
       challanTypes: ['Supply of Liquid Gas', 'Job Work', 'Supply on Approval', 'Others'],
       deliveryMethods: ['Courier', 'Hand Delivery', 'Road Transport', 'Air Freight'],

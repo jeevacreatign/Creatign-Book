@@ -6,6 +6,7 @@ import multer from 'multer';
 import { approvalEnabled, approvalSettings, needsApproval } from '../shared/approval';
 import { DOC_META } from '../shared/docmeta';
 import { periodRange, today, type PeriodKey } from '../shared/format';
+import { CUSTOM_FIELD_TYPES, builtInTemplates, normalizeTemplate, resolveTemplate, type CustomFieldDef, type PdfTemplate } from '../shared/pdfTemplate';
 import type { Account, Attachment, DocKind, Journal, Project, TimeEntry, TxnDoc } from '../shared/types';
 import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
@@ -63,10 +64,120 @@ export function createApp() {
   // ------------------------------------------------------------ org & setup
   api.get('/bootstrap', h(() => {
     const db = getDb();
-    return { organization: db.organization, accounts: db.accounts, preferences: db.preferences, salespersons: db.preferences.salespersons, approvals: approvalSettings(db.preferences) };
+    return { organization: db.organization, accounts: db.accounts, preferences: db.preferences, salespersons: db.preferences.salespersons, approvals: approvalSettings(db.preferences), pdfTemplates: templates() };
   }));
-  api.put('/organization', m((req) => Object.assign(getDb().organization, req.body, { id: getDb().organization.id })));
-  api.put('/preferences', m((req) => Object.assign(getDb().preferences, req.body)));
+  api.put('/organization', m((req) => {
+    const body = { ...(req.body as Record<string, unknown>) };
+    if (body.logo !== undefined && body.logo !== '' && body.logo !== null) {
+      const logo = String(body.logo);
+      if (!/^data:image\/(png|jpe?g|gif|bmp|webp|svg\+xml);base64,/.test(logo)) throw new S.HttpError(400, 'The logo must be a JPG, PNG, GIF or BMP image');
+      if (logo.length > 1.4 * 1024 * 1024) throw new S.HttpError(400, 'The logo must be 1 MB or smaller');
+    }
+    if (body.logo === null) body.logo = '';
+    return Object.assign(getDb().organization, body, { id: getDb().organization.id });
+  }));
+
+  // ------------------------------------------------------------ PDF templates
+  const templates = () => {
+    const db = getDb();
+    if (!Array.isArray(db.pdfTemplates) || !db.pdfTemplates.length) db.pdfTemplates = builtInTemplates();
+    return db.pdfTemplates.map((t) => normalizeTemplate(t));
+  };
+  const findTemplate = (id: string) => {
+    const t = getDb().pdfTemplates?.find((x) => x.id === id);
+    if (!t) throw new S.HttpError(404, 'Template not found');
+    return t;
+  };
+  api.get('/pdf-templates', h(() => templates()));
+  api.post('/pdf-templates', m((req) => {
+    const db = getDb();
+    templates();
+    const body = req.body as Partial<PdfTemplate> & { from?: string };
+    const base = body.from ? findTemplate(body.from) : undefined;
+    const name = String(body.name || (base ? `${base.name} (Copy)` : '')).trim();
+    if (!name) throw new S.HttpError(400, 'Template Name is required');
+    const { from: _from, id: _id, builtIn: _b, ...rest } = body;
+    const t = normalizeTemplate({ ...(base || {}), ...rest, layout: rest.layout || base?.layout || 'standard', name, id: newId('tpl'), builtIn: false, updatedAt: now() });
+    db.pdfTemplates.push(t);
+    return t;
+  }));
+  api.put('/pdf-templates/defaults', m((req) => {
+    const { kind, templateId } = req.body as { kind: string; templateId: string };
+    if (!(kind in DOC_META) && kind !== 'payment') throw new S.HttpError(400, 'Unknown module');
+    findTemplate(templateId);
+    const prefs = getDb().preferences;
+    prefs.defaultTemplates = { ...((prefs.defaultTemplates as Record<string, string>) || {}), [kind]: templateId };
+    return prefs.defaultTemplates;
+  }));
+  api.put('/pdf-templates/:id', m((req) => {
+    const db = getDb();
+    templates();
+    const cur = findTemplate(p(req, 'id'));
+    const body = req.body as Partial<PdfTemplate>;
+    if (body.name !== undefined && !String(body.name).trim()) throw new S.HttpError(400, 'Template Name is required');
+    const next = normalizeTemplate({ ...cur, ...body, header: { ...cur.header, ...body.header }, details: { ...cur.details, ...body.details }, table: { ...cur.table, ...body.table, labels: { ...cur.table.labels, ...body.table?.labels } }, total: { ...cur.total, ...body.total }, other: { ...cur.other, ...body.other }, margins: { ...cur.margins, ...body.margins }, id: cur.id, builtIn: cur.builtIn, updatedAt: now() } as PdfTemplate);
+    db.pdfTemplates[db.pdfTemplates.indexOf(cur)] = next;
+    return next;
+  }));
+  api.delete('/pdf-templates/:id', m((req) => {
+    const db = getDb();
+    const t = findTemplate(p(req, 'id'));
+    if (t.builtIn) throw new S.HttpError(400, 'Built-in templates cannot be deleted');
+    db.pdfTemplates = db.pdfTemplates.filter((x) => x.id !== t.id);
+    const defaults = (db.preferences.defaultTemplates || {}) as Record<string, string>;
+    for (const k of Object.keys(defaults)) if (defaults[k] === t.id) delete defaults[k];
+    for (const d of db.docs) if (d.templateId === t.id) d.templateId = undefined;
+    return { ok: true };
+  }));
+
+  // ------------------------------------------------------------ custom fields per module
+  api.put('/custom-fields/:kind', m((req) => {
+    const kind = p(req, 'kind') as DocKind;
+    if (!DOC_META[kind]) throw new S.HttpError(400, 'Unknown module');
+    const raw = (req.body?.fields || []) as Partial<CustomFieldDef>[];
+    const seen = new Set<string>();
+    const fields: CustomFieldDef[] = raw.map((f) => {
+      const label = String(f.label || '').trim();
+      if (!label) throw new S.HttpError(400, 'Label Name is required');
+      if (seen.has(label.toLowerCase())) throw new S.HttpError(400, `A field named "${label}" already exists`);
+      seen.add(label.toLowerCase());
+      const dataType = CUSTOM_FIELD_TYPES.some((t) => t.value === f.dataType) ? f.dataType! : 'text';
+      const options = dataType === 'dropdown' ? (f.options || []).map((o) => String(o).trim()).filter(Boolean) : undefined;
+      if (dataType === 'dropdown' && !options?.length) throw new S.HttpError(400, `Add at least one option for ${label}`);
+      return { id: f.id || newId('cf'), label, dataType, options, defaultValue: f.defaultValue ? String(f.defaultValue) : undefined, mandatory: !!f.mandatory, showInPdf: f.showInPdf !== false, active: f.active !== false };
+    });
+    const prefs = getDb().preferences;
+    prefs.customFields = { ...((prefs.customFields as Record<string, CustomFieldDef[]>) || {}), [kind]: fields };
+    return fields;
+  }));
+
+  // module defaults for notes and terms ("use this in future for all ...")
+  api.put('/doc-defaults/:kind', m((req) => {
+    const kind = p(req, 'kind') as DocKind;
+    if (!DOC_META[kind]) throw new S.HttpError(400, 'Unknown module');
+    const prefs = getDb().preferences;
+    const all = { ...((prefs.docDefaults as Record<string, { notes?: string; terms?: string }>) || {}) };
+    const cur = { ...all[kind] };
+    if (typeof req.body?.notes === 'string') cur.notes = req.body.notes;
+    if (typeof req.body?.terms === 'string') cur.terms = req.body.terms;
+    all[kind] = cur;
+    prefs.docDefaults = all;
+    return cur;
+  }));
+  api.put('/preferences', m((req) => {
+    const prefs = getDb().preferences;
+    const body = req.body as Record<string, unknown>;
+    // keep per-module defaults (Customize > Terms & Conditions) in step with the global preference fields
+    const dd = { ...((prefs.docDefaults as Record<string, { notes?: string; terms?: string }>) || {}) };
+    const sync = (key: string, kind: string, field: 'notes' | 'terms') => {
+      if (typeof body[key] === 'string' && body[key] !== prefs[key] && dd[kind]) dd[kind] = { ...dd[kind], [field]: body[key] as string };
+    };
+    sync('invoiceTerms', 'invoice', 'terms');
+    sync('quoteNotes', 'quote', 'notes');
+    sync('customerNotes', 'invoice', 'notes');
+    prefs.docDefaults = dd;
+    return Object.assign(prefs, body);
+  }));
   api.post('/admin/reset', h((req) => {
     resetDb(req.body?.samples !== false);
     S.commit();
@@ -218,6 +329,40 @@ export function createApp() {
   }));
   api.delete('/docs/:id', m((req) => S.deleteDoc(p(req, 'id'))));
   api.post('/docs/:id/actions/:action', m((req) => S.docAction(p(req, 'id'), p(req, 'action'), req.body)));
+  // PDF settings of one document: its template and the notes / terms printed on it.
+  // Allowed on locked and posted documents too, since nothing here touches the ledger.
+  api.patch('/docs/:id/print-settings', m((req) => {
+    const db = getDb();
+    const d = S.getDoc(p(req, 'id'));
+    const meta = DOC_META[d.kind];
+    const b = req.body as { templateId?: string | null; notes?: string; terms?: string; notesDefault?: boolean; termsDefault?: boolean };
+    if (b.templateId !== undefined) {
+      if (b.templateId) findTemplate(b.templateId);
+      d.templateId = b.templateId || undefined;
+      logActivity(db, d.kind, d.id, d.contactId, `PDF template changed to ${resolveTemplate(db.pdfTemplates, db.preferences, d.kind, d.templateId).name}`);
+    }
+    const changed: string[] = [];
+    if (typeof b.notes === 'string') {
+      if (meta.side === 'sales') d.customerNotes = b.notes;
+      else d.notes = b.notes;
+      changed.push('notes');
+    }
+    if (typeof b.terms === 'string') {
+      d.terms = b.terms;
+      changed.push('terms & conditions');
+    }
+    if (changed.length) logActivity(db, d.kind, d.id, d.contactId, `${meta.label} ${changed.join(' and ')} updated`);
+    if (b.notesDefault || b.termsDefault) {
+      const all = { ...((db.preferences.docDefaults as Record<string, { notes?: string; terms?: string }>) || {}) };
+      const cur = { ...all[d.kind] };
+      if (b.notesDefault && typeof b.notes === 'string') cur.notes = b.notes;
+      if (b.termsDefault && typeof b.terms === 'string') cur.terms = b.terms;
+      all[d.kind] = cur;
+      db.preferences.docDefaults = all;
+    }
+    d.updatedAt = now();
+    return d;
+  }));
   api.post('/docs/:id/apply-credits', m((req) => S.applyCredits(p(req, 'id'), req.body.applications || [])));
   api.delete('/docs/:id/credit-applications/:appId', m((req) => S.removeCreditApplication(p(req, 'id'), p(req, 'appId'))));
   api.post('/docs/:id/refunds', m((req) => S.refundCredit(p(req, 'id'), req.body)));
@@ -513,7 +658,7 @@ export function createApp() {
     if (!link || !link.active || (link.expiresOn && link.expiresOn < today())) throw new S.HttpError(404, 'This link has expired or was disabled');
     const d = db.docs.find((x) => x.id === link.entityId);
     if (!d) throw new S.HttpError(404, 'Document not found');
-    return { doc: { ...d, contactName: S.contactName(db, d.contactId), contact: db.contacts.find((c) => c.id === d.contactId) }, organization: db.organization };
+    return { doc: { ...d, contactName: S.contactName(db, d.contactId), contact: db.contacts.find((c) => c.id === d.contactId) }, organization: db.organization, template: resolveTemplate(db.pdfTemplates, db.preferences, d.kind, d.templateId), preferences: { customFields: db.preferences.customFields } };
   }));
 
   // ------------------------------------------------------------ uploads

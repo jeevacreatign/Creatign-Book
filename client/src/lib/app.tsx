@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { Account, Organization } from '@shared/types';
+import type { PdfTemplate } from '@shared/pdfTemplate';
 import { useApi } from '../api';
 
 export interface Bootstrap {
@@ -7,6 +8,8 @@ export interface Bootstrap {
   accounts: Account[];
   /** approvals turned on per module (Settings > Approvals) */
   approvals: Record<string, boolean>;
+  /** PDF templates (Settings > Templates, Customize on a transaction) */
+  pdfTemplates: PdfTemplate[];
   preferences: Record<string, unknown> & { salespersons?: string[]; challanTypes?: string[]; deliveryMethods?: string[]; invoiceTerms?: string; customerNotes?: string; quoteNotes?: string; mileageRatePerKm?: number };
 }
 

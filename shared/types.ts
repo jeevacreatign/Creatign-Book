@@ -1,3 +1,4 @@
+import type { PdfTemplate } from './pdfTemplate';
 // Shared domain model for Creatign Books. Used by both the API server and the React client.
 // All money values are stored as numbers in INR, rounded to 2 decimals.
 // All dates are ISO strings 'yyyy-MM-dd' (timestamps are full ISO strings).
@@ -39,6 +40,11 @@ export interface Organization {
   pan?: string;
   address?: Address;
   logoText?: string;
+  /** organization logo as a data: URL, shown on PDFs and emails */
+  logo?: string;
+  website?: string;
+  fax?: string;
+  industry?: string;
   migrationDate?: string;
 }
 
@@ -259,6 +265,10 @@ export interface TxnDoc {
   customerNotes?: string;
   terms?: string;
   notes?: string;
+  /** PDF template chosen for this document (falls back to the module default) */
+  templateId?: string;
+  /** values of the module's custom fields, keyed by field id */
+  customFields?: Record<string, string>;
   attachments: Attachment[];
   emailRecipients: string[];
   locked: boolean;
@@ -524,6 +534,7 @@ export interface Database {
   timeEntries: TimeEntry[];
   counters: Record<string, number>;
   preferences: Record<string, unknown>;
+  pdfTemplates: PdfTemplate[];
 }
 
 export const PAYMENT_TERMS: { value: PaymentTerms; label: string }[] = [

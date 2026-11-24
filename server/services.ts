@@ -5,6 +5,7 @@ import { computeTotals } from '../shared/calc';
 import { APPROVAL_KINDS, POSTED_STATUS, approvalEnabled, isUnposted, needsApproval } from '../shared/approval';
 import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { dueDateFor, money, nextRecurrence, round2, today } from '../shared/format';
+import { customFieldsFor, docDefaults } from '../shared/pdfTemplate';
 import type {
   Contact,
   Database,
@@ -209,6 +210,19 @@ function normalizeLines(raw: Partial<LineItem>[] | undefined, side: 'sales' | 'p
 
 export type SaveMode = 'draft' | 'open' | 'send';
 
+/** Keep only known custom fields of the module and enforce the mandatory ones. */
+function cleanCustomFields(kind: DocKind, values?: Record<string, string>) {
+  const out: Record<string, string> = {};
+  for (const f of customFieldsFor(getDb().preferences, kind)) {
+    if (!f.active) continue;
+    const raw = values?.[f.id];
+    const v = raw === undefined || raw === null ? '' : String(raw).trim();
+    if (f.mandatory && !v) throw bad(`${f.label} is required`);
+    if (v) out[f.id] = v;
+  }
+  return out;
+}
+
 export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = 'draft', id?: string): TxnDoc {
   const db = getDb();
   const meta = DOC_META[kind];
@@ -239,6 +253,7 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
   if (!lineItems.length) throw bad('Add at least one item to the item table');
   if (lineItems.some((l) => l.quantity <= 0)) throw bad('Quantity must be greater than zero');
   if ((body.attachments ?? existing?.attachments ?? []).length > 10) throw bad('You can attach a maximum of 10 files');
+  const customFields = cleanCustomFields(kind, body.customFields ?? existing?.customFields);
 
   const ts = now();
   const paymentTerms = body.paymentTerms ?? existing?.paymentTerms ?? contact.paymentTerms;
@@ -266,6 +281,7 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
     billingAddress: body.billingAddress ?? existing?.billingAddress ?? contact.billingAddress,
     shippingAddress: body.shippingAddress ?? existing?.shippingAddress ?? contact.shippingAddress,
     emailRecipients: body.emailRecipients ?? existing?.emailRecipients ?? (contact.email ? [contact.email] : []),
+    customFields,
     updatedAt: ts,
   } as TxnDoc;
   // computed fields are never trusted from the client
@@ -412,8 +428,10 @@ export function convertTemplate(sourceId: string, to: DocKind): Partial<TxnDoc> 
   if (src.kind === 'delivery_challan') t.deliveryChallanId = src.id;
   if (src.kind === 'purchase_order') t.purchaseOrderId = src.id;
   if (src.kind === 'invoice' && to === 'credit_note') t.invoiceId = src.id;
-  if (to === 'invoice') {
-    t.terms = t.terms || prefs.invoiceTerms;
+  if (to !== src.kind) {
+    const defs = docDefaults(prefs, to);
+    t.terms = t.terms || defs.terms;
+    if (DOC_META[to].side === 'sales') t.customerNotes = t.customerNotes || defs.notes;
   }
   if (src.kind === to) {
     // clone

@@ -10,7 +10,9 @@ import { api, qs, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { Checkbox, ContactPicker, DateInput, Field, Modal, PageHeader, Select, Spinner, Status, clsx } from '../../components/ui';
-import { DocumentPreview, ReceiptPreview, type Template } from '../../components/DocumentPreview';
+import { DocumentPreview, ReceiptPreview } from '../../components/DocumentPreview';
+import { TemplatesSettings, useDocTemplate } from '../../components/pdf/Customize';
+import type { PdfTemplate } from '@shared/pdfTemplate';
 import { StatementView } from '../contacts/Contacts';
 
 // ------------------------------------------------------------ time tracking
@@ -423,6 +425,7 @@ export function Settings() {
     { to: '/settings', label: 'Organization Profile', end: true },
     { to: '/settings/preferences', label: 'Preferences' },
     { to: '/settings/approvals', label: 'Approvals' },
+    { to: '/settings/templates', label: 'PDF Templates' },
     { to: '/settings/features', label: 'Configure Features' },
     { to: '/settings/import', label: 'Import Data' },
     { to: '/settings/data', label: 'Data & Backup' },
@@ -442,6 +445,7 @@ export function Settings() {
           <Route index element={<OrgProfile />} />
           <Route path="preferences" element={<Preferences />} />
           <Route path="approvals" element={<Approvals />} />
+          <Route path="templates" element={<TemplatesSettings />} />
           <Route path="features" element={<Features />} />
           <Route path="import" element={<ImportData />} />
           <Route path="data" element={<DataAdmin />} />
@@ -477,8 +481,8 @@ function useAutoPrint(ready: boolean) {
 function PrintShell({ children, ready }: { children: React.ReactNode; ready: boolean }) {
   useAutoPrint(ready);
   return (
-    <div className="min-h-full bg-slate-100 py-8 print:bg-white print:py-0">
-      <div className="no-print mx-auto mb-4 flex max-w-[820px] items-center justify-between text-[13px] text-slate-600">
+    <div className="min-h-full bg-slate-100 px-4 py-8 print:bg-white print:p-0">
+      <div className="no-print mx-auto mb-4 flex max-w-[900px] items-center justify-between text-[13px] text-slate-600">
         <span>Use your browser's “Save as PDF” destination to download a PDF.</span>
         <button className="btn-primary" onClick={() => window.print()}>
           Print / Save as PDF
@@ -492,9 +496,10 @@ function PrintShell({ children, ready }: { children: React.ReactNode; ready: boo
 export function PrintDoc() {
   const { id } = useParams();
   const [search] = useSearchParams();
-  const { organization } = useBoot();
+  const { organization, preferences } = useBoot();
   const { data } = useApi<TxnDoc & { contact?: Contact }>(`/docs/${id}`);
-  return <PrintShell ready={!!data}>{data ? <DocumentPreview doc={data} org={organization} contact={data.contact} template={(search.get('template') as Template) || 'standard'} /> : <Spinner />}</PrintShell>;
+  const template = useDocTemplate(data?.kind || 'invoice', search.get('template') || data?.templateId);
+  return <PrintShell ready={!!data}>{data ? <DocumentPreview doc={data} org={organization} contact={data.contact} template={template} preferences={preferences} ribbon={false} /> : <Spinner />}</PrintShell>;
 }
 
 export function PrintPayment({ made }: { made?: boolean }) {
@@ -502,8 +507,9 @@ export function PrintPayment({ made }: { made?: boolean }) {
   const [search] = useSearchParams();
   const { organization } = useBoot();
   const { data } = useApi<(PaymentReceived | PaymentMade) & { contact?: Contact; invoices?: { amount: number; doc?: TxnDoc }[]; bills?: { amount: number; doc?: TxnDoc }[] }>(made ? `/payments-made/${id}` : `/payments-received/${id}`);
+  const template = useDocTemplate('payment', search.get('template') || undefined);
   const rows = (data?.invoices || data?.bills || []).filter((x) => x.doc).map((x) => ({ number: x.doc!.number, date: x.doc!.date, total: x.doc!.total, amount: x.amount }));
-  return <PrintShell ready={!!data}>{data ? <ReceiptPreview payment={data} org={organization} contact={data.contact} kind={made ? 'made' : 'received'} rows={rows} template={(search.get('template') as Template) || (made ? 'standard' : 'elite')} /> : <Spinner />}</PrintShell>;
+  return <PrintShell ready={!!data}>{data ? <ReceiptPreview payment={data} org={organization} contact={data.contact} kind={made ? 'made' : 'received'} rows={rows} template={template} /> : <Spinner />}</PrintShell>;
 }
 
 export function PrintStatement() {
@@ -517,7 +523,7 @@ export function PrintStatement() {
 
 export function SharePage() {
   const { token } = useParams();
-  const { data, error } = useApi<{ doc: TxnDoc & { contact?: Contact }; organization: Organization }>(`/public/share/${token}`, { retry: false });
+  const { data, error } = useApi<{ doc: TxnDoc & { contact?: Contact }; organization: Organization; template: PdfTemplate; preferences: Record<string, unknown> }>(`/public/share/${token}`, { retry: false });
   if (error) return <div className="p-16 text-center text-slate-500">{(error as Error).message}</div>;
   if (!data) return <Spinner />;
   return (
@@ -533,7 +539,9 @@ export function SharePage() {
           </button>
         </div>
       </div>
-      <DocumentPreview doc={data.doc} org={data.organization} contact={data.doc.contact} />
+      <div className="mx-auto max-w-[900px] px-4">
+        <DocumentPreview doc={data.doc} org={data.organization} contact={data.doc.contact} template={data.template} preferences={data.preferences} ribbon={false} />
+      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { toast } from '../../lib/toast';
 import { AccountSelect, ContactPicker, DateInput, Dropdown, Field, MenuItem, MoneyInput, SearchBox, Select, Spinner, Status, Tabs, clsx, useConfirm, Drawer } from '../../components/ui';
 import { Attachments, EmailModal, JournalTable, Lifecycle, Timeline } from '../../components/shared';
 import { ReceiptPreview } from '../../components/DocumentPreview';
+import { useDocTemplate } from '../../components/pdf/Customize';
 import { Tb } from './PaymentsReceived';
 
 type Row = PaymentMade & { contactName: string; billNumbers: string[] };
@@ -312,6 +313,7 @@ function DetailView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { organization: org } = useBoot();
+  const tpl = useDocTemplate('payment');
   const { data: list = [] } = useApi<Row[]>('/payments-made');
   const { data: p } = useApi<Detail>(`/payments-made/${id}`);
   const [tab, setTab] = useState('receipt');
@@ -373,7 +375,7 @@ function DetailView() {
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4">
             <Tabs tabs={[{ value: 'receipt', label: 'Payment' }, { value: 'journal', label: 'Journal' }, { value: 'activity', label: 'Activity' }]} value={tab} onChange={setTab} className="no-print mb-4" />
-            {tab === 'receipt' && <ReceiptPreview payment={p} org={org} contact={p.contact} kind="made" template="standard" rows={p.bills.filter((x) => x.doc).map((x) => ({ number: x.doc!.number, date: x.doc!.date, total: x.doc!.total, amount: x.amount }))} />}
+            {tab === 'receipt' && <ReceiptPreview payment={p} org={org} contact={p.contact} kind="made" template={tpl} rows={p.bills.filter((x) => x.doc).map((x) => ({ number: x.doc!.number, date: x.doc!.date, total: x.doc!.total, amount: x.amount }))} />}
             {tab === 'journal' && <JournalTable journals={p.journals} />}
             {tab === 'activity' && <Timeline entityId={p.id} />}
           </div>

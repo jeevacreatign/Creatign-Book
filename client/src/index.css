@@ -39,3 +39,27 @@
   .print-area { box-shadow: none !important; border: none !important; margin: 0 !important; }
   @page { size: A4; margin: 12mm; }
 }
+
+/* Fonts used by PDF templates (same files the server embeds in emailed PDFs) */
+@font-face { font-family: 'PDF Inter'; src: url('/fonts/inter-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PDF Inter'; src: url('/fonts/inter-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'PDF Roboto'; src: url('/fonts/roboto-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PDF Roboto'; src: url('/fonts/roboto-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'PDF Poppins'; src: url('/fonts/poppins-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PDF Poppins'; src: url('/fonts/poppins-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'PDF Montserrat'; src: url('/fonts/montserrat-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PDF Montserrat'; src: url('/fonts/montserrat-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'PDF DM Sans'; src: url('/fonts/dm-sans-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PDF DM Sans'; src: url('/fonts/dm-sans-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'PDF Source Serif'; src: url('/fonts/source-serif-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PDF Source Serif'; src: url('/fonts/source-serif-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'PDF Playfair'; src: url('/fonts/playfair-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PDF Playfair'; src: url('/fonts/playfair-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+
+.pdf-page { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+@media print {
+  .pdf-fit { transform: none !important; width: auto !important; height: auto !important; margin: 0 !important; }
+  .pdf-fit-outer { height: auto !important; overflow: visible !important; }
+  .pdf-page { padding: 0 !important; width: auto !important; min-height: 0 !important; box-shadow: none !important; }
+  .pdf-screen-only { display: none !important; }
+}
