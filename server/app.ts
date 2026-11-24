@@ -513,6 +513,7 @@ export function createApp() {
       vendorName: S.contactName(db, e.vendorId),
       customerName: S.contactName(db, e.customerId),
       profile: profile && { id: profile.id, profileName: profile.profileName, status: profile.status },
+      projectName: e.projectId ? db.projects.find((x) => x.id === e.projectId)?.name : undefined,
       invoice: invoice && { id: invoice.id, number: invoice.number, status: invoice.status },
       journals: journalsFor(e.id),
     };

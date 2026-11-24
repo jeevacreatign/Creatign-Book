@@ -18,11 +18,18 @@ export const DEFAULT_ACCOUNTS: Account[] = [
   acc(A.tcsReceivable, '1160', 'TCS Receivable', 'asset', 'other_current_asset', 'Tax collected at source by vendors'),
   acc(A.prepaid, '1170', 'Prepaid Expenses', 'asset', 'other_current_asset'),
   acc(A.employeeAdvance, '1180', 'Employee Advance', 'asset', 'other_current_asset'),
+  acc('acc_input_cgst', '1190', 'Input CGST', 'asset', 'other_current_asset', 'CGST paid on purchases (input tax credit)'),
+  acc('acc_input_sgst', '1191', 'Input SGST', 'asset', 'other_current_asset', 'SGST paid on purchases (input tax credit)'),
+  acc('acc_input_igst', '1192', 'Input IGST', 'asset', 'other_current_asset', 'IGST paid on purchases (input tax credit)'),
   acc('acc_furniture', '1500', 'Furniture and Equipment', 'asset', 'fixed_asset'),
   acc(A.ap, '2000', 'Accounts Payable', 'liability', 'accounts_payable'),
   acc(A.tdsPayable, '2100', 'TDS Payable', 'liability', 'other_current_liability', 'TDS withheld from vendors'),
   acc(A.tcsPayable, '2110', 'TCS Payable', 'liability', 'other_current_liability', 'TCS collected from customers'),
   acc('acc_gst_payable', '2120', 'GST Payable', 'liability', 'other_current_liability'),
+  acc('acc_output_cgst', '2130', 'Output CGST', 'liability', 'other_current_liability', 'CGST collected on sales'),
+  acc('acc_output_sgst', '2131', 'Output SGST', 'liability', 'other_current_liability', 'SGST collected on sales'),
+  acc('acc_output_igst', '2132', 'Output IGST', 'liability', 'other_current_liability', 'IGST collected on sales'),
+  acc('acc_rcm_payable', '2140', 'Reverse Charge Tax Payable', 'liability', 'other_current_liability', 'GST payable by you on purchases under reverse charge'),
   acc(A.ownersEquity, '3000', "Owner's Equity", 'equity', 'equity'),
   acc(A.openingBalanceAdj, '3100', 'Opening Balance Adjustments', 'equity', 'equity'),
   acc('acc_retained', '3200', 'Retained Earnings', 'equity', 'equity'),
@@ -146,8 +153,8 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     db.contacts.push(
       contact({ id: 'cus_test', kind: 'customer', displayName: 'Test Company', companyName: 'Test Company', salutation: 'Mr.', firstName: 'Arun', lastName: 'Kumar', email: 'accounts@testcompany.in', workPhone: '+91 44 2345 6789', mobile: '+91 98400 12345', billingAddress: { street1: '12, Anna Salai', city: 'Chennai', state: 'Tamil Nadu', pin: '600002', country: 'India' }, shippingAddress: { street1: '12, Anna Salai', city: 'Chennai', state: 'Tamil Nadu', pin: '600002', country: 'India' }, paymentTerms: 'net_15' }),
       contact({ id: 'cus_ananya', kind: 'customer', displayName: 'Ananya Textiles', companyName: 'Ananya Textiles Pvt Ltd', firstName: 'Ananya', lastName: 'R', email: 'ananya@ananyatextiles.in', workPhone: '+91 421 220 3344', billingAddress: { street1: '45, Avinashi Road', city: 'Tiruppur', state: 'Tamil Nadu', pin: '641603', country: 'India' }, paymentTerms: 'net_30' }),
-      contact({ id: 'ven_murugan', kind: 'vendor', displayName: 'Sri Murugan Printers', companyName: 'Sri Murugan Printers', firstName: 'Murugan', email: 'orders@srimuruganprinters.in', workPhone: '+91 422 255 6677', billingAddress: { street1: '8, Oppanakara Street', city: 'Coimbatore', state: 'Tamil Nadu', pin: '641001', country: 'India' }, msmeRegistered: true, paymentTerms: 'net_30' }),
-      contact({ id: 'ven_cloudhost', kind: 'vendor', displayName: 'CloudHost India', companyName: 'CloudHost India LLP', email: 'billing@cloudhost.example', paymentTerms: 'due_on_receipt' }),
+      contact({ id: 'ven_murugan', kind: 'vendor', displayName: 'Sri Murugan Printers', companyName: 'Sri Murugan Printers', firstName: 'Murugan', email: 'orders@srimuruganprinters.in', workPhone: '+91 422 255 6677', billingAddress: { street1: '8, Oppanakara Street', city: 'Coimbatore', state: 'Tamil Nadu', pin: '641001', country: 'India' }, msmeRegistered: true, paymentTerms: 'net_30', gstTreatment: 'registered_business', gstin: '33AAKFS1234M1Z5', placeOfSupply: 'Tamil Nadu' }),
+      contact({ id: 'ven_cloudhost', kind: 'vendor', displayName: 'CloudHost India', companyName: 'CloudHost India LLP', email: 'billing@cloudhost.example', paymentTerms: 'due_on_receipt', gstTreatment: 'registered_business', gstin: '29AAGFC1234K1Z2', placeOfSupply: 'Karnataka' }),
     );
     db.projects.push({ id: 'prj_site', name: 'Test Project', customerId: 'cus_test', billingMethod: 'hourly', rate: 1500, budgetHours: 40, status: 'active', createdAt: ts() });
   }

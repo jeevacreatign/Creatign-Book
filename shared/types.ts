@@ -1,4 +1,5 @@
 import type { PdfTemplate } from './pdfTemplate';
+import type { TaxBreakdownRow } from './gst';
 import type { EmailTemplate } from './email';
 import type { CustomerResponse, PaymentNotice, PortalSession, PortalUser } from './portal';
 // Shared domain model for Creatign Books. Used by both the API server and the React client.
@@ -95,6 +96,10 @@ export interface Item {
   purchaseAccountId: ID;
   purchaseDescription?: string;
   preferredVendorId?: ID;
+  hsnSac?: string;
+  taxPreference?: 'taxable' | 'exempt' | 'non_gst' | 'out_of_scope';
+  /** default GST rate for sales and purchases */
+  taxId?: string;
   status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
@@ -137,6 +142,9 @@ export interface Contact {
   language: string;
   pan?: string;
   gstin?: string;
+  gstTreatment?: string;
+  /** place of supply (state) for customers, source of supply for vendors */
+  placeOfSupply?: string;
   msmeRegistered?: boolean;
   msmeType?: string;
   tdsRate?: number;
@@ -183,6 +191,10 @@ export interface LineItem {
   rate: number;
   discountPercent?: number; // line-level discount (bills)
   customerId?: ID; // billable to customer (bills / recurring bills)
+  /** GST rate id from shared/gst.ts (gst18, exempt, ...) */
+  taxId?: string;
+  hsnSac?: string;
+  taxAmount?: number; // computed
   amount: number; // computed: qty * rate * (1 - discount%)
 }
 
@@ -247,11 +259,20 @@ export interface TxnDoc {
   adjustment: number;
   adjustmentLabel?: string;
   roundOff?: boolean;
+  // GST (India)
+  gstTreatment?: string;
+  gstin?: string;
+  sourceOfSupply?: string;
+  destinationOfSupply?: string;
+  reverseCharge?: boolean;
+  taxInclusive?: boolean;
   // computed
   subTotal: number;
   discountAmount: number;
   tdsAmount: number;
   tcsAmount: number;
+  taxAmount?: number;
+  taxBreakdown?: TaxBreakdownRow[];
   total: number;
   balance: number; // invoices/bills: amount due; credit notes/vendor credits: credits remaining
   // workflow
@@ -372,9 +393,30 @@ export interface ExpenseLine {
   accountId: ID;
   amount: number;
   notes?: string;
+  taxId?: string;
+  taxAmount?: number;
 }
 
-export interface Expense {
+/** GST fields shared by expenses and recurring expenses (Zoho India). */
+export interface ExpenseGst {
+  expenseType?: 'goods' | 'service';
+  hsnSac?: string;
+  gstTreatment?: string;
+  vendorGstin?: string;
+  sourceOfSupply?: string;
+  destinationOfSupply?: string;
+  reverseCharge?: boolean;
+  taxId?: string;
+  /** Amount Is: Tax Inclusive (true) or Tax Exclusive */
+  taxInclusive?: boolean;
+  /** computed: GST on the expense */
+  taxAmount?: number;
+  /** computed: amount before tax (what is booked to the expense account) */
+  subTotal?: number;
+  taxBreakdown?: TaxBreakdownRow[];
+}
+
+export interface Expense extends ExpenseGst {
   id: ID;
   date: string;
   accountId: ID;
@@ -394,12 +436,13 @@ export interface Expense {
   receipts: Attachment[];
   recurringProfileId?: ID;
   invoiceId?: ID;
+  projectId?: ID;
   reportingTags: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface RecurringExpense {
+export interface RecurringExpense extends ExpenseGst {
   id: ID;
   profileName: string;
   repeatEvery: RepeatEvery;
@@ -413,6 +456,7 @@ export interface RecurringExpense {
   notes?: string;
   customerId?: ID;
   billable: boolean;
+  projectId?: ID;
   reportingTags: Record<string, string>;
   status: 'active' | 'stopped' | 'expired';
   lastGeneratedDate?: string;

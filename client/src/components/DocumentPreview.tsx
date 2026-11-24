@@ -411,7 +411,7 @@ function ItemTable({ t, m }: { t: PdfTemplate; m: PdfModel }) {
                 );
               return (
                 <td key={c.key} style={td}>
-                  {c.key === 'rate' ? l.rate : c.key === 'discount' ? l.discount : l.amount}
+                  {c.key === 'rate' ? l.rate : c.key === 'discount' ? l.discount : c.key === 'tax' ? l.tax : l.amount}
                 </td>
               );
             })}

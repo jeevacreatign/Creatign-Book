@@ -10,11 +10,14 @@ import { useBoot } from '../../lib/app';
 import { Dropdown, MenuItem, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 import { Comments, Timeline } from '../../components/shared';
 import { MakeRecurringDrawer, ReceiptDrop, TagChips } from './parts';
+import { TaxRows } from '../../components/gst';
+import { isIntraState, stateLabel, taxLabel, treatmentLabel } from '@shared/gst';
 
 export type ExpenseRow = Expense & { accountName?: string; paidThroughName?: string; vendorName?: string; customerName?: string };
 export type ExpenseDetailData = ExpenseRow & {
   profile?: { id: string; profileName: string; status: string };
   invoice?: { id: string; number: string; status: string };
+  projectName?: string;
   journals: Journal[];
 };
 
@@ -339,6 +342,14 @@ function ExpenseDetailPane() {
               </table>
             )}
 
+            {(e.taxAmount ?? 0) > 0 && (
+              <div className="mt-4 max-w-sm rounded-md border border-slate-200 px-4 py-2">
+                <div className="flex justify-between py-1 text-[13px]"><span className="text-slate-600">Sub Total</span><span className="tabular-nums">{money(e.subTotal ?? e.amount)}</span></div>
+                <TaxRows rows={e.taxBreakdown} reverseCharge={e.reverseCharge} />
+                <div className="mt-1 flex justify-between border-t border-slate-200 pt-1.5 text-[13px] font-semibold"><span>Total</span><span className="tabular-nums">{money(e.amount)}</span></div>
+              </div>
+            )}
+
             <div className="mt-7">
               <Detail label="Paid Through">{e.paidThroughName || acct(e.paidThroughAccountId)}</Detail>
               {e.isMileage && (
@@ -360,6 +371,14 @@ function ExpenseDetailPane() {
                   </Link>
                 </Detail>
               )}
+              {e.gstTreatment && <Detail label="GST Treatment">{treatmentLabel(e.gstTreatment)}</Detail>}
+              {e.vendorGstin && <Detail label="GSTIN">{e.vendorGstin}</Detail>}
+              {e.sourceOfSupply && !e.isMileage && <Detail label="Source of Supply">{stateLabel(e.sourceOfSupply)}</Detail>}
+              {e.destinationOfSupply && !e.isMileage && <Detail label="Destination of Supply">{stateLabel(e.destinationOfSupply)}</Detail>}
+              {e.taxId && <Detail label="Tax">{taxLabel(e.taxId, isIntraState(e.sourceOfSupply, e.destinationOfSupply, e.gstTreatment))} ({e.taxInclusive ? 'Tax Inclusive' : 'Tax Exclusive'})</Detail>}
+              {e.reverseCharge && <Detail label="Reverse Charge">Applicable</Detail>}
+              {e.hsnSac && <Detail label={e.expenseType === 'goods' ? 'HSN Code' : 'SAC'}>{e.hsnSac}</Detail>}
+              {e.projectName && <Detail label="Project">{e.projectName}</Detail>}
               {e.invoiceNumber && <Detail label="Invoice#">{e.invoiceNumber}</Detail>}
               {e.invoice && (
                 <Detail label="Invoiced In">

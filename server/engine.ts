@@ -1,11 +1,12 @@
 // Core accounting engine: derives balances/statuses from source documents and
 // rebuilds the double-entry general ledger. Derived state is recomputed from
 // scratch after every mutation, so the ledger can never drift from the documents.
-import { computeTotals } from '../shared/calc';
+import { computeTotals, taxInTotal } from '../shared/calc';
+import { GST_ACCOUNTS, computeTax, isIntraState, stateFromGstin, taxRate } from '../shared/gst';
 import { isUnposted } from '../shared/approval';
 import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { nextRecurrence, round2, today, addDays, dueDateFor } from '../shared/format';
-import type { Database, Journal, JournalLine, JournalSource, TxnDoc, Expense } from '../shared/types';
+import type { Database, Journal, JournalLine, JournalSource, TxnDoc, Expense, ExpenseGst, RecurringExpense } from '../shared/types';
 import { getDb, newId, now, peekNumber, takeNumber } from './db';
 
 const OPEN_FAMILY_INVOICE = new Set(['open', 'sent', 'due_today', 'overdue', 'partially_paid', 'paid']);
@@ -17,7 +18,12 @@ export const isPostedCredit = (d: TxnDoc) => (d.kind === 'credit_note' || d.kind
 /** Apply computed totals to a document in place. */
 export function applyTotals(doc: TxnDoc) {
   const t = computeTotals(doc);
-  doc.lineItems.forEach((l, i) => (l.amount = t.lineAmounts[i]));
+  doc.lineItems.forEach((l, i) => {
+    l.amount = t.lineAmounts[i];
+    l.taxAmount = t.lineTax[i] || undefined;
+  });
+  doc.taxAmount = t.taxAmount;
+  doc.taxBreakdown = t.taxBreakdown;
   doc.subTotal = t.subTotal;
   doc.discountAmount = t.discountAmount;
   doc.tdsAmount = t.tdsAmount;
@@ -148,12 +154,16 @@ function tidy(lines: JournalLine[]): JournalLine[] {
 }
 
 /** Lines for an invoice-like sales document (signs flipped for credit notes). */
+/** Line amount net of tax when the document is tax inclusive. */
+const netLine = (d: TxnDoc, l: TxnDoc['lineItems'][number]) => (d.taxInclusive && !d.reverseCharge ? round2(l.amount - (l.taxAmount || 0)) : l.amount);
+
 function salesDocLines(d: TxnDoc, reverse = false): JournalLine[] {
   const ar = d.accountId || A.ar;
-  const adj = round2(d.total - (d.subTotal - d.discountAmount - d.tdsAmount + d.tcsAmount)); // adjustment + round off
+  const adj = round2(d.total - (d.subTotal - d.discountAmount + taxInTotal(d) - d.tdsAmount + d.tcsAmount)); // adjustment + round off
   const dr: JournalLine[] = [jl(ar, d.total, 0, undefined, d.contactId), jl(A.tdsReceivable, d.tdsAmount, 0), jl(A.discount, d.discountAmount, 0)];
   const cr: JournalLine[] = [];
-  for (const l of d.lineItems) cr.push(jl(l.accountId || A.sales, 0, l.amount));
+  for (const l of d.lineItems) cr.push(jl(l.accountId || A.sales, 0, netLine(d, l)));
+  for (const t of d.taxBreakdown ?? []) cr.push(jl(GST_ACCOUNTS.output[t.component], 0, t.amount, t.key));
   cr.push(jl(A.tcsPayable, 0, d.tcsAmount));
   if (adj >= 0) cr.push(jl(A.otherCharges, 0, adj));
   else dr.push(jl(A.otherCharges, -adj, 0));
@@ -163,11 +173,14 @@ function salesDocLines(d: TxnDoc, reverse = false): JournalLine[] {
 
 function purchaseDocLines(d: TxnDoc, reverse = false): JournalLine[] {
   const ap = d.accountId || A.ap;
-  const adj = round2(d.total - (d.subTotal - d.discountAmount - d.tdsAmount + d.tcsAmount));
+  const adj = round2(d.total - (d.subTotal - d.discountAmount + taxInTotal(d) - d.tdsAmount + d.tcsAmount));
   const dr: JournalLine[] = [];
-  for (const l of d.lineItems) dr.push(jl(l.accountId || A.cogs, l.amount, 0));
+  for (const l of d.lineItems) dr.push(jl(l.accountId || A.cogs, netLine(d, l), 0));
+  // input tax credit; under reverse charge the tax is owed to the government instead of the vendor
+  for (const t of d.taxBreakdown ?? []) dr.push(jl(GST_ACCOUNTS.input[t.component], t.amount, 0, t.key));
   dr.push(jl(A.tcsReceivable, d.tcsAmount, 0));
   const cr: JournalLine[] = [jl(ap, 0, d.total, undefined, d.contactId), jl(A.tdsPayable, 0, d.tdsAmount), jl(A.purchaseDiscount, 0, d.discountAmount)];
+  if (d.reverseCharge) cr.push(jl(GST_ACCOUNTS.reverseChargePayable, 0, d.taxAmount || 0, 'Reverse charge'));
   if (adj >= 0) dr.push(jl('acc_other_expense', adj, 0));
   else cr.push(jl('acc_other_expense', 0, -adj));
   const lines = [...dr, ...cr];
@@ -225,7 +238,12 @@ export function rebuildJournals(db: Database = getDb()) {
   }
 
   for (const e of db.expenses) {
-    const lines: JournalLine[] = e.itemized && e.lines.length ? e.lines.map((l) => jl(l.accountId, l.amount, 0, l.notes)) : [jl(e.accountId, e.amount, 0, e.notes)];
+    // net of GST: lines carry the amount excluding tax when the expense has tax
+    const lines: JournalLine[] = e.itemized && e.lines.length
+      ? e.lines.map((l) => jl(l.accountId, e.taxInclusive ? round2(l.amount - (l.taxAmount || 0)) : l.amount, 0, l.notes))
+      : [jl(e.accountId, e.subTotal ?? e.amount, 0, e.notes)];
+    for (const t of e.taxBreakdown ?? []) lines.push(jl(GST_ACCOUNTS.input[t.component], t.amount, 0, t.key));
+    if (e.reverseCharge && e.taxAmount) lines.push(jl(GST_ACCOUNTS.reverseChargePayable, 0, e.taxAmount, 'Reverse charge'));
     lines.push(jl(e.paidThroughAccountId, 0, e.amount, undefined, e.vendorId));
     add('expense', e.id, e.date, lines, e.invoiceNumber, e.vendorId);
   }
@@ -305,27 +323,7 @@ export function runRecurring(db: Database = getDb(), upTo = today()): number {
     let guard = 0;
     while (next <= upTo && guard++ < 120) {
       if (!r.neverExpires && r.endsOn && next > r.endsOn) break;
-      const ts = now();
-      const e: Expense = {
-        id: newId('exp'),
-        date: next,
-        accountId: r.accountId,
-        amount: r.amount,
-        itemized: false,
-        lines: [],
-        paidThroughAccountId: r.paidThroughAccountId,
-        vendorId: r.vendorId,
-        notes: r.notes,
-        customerId: r.customerId,
-        billable: r.billable,
-        status: r.billable ? 'unbilled' : 'non_billable',
-        isMileage: false,
-        receipts: [],
-        recurringProfileId: r.id,
-        reportingTags: { ...r.reportingTags },
-        createdAt: ts,
-        updatedAt: ts,
-      };
+      const e = expenseFromProfile(r, next, db);
       db.expenses.push(e);
       created++;
       r.lastGeneratedDate = next;
@@ -334,6 +332,67 @@ export function runRecurring(db: Database = getDb(), upTo = today()): number {
     r.nextDate = next;
   }
   return created;
+}
+
+/** GST on an expense (single or itemized). `entered` is the amount as typed (inclusive or exclusive of tax). */
+export function expenseGst(db: Database, g: ExpenseGst, vendorId: string | undefined, entered: number, lines: Expense['lines'], itemized: boolean, isMileage: boolean) {
+  const vendor = vendorId ? db.contacts.find((c) => c.id === vendorId) : undefined;
+  const gstTreatment = g.gstTreatment || vendor?.gstTreatment || (vendor?.gstin ? 'registered_business' : undefined);
+  const destinationOfSupply = g.destinationOfSupply || db.organization.state;
+  const sourceOfSupply = g.sourceOfSupply || vendor?.placeOfSupply || stateFromGstin(vendor?.gstin) || db.organization.state;
+  const reverseCharge = Boolean(g.reverseCharge);
+  const inclusive = (g.taxInclusive ?? true) && !reverseCharge;
+  const taxId = isMileage || itemized ? undefined : taxRate(g.taxId) ? g.taxId : undefined;
+  const intra = isIntraState(sourceOfSupply, destinationOfSupply, gstTreatment);
+  const t = computeTax(itemized ? lines.map((l) => ({ amount: l.amount, taxId: l.taxId })) : [{ amount: entered, taxId }], { intra, inclusive });
+  if (itemized) lines.forEach((l, i) => (l.taxAmount = t.lineTax[i] || undefined));
+  const gross = itemized ? round2(lines.reduce((s2, l) => s2 + l.amount, 0)) : entered;
+  const subTotal = inclusive ? round2(gross - t.taxTotal) : gross;
+  const amount = inclusive || reverseCharge ? gross : round2(gross + t.taxTotal);
+  const vendorGstin = (g.vendorGstin || '').trim() || vendor?.gstin;
+  return {
+    gstTreatment,
+    vendorGstin: vendorGstin?.toUpperCase(),
+    sourceOfSupply,
+    destinationOfSupply,
+    reverseCharge,
+    taxInclusive: inclusive,
+    taxId,
+    taxAmount: t.taxTotal,
+    taxBreakdown: t.breakdown,
+    subTotal,
+    amount,
+  };
+}
+
+/** One expense generated from a recurring expense profile (copies its GST settings). */
+export function expenseFromProfile(r: RecurringExpense, date: string, db: Database = getDb()): Expense {
+  const ts = now();
+  const entered = r.taxInclusive === false ? r.subTotal ?? r.amount : r.amount;
+  const gst = expenseGst(db, r, r.vendorId, entered, [], false, false);
+  return {
+    id: newId('exp'),
+    date,
+    accountId: r.accountId,
+    itemized: false,
+    lines: [],
+    paidThroughAccountId: r.paidThroughAccountId,
+    vendorId: r.vendorId,
+    notes: r.notes,
+    customerId: r.customerId,
+    billable: r.billable,
+    projectId: r.projectId,
+    status: r.billable ? 'unbilled' : 'non_billable',
+    isMileage: false,
+    receipts: [],
+    recurringProfileId: r.id,
+    reportingTags: { ...r.reportingTags },
+    expenseType: r.expenseType,
+    hsnSac: r.hsnSac,
+    ...gst,
+    createdAt: ts,
+    updatedAt: ts,
+  };
 }
 
 // ------------------------------------------------------------------ activity

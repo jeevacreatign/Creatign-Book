@@ -6,6 +6,9 @@ import { APPROVAL_KINDS, POSTED_STATUS, approvalEnabled, isUnposted, needsApprov
 import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { dueDateFor, money, nextRecurrence, round2, today } from '../shared/format';
 import { customFieldsFor, docDefaults } from '../shared/pdfTemplate';
+import { GST_ACCOUNTS, computeTax, isIntraState, stateFromGstin, taxRate, treatmentNeedsGstin } from '../shared/gst';
+
+const GSTIN_RE = /^[0-9]{2}[A-Z0-9]{10}[0-9A-Z]{3}$/;
 import type {
   Contact,
   Database,
@@ -20,7 +23,7 @@ import type {
   TxnDoc,
 } from '../shared/types';
 import { getDb, newId, now, peekNumber, persist, takeNumber } from './db';
-import { applyTotals, logActivity, makeDocFromProfile, recompute, runRecurring } from './engine';
+import { applyTotals, expenseFromProfile, expenseGst, logActivity, makeDocFromProfile, recompute, runRecurring } from './engine';
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -110,6 +113,12 @@ export function upsertContact(body: Partial<Contact>, id?: string): Contact {
     updatedAt: ts,
   } as Contact;
   if ((merged.documents?.length ?? 0) > 10) throw bad('You can upload a maximum of 10 documents');
+  if (merged.gstin) {
+    merged.gstin = merged.gstin.trim().toUpperCase();
+    if (!GSTIN_RE.test(merged.gstin)) throw bad('Enter a valid GSTIN (15 characters, e.g. 33ABCDE1234F1Z5)');
+    merged.placeOfSupply = merged.placeOfSupply || stateFromGstin(merged.gstin);
+  }
+  if (merged.gstTreatment && treatmentNeedsGstin(merged.gstTreatment) && !merged.gstin) throw bad('GSTIN/UIN is required for this GST treatment');
   merged.contactPersons = (merged.contactPersons || []).map((p) => ({ ...p, id: p.id || newId('cp') }));
   merged.bankDetails = (merged.bankDetails || []).map((p) => ({ ...p, id: p.id || newId('bank') }));
   if (existing) Object.assign(existing, merged);
@@ -162,6 +171,8 @@ export function upsertItem(body: Partial<Item>, id?: string): Item {
     purchaseAccountId: body.purchaseAccountId || existing?.purchaseAccountId || A.cogs,
     updatedAt: ts,
   } as Item;
+  if (item.taxPreference && item.taxPreference !== 'taxable') item.taxId = item.taxPreference;
+  else if (item.taxId && !taxRate(item.taxId)) throw bad('Unknown tax rate');
   if (existing) Object.assign(existing, item);
   else db.items.push(item);
   return item;
@@ -202,6 +213,8 @@ function normalizeLines(raw: Partial<LineItem>[] | undefined, side: 'sales' | 'p
         rate: round2(n(l.rate)),
         discountPercent: n(l.discountPercent) || undefined,
         customerId: l.customerId || undefined,
+        taxId: taxRate(l.taxId) ? l.taxId : l.taxId === '' ? undefined : item?.taxId,
+        hsnSac: str(l.hsnSac) ?? item?.hsnSac,
         amount: 0,
       } satisfies LineItem;
     });
@@ -284,6 +297,18 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
     customFields,
     updatedAt: ts,
   } as TxnDoc;
+  // GST: defaults come from the contact (source of supply) and the organization (destination)
+  if (meta.side === 'purchase') {
+    doc.gstTreatment = doc.gstTreatment || contact.gstTreatment || (contact.gstin ? 'registered_business' : undefined);
+    doc.gstin = str(doc.gstin) ?? contact.gstin;
+    doc.destinationOfSupply = doc.destinationOfSupply || db.organization.state;
+    doc.sourceOfSupply = doc.sourceOfSupply || contact.placeOfSupply || stateFromGstin(contact.gstin) || db.organization.state;
+    doc.reverseCharge = Boolean(doc.reverseCharge);
+    doc.taxInclusive = Boolean(doc.taxInclusive) && !doc.reverseCharge;
+    if (doc.gstTreatment && treatmentNeedsGstin(doc.gstTreatment) && doc.gstin && !GSTIN_RE.test(doc.gstin)) throw bad('Enter a valid GSTIN (15 characters, e.g. 33ABCDE1234F1Z5)');
+  } else {
+    doc.taxInclusive = Boolean(doc.taxInclusive);
+  }
   // computed fields are never trusted from the client
   if (kind === 'invoice' || kind === 'bill') {
     if (!str(body.dueDate) && !existing?.dueDate) doc.dueDate = dueDateFor(date, paymentTerms);
@@ -411,6 +436,9 @@ export function convertTemplate(sourceId: string, to: DocKind): Partial<TxnDoc> 
         accountId: crossSide ? (toSide === 'sales' ? item?.salesAccountId || A.sales : item?.purchaseAccountId || A.cogs) : l.accountId,
       };
     }),
+    ...(DOC_META[src.kind].side === toSide
+      ? { gstTreatment: src.gstTreatment, gstin: src.gstin, sourceOfSupply: src.sourceOfSupply, destinationOfSupply: src.destinationOfSupply, reverseCharge: src.reverseCharge, taxInclusive: src.taxInclusive }
+      : {}),
     discountPercent: src.discountPercent,
     tdsRate: src.tdsRate,
     tcsRate: src.tcsRate,
@@ -816,18 +844,24 @@ export function saveExpense(body: Partial<Expense>, id?: string): Expense {
   const existing = id ? db.expenses.find((e) => e.id === id) : undefined;
   if (id && !existing) throw notFound('Expense');
   const isMileage = Boolean(body.isMileage ?? existing?.isMileage);
-  const itemized = Boolean(body.itemized ?? existing?.itemized);
-  const lines = (body.lines ?? existing?.lines ?? []).filter((l) => l.accountId && n(l.amount) > 0).map((l) => ({ ...l, id: l.id || newId('el'), amount: round2(n(l.amount)) }));
-  let amount = round2(n(body.amount ?? existing?.amount));
-  if (isMileage) amount = round2(n(body.distance ?? existing?.distance) * n(body.ratePerKm ?? existing?.ratePerKm));
-  if (itemized) amount = round2(lines.reduce((s, l) => s + l.amount, 0));
+  const itemized = Boolean(body.itemized ?? existing?.itemized) && !isMileage;
+  const lines = (body.lines ?? existing?.lines ?? []).filter((l) => l.accountId && n(l.amount) > 0).map((l) => ({ ...l, id: l.id || newId('el'), amount: round2(n(l.amount)), taxId: taxRate(l.taxId) ? l.taxId : undefined }));
+  // the amount as the user typed it (tax exclusive expenses keep their pre-tax amount in subTotal)
+  let entered = body.amount !== undefined ? round2(n(body.amount)) : existing ? (existing.taxInclusive === false ? existing.subTotal ?? existing.amount : existing.amount) : 0;
+  if (isMileage) entered = round2(n(body.distance ?? existing?.distance) * n(body.ratePerKm ?? existing?.ratePerKm));
   const accountId = isMileage ? A.fuel : itemized ? lines[0]?.accountId : body.accountId ?? existing?.accountId;
   if (!accountId) throw bad('Expense Account is required');
-  if (amount <= 0) throw bad('Amount must be greater than zero');
+  if (itemized && !lines.length) throw bad('Add at least one line to the itemized expense');
+  if (!itemized && entered <= 0) throw bad('Amount must be greater than zero');
   const paidThroughAccountId = body.paidThroughAccountId ?? existing?.paidThroughAccountId;
   if (!paidThroughAccountId) throw bad('Paid Through is required');
   const customerId = body.customerId ?? existing?.customerId;
   const billable = Boolean(customerId) && Boolean(body.billable ?? existing?.billable);
+  const vendorId = body.vendorId !== undefined ? body.vendorId || undefined : existing?.vendorId;
+  const projectId = body.projectId !== undefined ? body.projectId || undefined : existing?.projectId;
+  if (projectId && !db.projects.some((p) => p.id === projectId)) throw bad('Project not found');
+  const gst = expenseGst(db, { ...existing, ...body }, vendorId, entered, lines, itemized, isMileage);
+  if (gst.vendorGstin && !GSTIN_RE.test(gst.vendorGstin)) throw bad('Enter a valid GSTIN (15 characters, e.g. 33ABCDE1234F1Z5)');
   const ts = now();
   const e: Expense = {
     receipts: [],
@@ -835,19 +869,22 @@ export function saveExpense(body: Partial<Expense>, id?: string): Expense {
     createdAt: ts,
     ...existing,
     ...body,
+    ...gst,
     id: existing?.id ?? newId('exp'),
     date: str(body.date) ?? existing?.date ?? today(),
     accountId,
-    amount,
     itemized,
     lines,
     isMileage,
     paidThroughAccountId,
+    vendorId,
+    projectId,
     customerId: customerId || undefined,
     billable,
     status: existing?.status === 'invoiced' || existing?.status === 'reimbursed' ? existing.status : body.status === 'reimbursed' ? 'reimbursed' : billable ? 'unbilled' : 'non_billable',
     updatedAt: ts,
   } as Expense;
+  if (e.amount <= 0) throw bad('Amount must be greater than zero');
   if (e.receipts.length > 10) throw bad('You can upload a maximum of 10 receipts');
   if (e.reportingTags && typeof e.reportingTags !== 'object') e.reportingTags = {};
   const receiptsOnly = existing && Object.keys(body).every((k) => k === 'receipts');
@@ -866,32 +903,6 @@ export function deleteExpenses(ids: string[]) {
   const before = db.expenses.length;
   db.expenses = db.expenses.filter((e) => !ids.includes(e.id));
   return { deleted: before - db.expenses.length };
-}
-
-/** Creates one expense from a recurring profile right away (Zoho's "Create Expense" on a profile). */
-export function expenseFromProfile(r: RecurringExpense, date: string): Expense {
-  const ts = now();
-  return {
-    id: newId('exp'),
-    date,
-    accountId: r.accountId,
-    amount: r.amount,
-    itemized: false,
-    lines: [],
-    paidThroughAccountId: r.paidThroughAccountId,
-    vendorId: r.vendorId,
-    invoiceNumber: undefined,
-    notes: r.notes,
-    customerId: r.customerId,
-    billable: r.billable,
-    status: r.billable ? 'unbilled' : 'non_billable',
-    isMileage: false,
-    receipts: [],
-    recurringProfileId: r.id,
-    reportingTags: { ...r.reportingTags },
-    createdAt: ts,
-    updatedAt: ts,
-  };
 }
 
 export function convertExpenseToInvoice(id: string): TxnDoc {
@@ -925,10 +936,14 @@ export function saveRecurringExpense(body: Partial<RecurringExpense>, id?: strin
   if (!repeatEvery?.unit) throw bad('Repeat Every is required');
   const accountId = body.accountId ?? existing?.accountId;
   if (!accountId) throw bad('Expense Account is required');
-  const amount = round2(n(body.amount ?? existing?.amount));
-  if (amount <= 0) throw bad('Amount must be greater than zero');
+  const entered = body.amount !== undefined ? round2(n(body.amount)) : existing ? (existing.taxInclusive === false ? existing.subTotal ?? existing.amount : existing.amount) : 0;
+  if (entered <= 0) throw bad('Amount must be greater than zero');
   const paidThroughAccountId = body.paidThroughAccountId ?? existing?.paidThroughAccountId;
   if (!paidThroughAccountId) throw bad('Paid Through is required');
+  const vendorId = body.vendorId !== undefined ? body.vendorId || undefined : existing?.vendorId;
+  const gst = expenseGst(db, { ...existing, ...body }, vendorId, entered, [], false, false);
+  if (gst.vendorGstin && !GSTIN_RE.test(gst.vendorGstin)) throw bad('Enter a valid GSTIN (15 characters, e.g. 33ABCDE1234F1Z5)');
+  const amount = gst.amount;
   const ts = now();
   const startOn = str(body.startOn) ?? existing?.startOn ?? today();
   const r: RecurringExpense = {
@@ -938,6 +953,8 @@ export function saveRecurringExpense(body: Partial<RecurringExpense>, id?: strin
     createdAt: ts,
     ...existing,
     ...body,
+    ...gst,
+    vendorId,
     id: existing?.id ?? newId('rexp'),
     profileName,
     repeatEvery: { n: n(repeatEvery.n, 1), unit: repeatEvery.unit },

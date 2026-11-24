@@ -8,9 +8,11 @@ import type { Expense, RecurringExpense } from '@shared/types';
 import { api, useAction, useApi } from '../../api';
 import { useBoot, isCashLike } from '../../lib/app';
 import { toast } from '../../lib/toast';
-import { AccountSelect, Checkbox, ContactPicker, DateInput, Dropdown, Field, FormFooter, MenuItem, MoneyInput, PageHeader, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
+import { AccountSelect, Checkbox, ContactPicker, DateInput, Dropdown, Field, FormFooter, MenuItem, MoneyInput, PageHeader, Radio, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle, Timeline } from '../../components/shared';
-import { RepeatSelect, ReportingTags, TagChips } from './parts';
+import { ProjectPicker, RepeatSelect, ReportingTags, TagChips, expenseTaxPreview } from './parts';
+import { GstFields, TaxRows, TaxSelect } from '../../components/gst';
+import { stateFromGstin, treatmentLabel } from '@shared/gst';
 
 type RRow = RecurringExpense & { accountName?: string; vendorName?: string; customerName?: string; children: number };
 type RDetail = RecurringExpense & { accountName?: string; paidThroughName?: string; vendorName?: string; customerName?: string; children: Expense[] };
@@ -241,9 +243,16 @@ function RecurringDetailPane() {
             <div className="text-[24px] font-medium text-red-500 tabular-nums">{money(r.amount)}</div>
             <div className="mb-3 text-[13px] font-medium uppercase tracking-wide text-slate-600">{r.billable ? 'Billable' : 'Non-Billable'}</div>
             <span className="rounded bg-sky-100 px-3 py-1 text-xs text-sky-900">{r.accountName}</span>
+            {(r.taxAmount ?? 0) > 0 && (
+              <div className="mt-3 max-w-xs">
+                <TaxRows rows={r.taxBreakdown} reverseCharge={r.reverseCharge} />
+              </div>
+            )}
             <div className="mt-4">
               <Detail label="Paid Through">{r.paidThroughName}</Detail>
               <Detail label="Paid To">{r.vendorId ? <Link className="link" to={`/purchases/vendors/${r.vendorId}`}>{r.vendorName}</Link> : null}</Detail>
+              {r.gstTreatment && <Detail label="GST Treatment">{treatmentLabel(r.gstTreatment)}</Detail>}
+              {r.sourceOfSupply && <Detail label="Source of Supply">{r.sourceOfSupply}</Detail>}
               <Detail label="Customer">{r.customerId ? <Link className="link" to={`/sales/customers/${r.customerId}`}>{r.customerName}</Link> : null}</Detail>
               {r.notes && <Detail label="Notes">{r.notes}</Detail>}
               {Object.keys(r.reportingTags || {}).length > 0 && (
@@ -319,7 +328,7 @@ function RecurringForm() {
   const { id } = useParams();
   const [search] = useSearchParams();
   const navigate = useNavigate();
-  const { accounts } = useBoot();
+  const { accounts, organization } = useBoot();
   const fromExpense = search.get('fromExpense');
   const cloneId = search.get('clone');
   const { data: existing } = useApi<RecurringExpense>(id ? `/recurring-expenses/${id}` : cloneId ? `/recurring-expenses/${cloneId}` : null);
@@ -330,18 +339,20 @@ function RecurringForm() {
     if (f) return;
     if (id || cloneId) {
       if (!existing) return;
-      if (id) setF(existing);
+      const typed = existing.taxInclusive === false ? existing.subTotal ?? existing.amount : existing.amount;
+      if (id) setF({ ...existing, amount: typed });
       else {
         const { id: _id, lastGeneratedDate: _l, nextDate: _n, createdAt: _c, updatedAt: _u, status: _s, ...rest } = existing;
-        setF({ ...rest, profileName: `${rest.profileName} (copy)`, startOn: today() });
+        setF({ ...rest, amount: typed, profileName: `${rest.profileName} (copy)`, startOn: today() });
       }
       return;
     }
     if (fromExpense && !src) return;
-    setF({ repeatEvery: { n: 1, unit: 'month' }, startOn: today(), neverExpires: true, paidThroughAccountId: 'acc_petty_cash', billable: false, reportingTags: {}, ...(src ? { accountId: src.accountId, amount: src.amount, vendorId: src.vendorId, customerId: src.customerId, notes: src.notes, paidThroughAccountId: src.paidThroughAccountId, billable: src.billable } : {}) });
-  }, [existing, src, f, id, cloneId, fromExpense]);
+    setF({ repeatEvery: { n: 1, unit: 'month' }, startOn: today(), neverExpires: true, paidThroughAccountId: 'acc_petty_cash', billable: false, reportingTags: {}, taxInclusive: true, destinationOfSupply: organization.state, ...(src ? { accountId: src.accountId, amount: src.amount, vendorId: src.vendorId, customerId: src.customerId, notes: src.notes, paidThroughAccountId: src.paidThroughAccountId, billable: src.billable } : {}) });
+  }, [existing, src, f, id, cloneId, fromExpense, organization.state]);
   if (!f) return <Spinner />;
   const set = (p: Partial<RecurringExpense>) => setF({ ...f, ...p });
+  const tax = expenseTaxPreview(f);
   async function save() {
     setSaving(true);
     try {
@@ -385,12 +396,33 @@ function RecurringForm() {
         <Field label="Amount" required>
           <MoneyInput className="max-w-xs" value={f.amount} onChange={(v) => set({ amount: v as unknown as number })} />
         </Field>
+        <Field label="Tax">
+          <TaxSelect className="max-w-xs" value={f.taxId} intra={tax.intra} onChange={(v) => set({ taxId: v })} />
+        </Field>
+        <Field label="Amount Is">
+          <div className="pt-1.5">
+            <Radio name="taxInclusive" value={f.taxInclusive === false || f.reverseCharge ? 'exclusive' : 'inclusive'} onChange={(v) => set({ taxInclusive: v === 'inclusive' })} options={[{ value: 'inclusive', label: 'Tax Inclusive' }, { value: 'exclusive', label: 'Tax Exclusive' }]} />
+          </div>
+        </Field>
+        {tax.taxTotal > 0 && (
+          <div className="max-w-xl rounded-md border border-slate-200 bg-slate-50 px-4 py-2 sm:ml-[196px]">
+            <TaxRows rows={tax.breakdown} reverseCharge={f.reverseCharge} />
+            <div className="mt-1 flex justify-between border-t border-slate-200 pt-1.5 text-[13px] font-semibold"><span>Total per expense</span><span className="tabular-nums">{money(tax.total)}</span></div>
+          </div>
+        )}
         <Field label="Paid Through" required>
           <AccountSelect className="max-w-sm" accounts={accounts} value={f.paidThroughAccountId} onChange={(v) => set({ paidThroughAccountId: v })} filter={(a) => isCashLike(a) || a.subType === 'other_current_liability' || a.subType === 'equity' || a.subType === 'other_current_asset'} />
         </Field>
         <Field label="Vendor">
           <div className="max-w-sm">
-            <ContactPicker kind="vendor" value={f.vendorId} onChange={(v) => set({ vendorId: v || undefined })} />
+            <ContactPicker kind="vendor" value={f.vendorId} onChange={(v, c) => set({ vendorId: v || undefined, ...(c ? { gstTreatment: c.gstTreatment || (c.gstin ? 'registered_business' : 'unregistered_business'), vendorGstin: c.gstin, sourceOfSupply: c.placeOfSupply || stateFromGstin(c.gstin) || organization.state } : {}) })} />
+          </div>
+        </Field>
+        <GstFields value={{ ...f, gstin: f.vendorGstin }} gstinKey="vendorGstin" onChange={(p) => set(p as Partial<RecurringExpense>)} />
+        <Field label="Expense Type">
+          <div className="flex flex-wrap items-center gap-4 pt-1">
+            <Radio name="expenseType" value={f.expenseType || 'service'} onChange={(v) => set({ expenseType: v })} options={[{ value: 'goods', label: 'Goods' }, { value: 'service', label: 'Services' }]} />
+            <input className="input w-40" placeholder={f.expenseType === 'goods' ? 'HSN Code' : 'SAC'} value={f.hsnSac || ''} onChange={(e) => set({ hsnSac: e.target.value })} />
           </div>
         </Field>
         <Field label="Notes">
@@ -404,6 +436,7 @@ function RecurringForm() {
             <Checkbox checked={!!f.billable} disabled={!f.customerId} onChange={(v) => set({ billable: v })} label="Billable" />
           </div>
         </Field>
+        {f.customerId && <ProjectPicker customerId={f.customerId} value={f.projectId} onChange={(v) => set({ projectId: v })} />}
         <Field label="Reporting Tags">
           <div className="max-w-xl pt-1.5">
             <ReportingTags value={f.reportingTags || {}} onChange={(v) => set({ reportingTags: v })} />

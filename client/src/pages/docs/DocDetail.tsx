@@ -12,6 +12,8 @@ import { EmailModal, JournalTable, MailLog, ShareModal, Timeline, Comments } fro
 import { CustomerActivity, InvoiceNotices } from '../../components/portal/PaymentNotices';
 import { AddressBlock, DocumentPreview } from '../../components/DocumentPreview';
 import { CustomizeMenu, useDocTemplate } from '../../components/pdf/Customize';
+import { TaxRows } from '../../components/gst';
+import { isIntraState, taxLabel, treatmentLabel } from '@shared/gst';
 
 type Related = {
   quote?: TxnDoc;
@@ -47,6 +49,11 @@ function DocSummary({ d }: { d: DocDetailData }) {
         {d.dueDate && <KV k="Due Date" v={fmtDate(d.dueDate)} />}
         {d.referenceNumber && <KV k="Reference#" v={d.referenceNumber} />}
         {d.salesperson && <KV k="Salesperson" v={d.salesperson} />}
+        {d.gstTreatment && <KV k="GST Treatment" v={treatmentLabel(d.gstTreatment)} />}
+        {d.gstin && <KV k="GSTIN" v={d.gstin} />}
+        {d.sourceOfSupply && <KV k="Source of Supply" v={d.sourceOfSupply} />}
+        {d.destinationOfSupply && <KV k="Destination of Supply" v={d.destinationOfSupply} />}
+        {d.reverseCharge && <KV k="Reverse Charge" v="Yes" />}
       </div>
       <table className="table border-t border-slate-200">
         <thead>
@@ -54,6 +61,7 @@ function DocSummary({ d }: { d: DocDetailData }) {
             <th>Item & Description</th>
             <th className="text-right">Qty</th>
             <th className="text-right">Rate</th>
+            {d.lineItems.some((l) => l.taxId) && <th className="text-right">Tax</th>}
             <th className="text-right">Amount</th>
           </tr>
         </thead>
@@ -66,12 +74,17 @@ function DocSummary({ d }: { d: DocDetailData }) {
               </td>
               <td className="text-right">{l.quantity} {l.unit}</td>
               <td className="text-right">{money(l.rate)}</td>
+              {d.lineItems.some((x) => x.taxId) && <td className="text-right text-xs">{taxLabel(l.taxId, isIntraState(d.sourceOfSupply, d.destinationOfSupply, d.gstTreatment))}{l.taxAmount ? <div className="text-slate-500">{money(l.taxAmount)}</div> : null}</td>}
               <td className="text-right">{money(l.amount)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div className="flex justify-end p-5 text-[14px] font-semibold">Total {money(d.total)}</div>
+      <div className="ml-auto w-80 p-5">
+        <div className="flex justify-between py-1 text-[13px]"><span>Sub Total</span><span>{money(d.subTotal)}</span></div>
+        <TaxRows rows={d.taxBreakdown} reverseCharge={d.reverseCharge} inclusive={d.taxInclusive} />
+        <div className="mt-1 flex justify-between border-t border-slate-200 pt-2 text-[14px] font-semibold"><span>Total</span><span>{money(d.total)}</span></div>
+      </div>
     </div>
   );
 }

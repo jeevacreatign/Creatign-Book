@@ -6,6 +6,7 @@ import { DOC_META } from './docmeta';
 import { fmtDate, frequencyLabel, money, num } from './format';
 import type { Address, Contact, DocKind, Organization, TxnDoc } from './types';
 import { PAYMENT_TERMS } from './types';
+import { isIntraState, taxLabel, taxRate } from './gst';
 
 // ------------------------------------------------------------ options
 
@@ -343,6 +344,7 @@ export interface PdfLine {
   unit?: string;
   rate: string;
   discount?: string;
+  tax?: string;
   amount: string;
 }
 
@@ -353,7 +355,7 @@ export interface PdfTotalRow {
 }
 
 export interface PdfColumn {
-  key: 'index' | 'item' | 'qty' | 'rate' | 'discount' | 'amount';
+  key: 'index' | 'item' | 'qty' | 'rate' | 'discount' | 'tax' | 'amount';
   label: string;
   align: 'left' | 'right' | 'center';
   /** share of the table width */
@@ -423,7 +425,12 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
       facts.push([f.label, f.dataType === 'date' ? fmtDate(v) : f.dataType === 'checkbox' ? (v === 'true' ? 'Yes' : 'No') : v]);
     }
   }
+  if (doc.gstin && !sales) facts.push(['Vendor GSTIN', doc.gstin]);
+  if (doc.sourceOfSupply && !sales) facts.push(['Source of Supply', doc.sourceOfSupply]);
+  if (doc.destinationOfSupply && !sales) facts.push(['Destination of Supply', doc.destinationOfSupply]);
+  if (doc.reverseCharge) facts.push(['Reverse Charge', 'Yes']);
   const anyDiscount = doc.lineItems.some((l) => l.discountPercent);
+  const anyTax = doc.lineItems.some((l) => l.taxId);
   const L = t.table.labels;
   const columns: PdfColumn[] = [
     ...(t.table.showIndex ? [{ key: 'index', label: L.index, align: 'center', weight: 0.6 } as PdfColumn] : []),
@@ -431,8 +438,10 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
     { key: 'qty', label: L.qty, align: 'right', weight: 1.3 },
     { key: 'rate', label: L.rate, align: 'right', weight: 1.7 },
     ...(anyDiscount ? [{ key: 'discount', label: L.discount, align: 'right', weight: 1.5 } as PdfColumn] : []),
+    ...(anyTax ? [{ key: 'tax', label: 'Tax', align: 'right', weight: 1.6 } as PdfColumn] : []),
     { key: 'amount', label: L.amount, align: 'right', weight: 1.9 },
   ];
+  const intra = isIntraState(doc.sourceOfSupply, doc.destinationOfSupply, doc.gstTreatment);
   const lines: PdfLine[] = doc.lineItems.map((l, i) => ({
     index: i + 1,
     name: l.name,
@@ -441,12 +450,16 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
     unit: t.table.showUnit ? l.unit || undefined : undefined,
     rate: num(l.rate),
     discount: anyDiscount ? (l.discountPercent ? `${l.discountPercent}%` : '0%') : undefined,
+    tax: anyTax ? (taxRate(l.taxId)?.kind === 'gst' ? `${taxRate(l.taxId)!.rate}%` : taxLabel(l.taxId, intra) || '-') : undefined,
     amount: num(l.amount),
   }));
-  const adj = Math.round((doc.total - (doc.subTotal - doc.discountAmount - doc.tdsAmount + doc.tcsAmount)) * 100) / 100;
+  const onTop = doc.taxInclusive || doc.reverseCharge ? 0 : doc.taxAmount || 0;
+  const adj = Math.round((doc.total - (doc.subTotal - doc.discountAmount + onTop - doc.tdsAmount + doc.tcsAmount)) * 100) / 100;
   const totals: PdfTotalRow[] = [];
   if (t.total.showSubTotal) totals.push({ label: 'Sub Total', value: num(doc.subTotal) });
   if (doc.discountAmount > 0) totals.push({ label: `Discount (${doc.discountPercent}%)`, value: `(-) ${num(doc.discountAmount)}`, emphasis: 'negative' });
+  for (const t of doc.taxBreakdown ?? []) totals.push({ label: `${t.key.replace(/[\d.]+$/, '')}${t.rate} (${t.rate}%)${doc.reverseCharge ? ' (RCM)' : ''}`, value: num(t.amount) });
+  if (doc.taxInclusive && doc.taxAmount) totals.push({ label: 'Includes tax of', value: num(doc.taxAmount) });
   if (doc.tdsAmount > 0) totals.push({ label: `TDS (${doc.tdsRate}%)`, value: `(-) ${num(doc.tdsAmount)}`, emphasis: 'negative' });
   if (doc.tcsAmount > 0) totals.push({ label: `TCS (${doc.tcsRate}%)`, value: num(doc.tcsAmount) });
   if (adj !== 0) totals.push({ label: doc.adjustmentLabel || 'Adjustment', value: num(adj) });
