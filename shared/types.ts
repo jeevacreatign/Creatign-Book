@@ -646,7 +646,7 @@ export interface StatementLine {
   withdrawal: number;
   status: 'uncategorized' | 'categorized' | 'matched' | 'excluded';
   /** transaction this line was categorized as or matched to */
-  match?: { type: 'bank_transaction' | 'expense' | 'payment_received' | 'payment_made' | 'journal'; id: ID };
+  match?: { type: 'bank_transaction' | 'expense' | 'payment_received' | 'payment_made' | 'manual' | 'journal'; id: ID; journalId?: ID };
   /** rule that recognized the line (pre-filled suggestion) */
   ruleId?: ID;
   importId?: ID;
@@ -661,6 +661,8 @@ export interface StatementImport {
   duplicates: number;
   from?: string;
   to?: string;
+  /** closing balance read from the statement's balance column */
+  closingBalance?: number;
   documentId?: ID;
   createdAt: string;
 }

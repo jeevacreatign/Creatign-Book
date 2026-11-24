@@ -14,7 +14,8 @@ import DocModule from './pages/docs/DocModule';
 import PaymentsReceived from './pages/payments/PaymentsReceived';
 import PaymentsMade from './pages/payments/PaymentsMade';
 import Expenses, { RecurringExpenses } from './pages/expenses/Expenses';
-import { Banking, Reports } from './pages/misc/Accounting';
+import { Reports } from './pages/misc/Accounting';
+import Banking from './pages/banking';
 import Accountant from './pages/accountant';
 import { AppPlaceholder, Documents, PrintDoc, PrintExpense, PrintPayment, PrintStatement, Settings } from './pages/misc/Other';
 import TimeTracking from './pages/time';
@@ -83,7 +84,7 @@ function App() {
         <Route path="purchases/expenses/*" element={<Expenses />} />
         <Route path="purchases/recurring-expenses/*" element={<RecurringExpenses />} />
         <Route path="time-tracking/*" element={<TimeTracking />} />
-        <Route path="banking" element={<Banking />} />
+        <Route path="banking/*" element={<Banking />} />
         <Route path="accountant/*" element={<Accountant />} />
         <Route path="reports/*" element={<Reports />} />
         <Route path="documents" element={<Documents />} />

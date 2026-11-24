@@ -12,6 +12,7 @@ import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import { normalizeTimeTracking, registerProjectRoutes } from './projects';
 import { lockGuard, registerAccountantRoutes } from './accountant';
+import { registerBankingRoutes } from './banking';
 import * as R from './reports';
 import * as S from './services';
 import { mailSettings, savedSmtp, verifySmtp, type SmtpSettings } from './mailer';
@@ -217,6 +218,7 @@ export function createApp() {
 
   // ------------------------------------------------------------ accountant (server/accountant.ts)
   registerAccountantRoutes(api, h, m);
+  registerBankingRoutes(api, h, m);
 
   // ------------------------------------------------------------ items
   api.get('/items', h((req) => {
