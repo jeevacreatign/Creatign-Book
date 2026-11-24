@@ -5,6 +5,8 @@ import { useApi } from '../api';
 export interface Bootstrap {
   organization: Organization;
   accounts: Account[];
+  /** approvals turned on per module (Settings > Approvals) */
+  approvals: Record<string, boolean>;
   preferences: Record<string, unknown> & { salespersons?: string[]; challanTypes?: string[]; deliveryMethods?: string[]; invoiceTerms?: string; customerNotes?: string; quoteNotes?: string; mileageRatePerKm?: number };
 }
 

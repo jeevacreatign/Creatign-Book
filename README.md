@@ -115,7 +115,7 @@ Run `npm run reset-data` first for a clean start, then `npm run dev` and open ht
 
 1. **Create an item.** Items → **New**. Name *Website Audit*, type Service, Selling Price `24000`, Sales Account *Sales*. Save.
 2. **Create a quote.** Sales → Quotes → **New**. Customer *Test Company*, add the item *Website Audit* (qty 1). Check the total reads ₹24,000.00. Click **Save and Send**, then **Send** in the email dialog. The quote's status becomes **Sent**.
-3. **Convert to a sales order.** On the quote, open **More → Convert to Sales Order**. The form opens prefilled with the customer and lines; click **Save and Send** (or **Save**). The new order `SO-00001` is linked back to the quote.
+3. **Convert to a sales order.** On the quote, open **More → Convert to Sales Order**. The form opens prefilled with the customer and lines; click **Save and Submit**. The new order `SO-00001` is linked back to the quote and shows **Pending Approval** (sales orders need approval by default, see below). Click **Approve**, then **Mark as Confirmed**.
 4. **Convert to an invoice.** On the sales order, click **Convert to Invoice** and then **Save and Send** (or Save as Draft, then Mark as Sent). The sales order's Invoiced indicator turns green. The invoice gets number `INV-00001`, a due date from the customer's payment terms (Net 15), and status **Open/Due**.
 5. **Check the journal.** Open the invoice's **Journal** tab:
    Accounts Receivable debit ₹24,000.00, Sales credit ₹24,000.00.
@@ -138,9 +138,21 @@ Try also: a quote with 10% discount and 2% TDS (`₹1,00,000 → ₹88,200`), pa
 
 Try also: a purchase order converted to a bill (the PO becomes **Billed**), bills with TDS (TDS Payable is credited), vendor credits, and expenses (Purchases → Expenses), which post straight to the expense account.
 
+### C. Submit for Approval (Zoho-style)
+
+Settings → **Approvals** turns approval on or off per module (Quotes, Sales Orders, Invoices, Credit Notes, Purchase Orders, Bills, Vendor Credits). Sales orders require approval out of the box; the others are off until you turn them on.
+
+1. Create a sales order and click **Save as Draft**. The detail page shows a **Submit for Approval** toolbar button, a **What's next?** banner with **Submit for Approval** and **Approve**, and a diagonal **Draft** ribbon on the preview.
+2. Click **Submit for Approval**. Status becomes **Pending Approval** and the toolbar offers **Approve** and **Reject**. Send, Share, Mark as Confirmed and Convert to Invoice stay hidden until it is approved, and the API refuses them.
+3. **Reject** asks for a reason, shown on the banner. Edit the order (the primary button reads **Save and Submit**) or click **Submit for Approval** to send it back.
+4. **Approve** moves it to **Approved**. The banner then offers **Send Sales Order** or **Mark as Confirmed**, which makes it **Confirmed** as before.
+5. The **Activity** tab lists every submission, rejection (with reason) and approval.
+
+Documents that are draft, pending approval, approved or rejected never post to the ledger, receivables/payables or reports. Editing an approved document sends it back for approval.
+
 ### Automated check
 
-`npm test` runs both workflows end to end through the API (15 tests, including email): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
+`npm test` runs the workflows end to end through the API (30 tests, including email and approvals): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
 
 ## Notes and limits
 

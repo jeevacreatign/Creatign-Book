@@ -3,6 +3,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
+import { approvalEnabled, approvalSettings, needsApproval } from '../shared/approval';
 import { DOC_META } from '../shared/docmeta';
 import { periodRange, today, type PeriodKey } from '../shared/format';
 import type { Account, Attachment, DocKind, Journal, Project, TimeEntry, TxnDoc } from '../shared/types';
@@ -62,7 +63,7 @@ export function createApp() {
   // ------------------------------------------------------------ org & setup
   api.get('/bootstrap', h(() => {
     const db = getDb();
-    return { organization: db.organization, accounts: db.accounts, preferences: db.preferences, salespersons: db.preferences.salespersons };
+    return { organization: db.organization, accounts: db.accounts, preferences: db.preferences, salespersons: db.preferences.salespersons, approvals: approvalSettings(db.preferences) };
   }));
   api.put('/organization', m((req) => Object.assign(getDb().organization, req.body, { id: getDb().organization.id })));
   api.put('/preferences', m((req) => Object.assign(getDb().preferences, req.body)));
@@ -453,6 +454,10 @@ export function createApp() {
     const bad = [...to, ...cc].find((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
     if (bad) throw new S.HttpError(400, `"${bad}" is not a valid email address`);
     if (!b.subject) throw new S.HttpError(400, 'Subject is required');
+    const about = b.entityId ? db.docs.find((x) => x.id === b.entityId) : undefined;
+    if (about && approvalEnabled(db.preferences, about.kind) && needsApproval(about.status)) {
+      throw new S.HttpError(400, `Approve this ${DOC_META[about.kind].label.toLowerCase()} before sending it`);
+    }
 
     // Build PDF attachments for whatever the email is about
     const files: { filename: string; content: Buffer }[] = [];
@@ -478,11 +483,12 @@ export function createApp() {
     const d = b.entityId ? db.docs.find((x) => x.id === b.entityId) : undefined;
     if (d) {
       d.sentAt = d.sentAt || now();
-      if (d.kind === 'quote' && d.status === 'draft') d.status = 'sent';
-      if (d.kind === 'sales_order' && d.status === 'draft') d.status = 'confirmed';
-      if (d.kind === 'invoice' && d.status === 'draft') d.status = 'open';
-      if (d.kind === 'purchase_order' && d.status === 'draft') d.status = 'issued';
-      if ((d.kind === 'credit_note' || d.kind === 'vendor_credit') && d.status === 'draft') d.status = 'open';
+      const ready = d.status === 'draft' || d.status === 'approved';
+      if (d.kind === 'quote' && ready) d.status = 'sent';
+      if (d.kind === 'sales_order' && ready) d.status = 'confirmed';
+      if (d.kind === 'invoice' && ready) d.status = 'open';
+      if (d.kind === 'purchase_order' && ready) d.status = 'issued';
+      if ((d.kind === 'credit_note' || d.kind === 'vendor_credit') && ready) d.status = 'open';
       d.emailRecipients = Array.from(new Set([...(d.emailRecipients || []), ...to]));
       logActivity(db, d.kind, d.id, d.contactId, `${DOC_META[d.kind].label} emailed`, `${DOC_META[d.kind].label} ${d.number} emailed to ${to.join(', ')}`);
     } else if (b.contactId) logActivity(db, 'contact', b.contactId, b.contactId, 'Email sent', b.subject);

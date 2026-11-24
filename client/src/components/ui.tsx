@@ -58,6 +58,9 @@ export function Empty({ title, children, icon }: { title: string; children?: Rea
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'text-slate-500',
+  pending_approval: 'text-amber-600',
+  approved: 'text-emerald-600',
+  rejected: 'text-red-500',
   sent: 'text-sky-600',
   open: 'text-sky-600',
   issued: 'text-sky-600',

@@ -263,6 +263,10 @@ export interface TxnDoc {
   emailRecipients: string[];
   locked: boolean;
   sentAt?: string;
+  // approval workflow (see shared/approval.ts)
+  approvedAt?: string;
+  approvedBy?: string;
+  rejection?: { reason?: string; at: string; by: string };
   // relationships
   quoteId?: ID;
   salesOrderId?: ID;

@@ -63,12 +63,17 @@ export interface DocUI {
 
 const ALL = { value: 'all', label: 'All' };
 const DRAFT = { value: 'draft', label: 'Draft' };
+const APPROVAL_FILTERS = [
+  { value: 'pending_approval', label: 'Pending Approval' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+];
 
 export const DOC_UI: Record<DocKind, DocUI> = {
   quote: {
     kind: 'quote',
     columns: ['date', 'number', 'reference', 'contact', 'status', 'amount'],
-    filters: [ALL, DRAFT, { value: 'sent', label: 'Sent' }, { value: 'accepted', label: 'Accepted' }, { value: 'invoiced', label: 'Invoiced' }, { value: 'declined', label: 'Declined' }, { value: 'expired', label: 'Expired' }],
+    filters: [ALL, DRAFT, ...APPROVAL_FILTERS, { value: 'sent', label: 'Sent' }, { value: 'accepted', label: 'Accepted' }, { value: 'invoiced', label: 'Invoiced' }, { value: 'declined', label: 'Declined' }, { value: 'expired', label: 'Expired' }],
     fields: ['reference', 'expiryDate', 'salesperson', 'project', 'subject', 'addresses'],
     attachments: { max: 5, mb: 10 },
     saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
@@ -77,7 +82,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
   sales_order: {
     kind: 'sales_order',
     columns: ['date', 'number', 'reference', 'contact', 'status', 'invoiced', 'payment', 'amount', 'expiryDate'],
-    filters: [ALL, DRAFT, { value: 'confirmed', label: 'Confirmed' }, { value: 'closed', label: 'Closed' }, { value: 'void', label: 'Void' }],
+    filters: [ALL, DRAFT, ...APPROVAL_FILTERS, { value: 'confirmed', label: 'Confirmed' }, { value: 'closed', label: 'Closed' }, { value: 'void', label: 'Void' }],
     fields: ['reference', 'expectedShipment', 'terms', 'deliveryMethod', 'salesperson', 'project', 'subject', 'addresses'],
     attachments: { max: 10, mb: 5 },
     saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
@@ -86,7 +91,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
   invoice: {
     kind: 'invoice',
     columns: ['date', 'number', 'orderNumber', 'contact', 'status', 'dueDate', 'amount', 'balance'],
-    filters: [ALL, DRAFT, { value: 'unpaid', label: 'Unpaid' }, { value: 'open', label: 'Open' }, { value: 'sent', label: 'Sent' }, { value: 'due_today', label: 'Due Today' }, { value: 'overdue', label: 'Overdue' }, { value: 'partially_paid', label: 'Partially Paid' }, { value: 'paid', label: 'Paid' }, { value: 'void', label: 'Void' }],
+    filters: [ALL, DRAFT, ...APPROVAL_FILTERS, { value: 'unpaid', label: 'Unpaid' }, { value: 'open', label: 'Open' }, { value: 'sent', label: 'Sent' }, { value: 'due_today', label: 'Due Today' }, { value: 'overdue', label: 'Overdue' }, { value: 'partially_paid', label: 'Partially Paid' }, { value: 'paid', label: 'Paid' }, { value: 'void', label: 'Void' }],
     fields: ['orderNumber', 'terms', 'dueDate', 'account', 'salesperson', 'project', 'subject', 'addresses', 'makeRecurring'],
     attachments: { max: 10, mb: 10 },
     saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
@@ -114,7 +119,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
   credit_note: {
     kind: 'credit_note',
     columns: ['date', 'number', 'reference', 'contact', 'invoiceNumber', 'status', 'amount', 'balance'],
-    filters: [ALL, DRAFT, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }, { value: 'void', label: 'Void' }],
+    filters: [ALL, DRAFT, ...APPROVAL_FILTERS, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }, { value: 'void', label: 'Void' }],
     fields: ['reference', 'invoiceRef', 'account', 'salesperson', 'subject', 'addresses', 'emailComms'],
     lineAccount: true,
     attachments: { max: 5, mb: 10 },
@@ -124,7 +129,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
   purchase_order: {
     kind: 'purchase_order',
     columns: ['date', 'number', 'reference', 'contact', 'status', 'billed', 'received', 'deliveryDate', 'amount'],
-    filters: [ALL, DRAFT, { value: 'issued', label: 'Issued' }, { value: 'partially_billed', label: 'Partially Billed' }, { value: 'billed', label: 'Billed' }, { value: 'cancelled', label: 'Cancelled' }],
+    filters: [ALL, DRAFT, ...APPROVAL_FILTERS, { value: 'issued', label: 'Issued' }, { value: 'partially_billed', label: 'Partially Billed' }, { value: 'billed', label: 'Billed' }, { value: 'cancelled', label: 'Cancelled' }],
     fields: ['deliveryAddress', 'reference', 'deliveryDate', 'terms', 'shipmentPreference'],
     lineAccount: true,
     attachments: { max: 10, mb: 5 },
@@ -135,7 +140,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
   bill: {
     kind: 'bill',
     columns: ['date', 'number', 'reference', 'contact', 'status', 'dueDate', 'amount', 'balance'],
-    filters: [ALL, DRAFT, { value: 'unpaid', label: 'Unpaid' }, { value: 'open', label: 'Open' }, { value: 'overdue', label: 'Overdue' }, { value: 'partially_paid', label: 'Partially Paid' }, { value: 'paid', label: 'Paid' }, { value: 'void', label: 'Void' }],
+    filters: [ALL, DRAFT, ...APPROVAL_FILTERS, { value: 'unpaid', label: 'Unpaid' }, { value: 'open', label: 'Open' }, { value: 'overdue', label: 'Overdue' }, { value: 'partially_paid', label: 'Partially Paid' }, { value: 'paid', label: 'Paid' }, { value: 'void', label: 'Void' }],
     fields: ['orderNumber', 'dueDate', 'terms', 'account', 'subject', 'makeRecurring'],
     lineAccount: true,
     lineDiscount: true,
@@ -160,7 +165,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
   vendor_credit: {
     kind: 'vendor_credit',
     columns: ['date', 'number', 'reference', 'contact', 'status', 'amount', 'balance'],
-    filters: [ALL, DRAFT, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }, { value: 'void', label: 'Void' }],
+    filters: [ALL, DRAFT, ...APPROVAL_FILTERS, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }, { value: 'void', label: 'Void' }],
     fields: ['reference', 'orderNumber', 'account', 'subject'],
     lineAccount: true,
     attachments: { max: 5, mb: 10 },

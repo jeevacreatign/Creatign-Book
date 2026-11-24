@@ -57,13 +57,20 @@ describe('sales flow', () => {
     quoteId = r.body.id;
   });
 
-  it('converts the quote to a sales order', async () => {
+  it('converts the quote to a sales order, which waits for approval', async () => {
     const t = await api().get(`/api/docs/${quoteId}/convert`).query({ to: 'sales_order' });
     expect(t.body.quoteId).toBe(quoteId);
     const r = await api().post('/api/docs').send({ ...t.body, kind: 'sales_order', mode: 'open' });
     expect(r.status).toBe(200);
-    expect(r.body.status).toBe('confirmed');
+    // approvals are on for sales orders by default
+    expect(r.body.status).toBe('pending_approval');
     soId = r.body.id;
+    const blocked = await api().get(`/api/docs/${soId}/convert`).query({ to: 'invoice' });
+    expect(blocked.status).toBe(400);
+    const approved = await api().post(`/api/docs/${soId}/actions/approve`).send({});
+    expect(approved.body.status).toBe('approved');
+    const confirmed = await api().post(`/api/docs/${soId}/actions/confirm`).send({});
+    expect(confirmed.body.status).toBe('confirmed');
   });
 
   it('converts the sales order to an invoice, closing the loop on the quote', async () => {

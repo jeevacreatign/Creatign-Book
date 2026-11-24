@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Pencil, Mail, Share2, FileText, Printer, ChevronDown, MoreHorizontal, X, Lock, Unlock, Copy, Trash2, Ban, BookOpen, Repeat, Bell, CreditCard, Truck, ArrowRightLeft, CheckCircle2, RotateCcw, Paperclip, MessageSquare } from 'lucide-react';
+import { Pencil, Mail, Share2, FileText, Printer, ChevronDown, MoreHorizontal, X, Lock, Unlock, Copy, Trash2, Ban, BookOpen, Repeat, Bell, CreditCard, Truck, ArrowRightLeft, CheckCircle2, RotateCcw, Paperclip, MessageSquare, Send, ThumbsUp, ThumbsDown, Sparkles } from 'lucide-react';
+import { isUnposted, needsApproval } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
 import { fmtDate, fmtDateTime, frequencyLabel, money, today } from '@shared/format';
 import { PAYMENT_MODES, PAYMENT_TERMS, type Contact, type DocKind, type Journal, type TxnDoc } from '@shared/types';
@@ -30,16 +31,19 @@ export function DocDetail({ kind }: { kind: DocKind }) {
   const { id } = useParams();
   const [search, setSearch] = useSearchParams();
   const navigate = useNavigate();
-  const { organization: org, accounts } = useBoot();
+  const { organization: org, accounts, approvals: approvalPrefs } = useBoot();
   const meta = DOC_META[kind];
   const { data: d, isLoading, error } = useApi<DocDetailData>(`/docs/${id}`);
   const [tab, setTab] = useState<string>('document');
   const [template, setTemplate] = useState<Template>('standard');
   const [emailOpen, setEmailOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [modal, setModal] = useState<null | 'refund' | 'apply' | 'writeoff' | 'expected' | 'cancelItems'>(null);
+  const [modal, setModal] = useState<null | 'refund' | 'apply' | 'writeoff' | 'expected' | 'cancelItems' | 'reject'>(null);
   const confirm = useConfirm();
-  const act = useAction((a: { action: string; body?: unknown }) => api<TxnDoc>(`/docs/${id}/actions/${a.action}`, { body: a.body || {} }), 'Done');
+  const act = useAction(
+    (a: { action: string; body?: unknown }) => api<TxnDoc>(`/docs/${id}/actions/${a.action}`, { body: a.body || {} }),
+    (r) => ({ pending_approval: `${meta.label} submitted for approval`, approved: `${meta.label} approved`, rejected: `${meta.label} rejected` })[r.status] ?? 'Done',
+  );
   const del = useAction(() => api(`/docs/${id}`, { method: 'DELETE' }), `${meta.label} deleted`);
 
   useEffect(() => {
@@ -58,7 +62,11 @@ export function DocDetail({ kind }: { kind: DocKind }) {
 
   const run = (action: string, body?: unknown) => act.mutate({ action, body });
   const sales = meta.side === 'sales';
-  const posted = !['draft', 'void'].includes(d.status);
+  const posted = d.status !== 'void' && !isUnposted(d.status);
+  // approval workflow: with approvals on, a draft must be approved before it is sent/confirmed/opened
+  const approvals = !meta.recurring && !!approvalPrefs?.[kind];
+  const awaiting = approvals && needsApproval(d.status);
+  const canPost = !awaiting && (d.status === 'draft' || d.status === 'approved');
   const unpaid = ['open', 'sent', 'overdue', 'due_today', 'partially_paid'].includes(d.status);
   const convert = (to: DocKind) => navigate(`${DOC_META[to].path}/new?from=${d.id}`);
   const lockItem = (
@@ -103,18 +111,18 @@ export function DocDetail({ kind }: { kind: DocKind }) {
   let more: ReactNode = null;
   switch (kind) {
     case 'quote':
-      if (d.status === 'draft' || d.status === 'sent')
+      if (canPost || d.status === 'sent')
         primary.push(
           <Dropdown key="mark" button={() => <ToolbarBtn icon={<CheckCircle2 size={14} />}>Mark as <ChevronDown size={12} /></ToolbarBtn>}>
-            {d.status === 'draft' && <MenuItem onClick={() => run('mark_sent')}>Mark as Sent</MenuItem>}
+            {canPost && <MenuItem onClick={() => run('mark_sent')}>Mark as Sent</MenuItem>}
             <MenuItem onClick={() => run('accept')}>Mark as Accepted</MenuItem>
             <MenuItem onClick={() => run('decline')}>Mark as Declined</MenuItem>
           </Dropdown>,
         );
-      if (d.status !== 'invoiced' && d.status !== 'declined') primary.push(<ToolbarBtn key="inv" icon={<ArrowRightLeft size={14} />} onClick={() => convert('invoice')}>Convert to Invoice</ToolbarBtn>);
+      if (!awaiting && d.status !== 'invoiced' && d.status !== 'declined') primary.push(<ToolbarBtn key="inv" icon={<ArrowRightLeft size={14} />} onClick={() => convert('invoice')}>Convert to Invoice</ToolbarBtn>);
       more = (
         <>
-          {d.status !== 'invoiced' && <MenuItem onClick={() => convert('sales_order')}>Convert to Sales Order</MenuItem>}
+          {!awaiting && d.status !== 'invoiced' && <MenuItem onClick={() => convert('sales_order')}>Convert to Sales Order</MenuItem>}
           {cloneItem}
           {deleteItem}
           {lockItem}
@@ -123,11 +131,11 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       );
       break;
     case 'sales_order':
-      if (d.status === 'draft') primary.push(<ToolbarBtn key="conf" icon={<CheckCircle2 size={14} />} onClick={() => run('confirm')}>Mark as Confirmed</ToolbarBtn>);
-      if (d.status !== 'void' && d.invoiceStatus !== 'invoiced') primary.push(<ToolbarBtn key="inv" icon={<ArrowRightLeft size={14} />} onClick={() => convert('invoice')}>Convert to Invoice</ToolbarBtn>);
+      if (canPost) primary.push(<ToolbarBtn key="conf" icon={<CheckCircle2 size={14} />} onClick={() => run('confirm')}>Mark as Confirmed</ToolbarBtn>);
+      if (!awaiting && d.status !== 'void' && d.invoiceStatus !== 'invoiced') primary.push(<ToolbarBtn key="inv" icon={<ArrowRightLeft size={14} />} onClick={() => convert('invoice')}>Convert to Invoice</ToolbarBtn>);
       more = (
         <>
-          <MenuItem onClick={() => convert('purchase_order')}>Convert to Purchase Order</MenuItem>
+          {!awaiting && <MenuItem onClick={() => convert('purchase_order')}>Convert to Purchase Order</MenuItem>}
           {d.shipmentStatus === 'fulfilled' ? <MenuItem icon={<RotateCcw size={13} />} onClick={() => run('undo_fulfillment')}>Undo Fulfillment</MenuItem> : <MenuItem icon={<Truck size={13} />} onClick={() => run('fulfill')}>Mark as Fulfilled</MenuItem>}
           <MenuItem onClick={() => setModal('cancelItems')}>Cancel Items</MenuItem>
           {d.status !== 'void' && voidItem}
@@ -138,7 +146,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       );
       break;
     case 'invoice':
-      if (d.status === 'draft') primary.push(<ToolbarBtn key="sent" icon={<CheckCircle2 size={14} />} onClick={() => run('mark_sent')}>Mark as Sent</ToolbarBtn>);
+      if (canPost) primary.push(<ToolbarBtn key="sent" icon={<CheckCircle2 size={14} />} onClick={() => run('mark_sent')}>Mark as Sent</ToolbarBtn>);
       if (unpaid)
         primary.push(
           <Dropdown key="rem" button={() => <ToolbarBtn icon={<Bell size={14} />}>Reminders <ChevronDown size={12} /></ToolbarBtn>}>
@@ -182,7 +190,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       break;
     case 'credit_note':
     case 'vendor_credit':
-      if (d.status === 'draft') primary.push(<ToolbarBtn key="open" onClick={() => run('convert_to_open')}>Convert to Open</ToolbarBtn>);
+      if (canPost) primary.push(<ToolbarBtn key="open" onClick={() => run('convert_to_open')}>Convert to Open</ToolbarBtn>);
       if (d.status === 'open') primary.push(<ToolbarBtn key="apply" onClick={() => setModal('apply')}>Apply to {sales ? 'Invoices' : 'Bills'}</ToolbarBtn>, <ToolbarBtn key="refund" onClick={() => setModal('refund')}>Refund</ToolbarBtn>);
       more = (
         <>
@@ -195,9 +203,9 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       );
       break;
     case 'purchase_order':
-      if (d.status === 'draft') primary.push(<ToolbarBtn key="issue" onClick={() => run('mark_sent')}>Mark as Issued</ToolbarBtn>);
-      if (d.status !== 'cancelled' && !d.received) primary.push(<ToolbarBtn key="recv" icon={<Truck size={14} />} onClick={() => run('mark_received')}>Receive Goods</ToolbarBtn>);
-      if (d.status !== 'cancelled' && d.billedStatus !== 'billed') primary.push(<ToolbarBtn key="bill" icon={<ArrowRightLeft size={14} />} onClick={() => convert('bill')}>Convert to Bill</ToolbarBtn>);
+      if (canPost) primary.push(<ToolbarBtn key="issue" onClick={() => run('mark_sent')}>Mark as Issued</ToolbarBtn>);
+      if (!awaiting && d.status !== 'cancelled' && !d.received) primary.push(<ToolbarBtn key="recv" icon={<Truck size={14} />} onClick={() => run('mark_received')}>Receive Goods</ToolbarBtn>);
+      if (!awaiting && d.status !== 'cancelled' && d.billedStatus !== 'billed') primary.push(<ToolbarBtn key="bill" icon={<ArrowRightLeft size={14} />} onClick={() => convert('bill')}>Convert to Bill</ToolbarBtn>);
       more = (
         <>
           {cloneItem}
@@ -208,7 +216,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       );
       break;
     case 'bill':
-      if (d.status === 'draft') primary.push(<ToolbarBtn key="open" onClick={() => run('convert_to_open')}>Convert to Open</ToolbarBtn>);
+      if (canPost) primary.push(<ToolbarBtn key="open" onClick={() => run('convert_to_open')}>Convert to Open</ToolbarBtn>);
       if (unpaid) primary.push(<ToolbarBtn key="pay" icon={<CreditCard size={14} />} onClick={() => navigate(`/purchases/payments-made/new?billId=${d.id}&contactId=${d.contactId}`)}>Record Payment</ToolbarBtn>);
       more = (
         <>
@@ -234,6 +242,13 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       );
       break;
   }
+
+  if (approvals && (d.status === 'draft' || d.status === 'rejected')) primary.unshift(<ToolbarBtn key="submit" icon={<Send size={14} />} onClick={() => run('submit_for_approval')}>Submit for Approval</ToolbarBtn>);
+  if (approvals && d.status === 'pending_approval')
+    primary.unshift(
+      <ToolbarBtn key="approve" icon={<ThumbsUp size={14} />} onClick={() => run('approve')}>Approve</ToolbarBtn>,
+      <ToolbarBtn key="reject" icon={<ThumbsDown size={14} />} onClick={() => setModal('reject')}>Reject</ToolbarBtn>,
+    );
 
   const tabs: { value: string; label: string }[] = meta.recurring
     ? [
@@ -281,13 +296,13 @@ export function DocDetail({ kind }: { kind: DocKind }) {
             Edit
           </ToolbarBtn>
         )}
-        {!meta.recurring && (
+        {!meta.recurring && !awaiting && (
           <Dropdown button={() => <ToolbarBtn icon={<Mail size={14} />}>Send <ChevronDown size={12} /></ToolbarBtn>}>
             <MenuItem onClick={() => setEmailOpen(true)}>Send Email</MenuItem>
             {(kind === 'quote' || kind === 'invoice') && <MenuItem onClick={() => setShareOpen(true)}>Share Link</MenuItem>}
           </Dropdown>
         )}
-        {(kind === 'quote' || kind === 'invoice' || kind === 'sales_order' || kind === 'credit_note') && (
+        {!awaiting && (kind === 'quote' || kind === 'invoice' || kind === 'sales_order' || kind === 'credit_note') && (
           <ToolbarBtn icon={<Share2 size={14} />} onClick={() => setShareOpen(true)}>
             Share
           </ToolbarBtn>
@@ -338,6 +353,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
             </span>
           </div>
         )}
+        {approvals && <WhatsNext d={d} kind={kind} run={run} onReject={() => setModal('reject')} onSend={() => setEmailOpen(true)} onEdit={() => navigate(`${meta.path}/${d.id}/edit`)} />}
         {kind === 'invoice' && unpaid && (
           <div className="mb-3 flex items-center justify-between rounded-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px]">
             <span>
@@ -398,6 +414,16 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         />
       )}
       {shareOpen && <ShareModal open onClose={() => setShareOpen(false)} entityType={kind} entityId={d.id} title={meta.label} />}
+      {modal === 'reject' && (
+        <RejectModal
+          label={meta.label}
+          onClose={() => setModal(null)}
+          onSubmit={(reason) => {
+            run('reject', { reason });
+            setModal(null);
+          }}
+        />
+      )}
       {modal === 'refund' && <RefundModal d={d} onClose={() => setModal(null)} accounts={accounts} />}
       {modal === 'apply' && <ApplyCreditsModal d={d} onClose={() => setModal(null)} />}
       {modal === 'writeoff' && (
@@ -432,6 +458,95 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       )}
       {confirm.node}
     </div>
+  );
+}
+
+// ------------------------------------------------------------ approval workflow
+
+const NEXT_STEP: Partial<Record<DocKind, { action: string; label: string; send: boolean }>> = {
+  quote: { action: 'mark_sent', label: 'Mark as Sent', send: true },
+  sales_order: { action: 'confirm', label: 'Mark as Confirmed', send: true },
+  invoice: { action: 'mark_sent', label: 'Mark as Sent', send: true },
+  credit_note: { action: 'convert_to_open', label: 'Convert to Open', send: true },
+  purchase_order: { action: 'mark_sent', label: 'Mark as Issued', send: true },
+  bill: { action: 'convert_to_open', label: 'Convert to Open', send: false },
+  vendor_credit: { action: 'convert_to_open', label: 'Convert to Open', send: false },
+};
+
+function WhatsNext({ d, kind, run, onReject, onSend, onEdit }: { d: TxnDoc; kind: DocKind; run: (a: string) => void; onReject: () => void; onSend: () => void; onEdit: () => void }) {
+  const label = DOC_META[kind].label;
+  const next = NEXT_STEP[kind];
+  let text: ReactNode = null;
+  let buttons: ReactNode = null;
+  if (d.status === 'draft') {
+    text = `Submit this ${label} for approval. As the approver, you can approve it.`;
+    buttons = (
+      <>
+        <button className="btn-primary btn-sm" onClick={() => run('submit_for_approval')}>Submit for Approval</button>
+        <button className="btn-secondary btn-sm" onClick={() => run('approve')}>Approve</button>
+      </>
+    );
+  } else if (d.status === 'pending_approval') {
+    text = `This ${label} is pending approval. Approve it to continue, or reject it with a reason.`;
+    buttons = (
+      <>
+        <button className="btn-primary btn-sm" onClick={() => run('approve')}>Approve</button>
+        <button className="btn-secondary btn-sm" onClick={onReject}>Reject</button>
+      </>
+    );
+  } else if (d.status === 'rejected') {
+    text = (
+      <>
+        This {label} was rejected{d.rejection?.at ? ` on ${fmtDateTime(d.rejection.at)}` : ''}.{d.rejection?.reason && <> Reason: <span className="font-medium">{d.rejection.reason}</span>.</>} Make the changes and submit it again.
+      </>
+    );
+    buttons = (
+      <>
+        <button className="btn-primary btn-sm" onClick={() => run('submit_for_approval')}>Submit for Approval</button>
+        <button className="btn-secondary btn-sm" onClick={onEdit}>Edit</button>
+      </>
+    );
+  } else if (d.status === 'approved' && next) {
+    text = `This ${label} has been approved${d.approvedAt ? ` on ${fmtDateTime(d.approvedAt)}` : ''}. ${next.send ? `Send it now or ${next.label.toLowerCase()}.` : `${next.label} to record it in your books.`}`;
+    buttons = (
+      <>
+        {next.send && <button className="btn-primary btn-sm" onClick={onSend}>Send {label}</button>}
+        <button className={next.send ? 'btn-secondary btn-sm' : 'btn-primary btn-sm'} onClick={() => run(next.action)}>{next.label}</button>
+      </>
+    );
+  }
+  if (!text) return null;
+  return (
+    <div className="no-print mb-3 rounded-md border border-slate-200 bg-white px-5 py-3.5 shadow-sm">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-800">
+        <Sparkles size={14} className="text-violet-500" /> What's next?
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-slate-700">
+        <span>{text}</span>
+        <span className="flex gap-2">{buttons}</span>
+      </div>
+    </div>
+  );
+}
+
+function RejectModal({ label, onClose, onSubmit }: { label: string; onClose: () => void; onSubmit: (reason: string) => void }) {
+  const [reason, setReason] = useState('');
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Reject ${label}`}
+      footer={
+        <>
+          <button className="btn-danger" onClick={() => onSubmit(reason)}>Reject</button>
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        </>
+      }
+    >
+      <Field label="Reason for rejection">
+        <textarea className="input" rows={3} autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Tell the submitter what needs to change" />
+      </Field>
+    </Modal>
   );
 }
 
@@ -587,7 +702,7 @@ function RecurringOverview({ d }: { d: DocDetailData }) {
                 </td>
                 <td className="text-right">{money(c.total)}</td>
                 <td className="text-right">
-                  {!['paid', 'void', 'draft'].includes(c.status) && (
+                  {!['paid', 'void'].includes(c.status) && !isUnposted(c.status) && (
                     <button
                       className="link text-xs"
                       onClick={(e) => {

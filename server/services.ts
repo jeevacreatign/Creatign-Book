@@ -2,6 +2,7 @@
 // writes to the in-memory database, then the router calls commit() which
 // recomputes derived state, rebuilds the ledger and persists to disk.
 import { computeTotals } from '../shared/calc';
+import { APPROVAL_KINDS, POSTED_STATUS, approvalEnabled, isUnposted, needsApproval } from '../shared/approval';
 import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { dueDateFor, money, nextRecurrence, round2, today } from '../shared/format';
 import type {
@@ -53,7 +54,7 @@ export function contactSummary(c: Contact) {
   const db = getDb();
   if (c.kind === 'customer') {
     const outstanding = round2(
-      db.docs.filter((d) => d.kind === 'invoice' && d.contactId === c.id && !['draft', 'void'].includes(d.status)).reduce((a, d) => a + d.balance, 0) + (c.openingBalance || 0),
+      db.docs.filter((d) => d.kind === 'invoice' && d.contactId === c.id && d.status !== 'void' && !isUnposted(d.status)).reduce((a, d) => a + d.balance, 0) + (c.openingBalance || 0),
     );
     const unusedCredits = round2(
       db.paymentsReceived.filter((p) => p.contactId === c.id && p.status === 'paid').reduce((a, p) => a + p.unusedAmount, 0) +
@@ -62,7 +63,7 @@ export function contactSummary(c: Contact) {
     return { outstanding, unusedCredits };
   }
   const outstanding = round2(
-    db.docs.filter((d) => d.kind === 'bill' && d.contactId === c.id && !['draft', 'void'].includes(d.status)).reduce((a, d) => a + d.balance, 0) + (c.openingBalance || 0),
+    db.docs.filter((d) => d.kind === 'bill' && d.contactId === c.id && d.status !== 'void' && !isUnposted(d.status)).reduce((a, d) => a + d.balance, 0) + (c.openingBalance || 0),
   );
   const unusedCredits = round2(
     db.paymentsMade.filter((p) => p.contactId === c.id && p.status === 'paid').reduce((a, p) => a + p.unusedAmount, 0) +
@@ -283,17 +284,20 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
   if (doc.total < 0) throw bad('The total cannot be negative');
 
   // status from save mode
-  if (!existing || existing.status === 'draft') {
-    if (mode === 'draft' && !meta.recurring) doc.status = 'draft';
-    else if (kind === 'quote') doc.status = mode === 'send' ? 'sent' : mode === 'open' ? 'sent' : 'draft';
-    else if (kind === 'sales_order') doc.status = 'confirmed';
-    else if (kind === 'invoice' || kind === 'bill') doc.status = 'open';
-    else if (kind === 'delivery_challan') doc.status = 'open';
-    else if (kind === 'credit_note' || kind === 'vendor_credit') doc.status = 'open';
-    else if (kind === 'purchase_order') doc.status = 'issued';
-    else if (meta.recurring) doc.status = existing?.status ?? 'active';
-  }
-  if (mode === 'send') doc.sentAt = doc.sentAt || ts;
+  const approvals = approvalEnabled(db.preferences, kind);
+  let submitted = false;
+  if (meta.recurring) {
+    doc.status = existing?.status ?? 'active';
+  } else if (!existing || isUnposted(existing.status)) {
+    if (mode === 'draft') doc.status = existing && existing.status !== 'draft' ? existing.status : 'draft';
+    else if (approvals) {
+      // "Save and Submit": goes (back) into the approval queue. Editing an approved
+      // document sends it back for approval so the approver sees the final version.
+      doc.status = 'pending_approval';
+      submitted = existing?.status !== 'pending_approval';
+    } else doc.status = POSTED_STATUS[kind] ?? doc.status;
+  } else doc.status = existing.status; // posted documents change status through actions only
+  if (mode === 'send' && !isUnposted(doc.status)) doc.sentAt = doc.sentAt || ts;
 
   // credits can't drop below what was already applied
   if ((kind === 'credit_note' || kind === 'vendor_credit') && existing) {
@@ -323,7 +327,8 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
     if (po) logActivity(db, 'purchase_order', po.id, po.contactId, `Converted to bill ${doc.number}`);
   }
   logActivity(db, kind, doc.id, doc.contactId, `${meta.label} ${existing ? 'updated' : 'added'}`, `${meta.label} ${doc.number || doc.profileName} of amount ${money(doc.total)} ${existing ? 'updated' : 'created'}`);
-  if (mode === 'send') logActivity(db, kind, doc.id, doc.contactId, `${meta.label} marked as sent`);
+  if (submitted) logActivity(db, kind, doc.id, doc.contactId, `${meta.label} submitted for approval`, `${meta.label} ${doc.number} submitted for approval`);
+  if (mode === 'send' && doc.sentAt === ts) logActivity(db, kind, doc.id, doc.contactId, `${meta.label} marked as sent`);
   return doc;
 }
 
@@ -358,6 +363,9 @@ export function convertTemplate(sourceId: string, to: DocKind): Partial<TxnDoc> 
   const db = getDb();
   const src = getDoc(sourceId);
   const meta = DOC_META[to];
+  if (src.kind !== to && approvalEnabled(db.preferences, src.kind) && needsApproval(src.status)) {
+    throw bad(`Approve ${DOC_META[src.kind].label.toLowerCase()} ${src.number} before converting it`);
+  }
   const toSide = meta.side;
   let contactId = src.contactId;
   if (DOC_META[src.kind].side !== toSide) {
@@ -438,7 +446,7 @@ const SIMPLE_STATUS: Record<string, Partial<Record<DocKind, string>>> = {
   reopen: { purchase_order: 'issued' },
   stop: { recurring_invoice: 'stopped', recurring_bill: 'stopped' },
   resume: { recurring_invoice: 'active', recurring_bill: 'active' },
-  revert_to_draft: { quote: 'draft', delivery_challan: 'draft', invoice: 'draft', bill: 'draft', sales_order: 'draft', purchase_order: 'draft' },
+  revert_to_draft: { quote: 'draft', delivery_challan: 'draft', invoice: 'draft', bill: 'draft', sales_order: 'draft', purchase_order: 'draft', credit_note: 'draft', vendor_credit: 'draft' },
 };
 
 export function docAction(id: string, action: string, body: Record<string, unknown> = {}) {
@@ -447,6 +455,42 @@ export function docAction(id: string, action: string, body: Record<string, unkno
   const meta = DOC_META[d.kind];
   const lockFree = ['lock', 'unlock'];
   if (d.locked && !lockFree.includes(action)) throw bad(`This ${meta.label.toLowerCase()} is locked`);
+
+  // ---- approval workflow
+  const approvals = approvalEnabled(db.preferences, d.kind);
+  const kindLabel = meta.label.toLowerCase();
+  switch (action) {
+    case 'submit_for_approval':
+      if (!APPROVAL_KINDS.includes(d.kind)) break;
+      if (!approvals) throw bad(`Approvals are turned off for ${meta.plural.toLowerCase()}. Turn them on in Settings > Approvals.`);
+      if (d.status !== 'draft' && d.status !== 'rejected') throw bad(`Only draft or rejected ${meta.plural.toLowerCase()} can be submitted for approval`);
+      d.status = 'pending_approval';
+      d.rejection = undefined;
+      logActivity(db, d.kind, d.id, d.contactId, `${meta.label} submitted for approval`, `${meta.label} ${d.number} submitted for approval`);
+      return d;
+    case 'approve':
+      if (!APPROVAL_KINDS.includes(d.kind)) break;
+      if (d.status !== 'draft' && d.status !== 'pending_approval') throw bad(`Only draft or pending ${meta.plural.toLowerCase()} can be approved`);
+      d.status = 'approved';
+      d.rejection = undefined;
+      d.approvedAt = now();
+      d.approvedBy = db.organization.name;
+      logActivity(db, d.kind, d.id, d.contactId, `${meta.label} approved`, `${meta.label} ${d.number} approved`);
+      return d;
+    case 'reject': {
+      if (!APPROVAL_KINDS.includes(d.kind)) break;
+      if (d.status !== 'pending_approval') throw bad(`Only ${meta.plural.toLowerCase()} pending approval can be rejected`);
+      const reason = str(body.reason);
+      d.status = 'rejected';
+      d.rejection = { reason, at: now(), by: db.organization.name };
+      logActivity(db, d.kind, d.id, d.contactId, `${meta.label} rejected`, reason ? `Reason: ${reason}` : `${meta.label} ${d.number} rejected`);
+      return d;
+    }
+  }
+  // with approvals on, a document must be approved before it is sent, confirmed or opened
+  if (approvals && needsApproval(d.status) && ['mark_sent', 'confirm', 'convert_to_open', 'accept', 'decline'].includes(action)) {
+    throw bad(`This ${kindLabel} has to be approved first`);
+  }
 
   const target = SIMPLE_STATUS[action]?.[d.kind];
   if (target) {
@@ -457,6 +501,7 @@ export function docAction(id: string, action: string, body: Record<string, unkno
       if ((d.kind === 'credit_note' || d.kind === 'vendor_credit') && (d.creditApplications.length || d.refunds.length)) throw bad('Remove applied credits and refunds before voiding');
     }
     if (action === 'revert_to_draft' && (d.amountPaid || 0) > 0) throw bad('Documents with payments cannot be reverted to draft');
+    if (action === 'revert_to_draft' && (d.kind === 'credit_note' || d.kind === 'vendor_credit') && (d.creditApplications.length || d.refunds.length)) throw bad('Remove applied credits and refunds first');
     if (action === 'resume' && d.status === 'expired') throw bad('This profile has expired. Edit the end date to resume it.');
     d.status = target;
     if (action === 'mark_sent') d.sentAt = d.sentAt || now();
@@ -595,7 +640,7 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
   for (const a of allocations) {
     const inv = getDoc(a.docId, 'invoice');
     if (inv.contactId !== contact.id) throw bad('Payments can only be applied to invoices of the same customer');
-    if (inv.status === 'draft' || inv.status === 'void') throw bad(`${inv.number} is ${inv.status} and cannot receive payments`);
+    if (isUnposted(inv.status) || inv.status === 'void') throw bad(`${inv.number} is ${inv.status.replace(/_/g, ' ')} and cannot receive payments`);
     const prev = existing?.allocations.find((x) => x.docId === a.docId)?.amount ?? 0;
     if (a.amount > inv.balance + (existing?.status === 'paid' ? prev : 0) + 0.004) throw bad(`${inv.number}: payment exceeds the balance due`);
   }
@@ -707,7 +752,7 @@ export function savePaymentMade(body: Partial<PaymentMade>, id?: string): Paymen
   for (const a of allocations) {
     const bill = getDoc(a.docId, 'bill');
     if (bill.contactId !== vendor.id) throw bad('Payments can only be applied to bills of the same vendor');
-    if (bill.status === 'draft' || bill.status === 'void') throw bad(`${bill.number} is ${bill.status}`);
+    if (isUnposted(bill.status) || bill.status === 'void') throw bad(`${bill.number} is ${bill.status.replace(/_/g, ' ')}`);
     const prev = existing?.allocations.find((x) => x.docId === a.docId)?.amount ?? 0;
     if (a.amount > bill.balance + prev + 0.004) throw bad(`${bill.number}: payment exceeds the balance due`);
   }
