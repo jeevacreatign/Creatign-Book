@@ -90,7 +90,7 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     organization: {
       id: 'org_creatign',
       name: 'Creatign',
-      email: 'jeevav7305@gmail.com',
+      email: 'info@creatign.in',
       state: 'Tamil Nadu',
       country: 'India',
       currencyCode: 'INR',

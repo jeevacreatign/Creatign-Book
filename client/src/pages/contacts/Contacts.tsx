@@ -502,14 +502,64 @@ function TxnSection({ title, count, newTo, head, rows, onRow }: { title: string;
 
 function Mails({ c }: { c: Row }) {
   const { data = [] } = useApi<MailT[]>(`/mails${qs({ contactId: c.id })}`);
+  const { data: mailSettings, refetch: refetchMailSettings } = useApi<{
+    configured: boolean;
+    from?: string;
+    googleConnected: boolean;
+    googleOAuthConfigured: boolean;
+    googleCallbackOrigin: string;
+  }>('/mail-settings');
   const [open, setOpen] = useState<string | null>(null);
+  const disconnectGoogle = useAction(() => api('/mail/google/account', { method: 'DELETE' }), 'Gmail account disconnected.');
+  const linkGoogle = () => {
+    if (!mailSettings?.googleOAuthConfigured) {
+      toast.error('Configure GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env to link Gmail (see README).');
+      return;
+    }
+
+    const nonce = crypto.randomUUID();
+    const popup = window.open(`/api/mail/google/start?nonce=${encodeURIComponent(nonce)}`, 'gmail-oauth', 'popup,width=600,height=720');
+    if (!popup) {
+      toast.error('Allow popups for this app to link Gmail.');
+      return;
+    }
+
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as Record<string, unknown> | null;
+      const allowedOrigins = [window.location.origin, mailSettings.googleCallbackOrigin];
+      if (event.source !== popup || !allowedOrigins.includes(event.origin) || !data || data.type !== 'gmail-oauth-result' || data.nonce !== nonce) return;
+      window.removeEventListener('message', onMessage);
+      window.clearInterval(closeCheck);
+      if (data.ok === true && typeof data.email === 'string') {
+        toast.success(`Gmail connected as ${data.email}`);
+        void refetchMailSettings();
+      } else {
+        toast.error(typeof data.error === 'string' ? data.error : 'Could not connect the Gmail account');
+      }
+    };
+    window.addEventListener('message', onMessage);
+    const closeCheck = window.setInterval(() => {
+      if (popup.closed) {
+        window.clearInterval(closeCheck);
+        window.removeEventListener('message', onMessage);
+      }
+    }, 500);
+  };
   return (
     <div className="max-w-4xl">
       <div className="mb-3 flex items-center justify-between">
         <div className="font-semibold">System Mails</div>
-        <button className="link inline-flex items-center gap-1 text-xs" onClick={() => toast.success('Set SMTP_USER and SMTP_PASS in the .env file to send from your Gmail account (see README).')}>
-          <Link2 size={12} /> Link Email account
-        </button>
+        {mailSettings?.googleConnected ? (
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-slate-500">Gmail: {mailSettings.from}</span>
+            <button className="link" onClick={linkGoogle}>Switch account</button>
+            <button className="link text-red-600" onClick={() => disconnectGoogle.mutate()}>Disconnect</button>
+          </div>
+        ) : (
+          <button className="link inline-flex items-center gap-1 text-xs" onClick={linkGoogle}>
+            <Link2 size={12} /> Link Gmail account
+          </button>
+        )}
       </div>
       {data.length === 0 && <div className="rounded-md border border-dashed border-slate-300 p-6 text-center text-slate-400">No emails sent to this contact yet.</div>}
       <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">

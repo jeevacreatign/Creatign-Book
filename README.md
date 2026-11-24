@@ -55,7 +55,25 @@ Without setup, emails are only saved in the app (shown as **Not delivered** in a
    ```
 4. Restart `npm run dev`.
 
-The email dialog then shows your Gmail address as **From**. Emails go out with the document as a PDF attachment: invoices, quotes, sales orders, bills, purchase orders, credit notes, payment receipts and customer/vendor statements. If Gmail rejects the login or can't be reached, the app shows the reason and nothing is marked as sent. For another provider, also set `SMTP_HOST` and `SMTP_PORT`.
+The email dialog then shows your Gmail address as **From**. Emails go out with the document as a PDF attachment: invoices, quotes, sales orders, bills, purchase orders, credit notes, payment receipts and customer/vendor statements. If Gmail rejects the login or can't be reached, the app shows the reason and nothing is marked as sent. For another provider, also set `SMTP_HOST` and `SMTP_PORT`. If your network uses SMTP TLS inspection and the server certificate chain is signed by a private CA, set `SMTP_TLS_CA_FILE` to that CA's PEM file and restart the server. Obtain the certificate from your network administrator; do not disable certificate validation.
+
+### Link a Gmail account with OAuth
+
+The **Link Gmail account** action in a contact's Mails tab connects one Gmail sender for the app. Once linked, outgoing app email uses the Gmail API with the `gmail.send` permission; otherwise the SMTP settings above continue to be used.
+
+1. In Google Cloud Console, create/select a project, enable the **Gmail API**, and configure the OAuth consent screen. For an app in Testing mode, add your Gmail address as a test user.
+2. Create an OAuth client ID of type **Web application** and add this authorized redirect URI:
+   `http://localhost:4000/api/mail/google/callback`
+3. Add the client values to the project-root `.env`:
+   ```env
+   GOOGLE_OAUTH_CLIENT_ID=your-client-id
+   GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+   GOOGLE_OAUTH_REDIRECT_URI=http://localhost:4000/api/mail/google/callback
+   APP_ORIGIN=http://localhost:5173
+   ```
+4. Restart the app, open a contact's **Mails** tab, and choose **Link Gmail account**. Google will ask you to authorize sending mail. The refresh token is encrypted locally in `server/data/google-mail-auth.json`; the OAuth client secret must remain in `.env` so the app can decrypt it. **Disconnect** revokes the Google authorization and removes the local token.
+
+For deployments on a different host, set the exact public callback URL in both Google Cloud Console and `GOOGLE_OAUTH_REDIRECT_URI`, and set `APP_ORIGIN` to the app's origin. Google OAuth apps left in Testing mode may have refresh tokens expire after seven days; publish/configure the consent screen for continued use.
 
 You can also reset from the app: **Settings → Data & Backup**.
 

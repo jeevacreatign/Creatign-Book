@@ -11,6 +11,7 @@ import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import * as R from './reports';
 import * as S from './services';
 import { deliver, mailSettings } from './mailer';
+import { consumeGoogleAuthorizationState, createGoogleAuthorizationUrl, disconnectGoogleAccount, finishGoogleAuthorization, googleOAuthResultPage } from './google-mail';
 import { renderDocPdf, renderPaymentPdf, renderStatementPdf } from './pdf';
 
 type Handler = (req: Request, res: Response) => unknown;
@@ -408,6 +409,40 @@ export function createApp() {
     return getDb().mails.filter((x) => (!contactId || x.contactId === contactId) && (!entityId || x.entityId === entityId)).slice().reverse();
   }));
   api.get('/mail-settings', h(() => mailSettings()));
+  api.get('/mail/google/start', (req, res) => {
+    const nonce = q(req, 'nonce');
+    try {
+      res.redirect(createGoogleAuthorizationUrl(nonce || ''));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not start Google authorization';
+      res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).status(400).type('html').send(googleOAuthResultPage({ nonce, ok: false, error: message }));
+    }
+  });
+  api.get('/mail/google/callback', async (req, res) => {
+    const pending = consumeGoogleAuthorizationState(q(req, 'state'));
+    if (!pending) {
+      res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).status(400).type('html').send(googleOAuthResultPage({ ok: false, error: 'Gmail authorization expired. Close this window and try again.' }));
+      return;
+    }
+    const providerError = q(req, 'error');
+    if (providerError) {
+      res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).status(400).type('html').send(googleOAuthResultPage({ nonce: pending.nonce, ok: false, error: 'Google authorization was cancelled or denied.' }));
+      return;
+    }
+    const code = q(req, 'code');
+    if (!code) {
+      res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).status(400).type('html').send(googleOAuthResultPage({ nonce: pending.nonce, ok: false, error: 'Google did not return an authorization code.' }));
+      return;
+    }
+    try {
+      const email = await finishGoogleAuthorization(code, pending.codeVerifier);
+      res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).type('html').send(googleOAuthResultPage({ nonce: pending.nonce, ok: true, email }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not connect the Google account';
+      res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).status(400).type('html').send(googleOAuthResultPage({ nonce: pending.nonce, ok: false, error: message }));
+    }
+  });
+  api.delete('/mail/google/account', h(() => disconnectGoogleAccount()));
   api.post('/mails', h(async (req) => {
     const db = getDb();
     const b = req.body;

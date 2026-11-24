@@ -1,11 +1,18 @@
-// Outgoing email over SMTP (Gmail by default). Configured from environment variables,
-// usually a .env file in the project root (see .env.example). Without SMTP_USER and
-// SMTP_PASS, emails are only recorded in the app, not delivered.
+// Outgoing email uses a linked Gmail OAuth account when available, otherwise SMTP.
+// Configuration is in the project-root .env file (see .env.example).
 import nodemailer, { type Transporter } from 'nodemailer';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { rootCertificates } from 'node:tls';
+import { deliverWithGoogle, googleMailConnection, googleOAuthSettings } from './google-mail';
 
 export interface MailSettings {
   configured: boolean;
   from?: string;
+  provider?: 'google-oauth' | 'smtp';
+  googleConnected: boolean;
+  googleOAuthConfigured: boolean;
+  googleCallbackOrigin: string;
 }
 
 let transporter: Transporter | undefined;
@@ -17,6 +24,7 @@ function env() {
   return {
     host: process.env.SMTP_HOST?.trim() || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT) || 465,
+    tlsCaFile: process.env.SMTP_TLS_CA_FILE?.trim(),
     user,
     pass,
     fromName: process.env.MAIL_FROM_NAME?.trim(),
@@ -25,14 +33,30 @@ function env() {
 
 export function mailSettings(): MailSettings {
   const e = env();
-  return e.user && e.pass ? { configured: true, from: e.user } : { configured: false };
+  const connection = googleMailConnection();
+  const google = googleOAuthSettings();
+  const smtpConfigured = Boolean(e.user && e.pass);
+  return {
+    configured: Boolean(connection) || smtpConfigured,
+    from: connection?.email || (smtpConfigured ? e.user : undefined),
+    provider: connection ? 'google-oauth' : smtpConfigured ? 'smtp' : undefined,
+    googleConnected: Boolean(connection),
+    googleOAuthConfigured: google.configured,
+    googleCallbackOrigin: google.callbackOrigin,
+  };
 }
 
 function getTransporter() {
   const e = env();
-  const k = `${e.host}|${e.port}|${e.user}|${e.pass}`;
+  const k = `${e.host}|${e.port}|${e.user}|${e.pass}|${e.tlsCaFile}`;
   if (!transporter || k !== key) {
-    transporter = nodemailer.createTransport({ host: e.host, port: e.port, secure: e.port === 465, auth: { user: e.user, pass: e.pass } });
+    transporter = nodemailer.createTransport({
+      host: e.host,
+      port: e.port,
+      secure: e.port === 465,
+      auth: { user: e.user, pass: e.pass },
+      tls: e.tlsCaFile ? { ca: [...rootCertificates, readFileSync(resolve(e.tlsCaFile))] } : undefined,
+    });
     key = k;
   }
   return transporter;
@@ -50,6 +74,13 @@ export interface OutgoingMail {
 
 /** Deliver a message. Throws with a readable message when the server rejects it. */
 export async function deliver(m: OutgoingMail) {
+  const googleConnection = googleMailConnection();
+  if (googleConnection) {
+    const e = env();
+    await deliverWithGoogle({ ...m, fromName: e.fromName || m.fromName, html: toHtml(m.text) });
+    return;
+  }
+
   const e = env();
   if (!e.user || !e.pass) throw new Error('Email is not set up');
   try {

@@ -202,7 +202,13 @@ describe('email', () => {
   it('records an email without a mail server and builds PDFs', async () => {
     delete process.env.SMTP_USER;
     delete process.env.SMTP_PASS;
-    expect((await api().get('/api/mail-settings')).body.configured).toBe(false);
+    const settings = (await api().get('/api/mail-settings')).body;
+    expect(settings.configured).toBe(false);
+    expect(settings.googleConnected).toBe(false);
+    expect(settings.googleOAuthConfigured).toBe(false);
+    const link = await api().get('/api/mail/google/start').query({ nonce: 'nonce_0123456789' });
+    expect(link.status).toBe(400);
+    expect(link.text).toContain('GOOGLE_OAUTH_CLIENT_ID');
     const inv = await api().post('/api/docs').send({ kind: 'invoice', mode: 'draft', contactId: 'cus_test', lineItems: [{ itemId: 'item_logo', name: 'Logo Design', quantity: 1, rate: 15000 }] });
     const r = await api().post('/api/mails').send({ to: ['client@example.com'], subject: 'Invoice', body: 'Hi', entityType: 'invoice', entityId: inv.body.id, contactId: 'cus_test', attachPdf: true });
     expect(r.status).toBe(200);
