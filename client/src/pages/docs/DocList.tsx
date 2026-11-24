@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ChevronDown, Plus, MoreHorizontal, Upload, Download, RefreshCw } from 'lucide-react';
+import { ChevronDown, Plus, MoreHorizontal, Upload, Download, RefreshCw, Trash2, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from '../../lib/toast';
 import { DOC_META } from '@shared/docmeta';
 import { fmtDate, frequencyLabel, money } from '@shared/format';
 import type { DocKind, TxnDoc } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
-import { Dropdown, MenuItem, SearchBox, Spinner, Status, clsx } from '../../components/ui';
+import { Dropdown, MenuItem, SearchBox, Spinner, Status, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle } from '../../components/shared';
 import { DOC_UI, type Column } from './config';
 
@@ -147,10 +149,10 @@ function ListHeader({ kind, status, setStatus, compact }: { kind: DocKind; statu
   );
 }
 
-async function exportCsv(kind: DocKind) {
-  const rows = await api<DocRow[]>(`/docs${qs({ kind })}`);
-  const head = ['Date', 'Number', 'Reference', 'Contact', 'Status', 'Total', 'Balance'];
-  const csv = [head, ...rows.map((r) => [r.date, r.number, r.referenceNumber || '', r.contactName, r.status, r.total, r.balance])].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+async function exportCsv(kind: DocKind, picked?: DocRow[]) {
+  const rows = picked ?? (await api<DocRow[]>(`/docs${qs({ kind })}`));
+  const head = ['Date', 'Number', 'Reference', 'Contact', 'Status', 'Sub Total', 'Tax', 'Total', 'Balance'];
+  const csv = [head, ...rows.map((r) => [r.date, r.number, r.referenceNumber || '', r.contactName, r.status, r.subTotal, r.taxAmount ?? 0, r.total, r.balance])].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = `${DOC_META[kind].plural.toLowerCase().replace(/ /g, '-')}.csv`;
@@ -166,12 +168,57 @@ export function DocListPage({ kind }: { kind: DocKind }) {
   const [status, setStatus] = useState(search.get('status') || 'all');
   const [q, setQ] = useState('');
   const { data, isLoading } = useDocList(kind, status, q);
+  const [selected, setSelected] = useState<string[]>([]);
+  const qc = useQueryClient();
+  const confirm = useConfirm();
   const cols = ui.columns;
   if (isLoading) return <Spinner />;
+  const rows = data || [];
+  const allChecked = rows.length > 0 && rows.every((r) => selected.includes(r.id));
+  const toggle = (rid: string) => setSelected((x) => (x.includes(rid) ? x.filter((y) => y !== rid) : [...x, rid]));
+  const payable = rows.filter((r) => selected.includes(r.id) && r.kind === 'bill' && r.balance > 0 && ['open', 'overdue', 'partially_paid', 'due_today'].includes(r.status));
+  async function bulkDelete() {
+    let ok = 0;
+    const errors: string[] = [];
+    for (const rid of selected) {
+      try {
+        await api(`/docs/${rid}`, { method: 'DELETE' });
+        ok++;
+      } catch (e) {
+        errors.push(`${rows.find((r) => r.id === rid)?.number}: ${(e as Error).message}`);
+      }
+    }
+    qc.invalidateQueries();
+    setSelected([]);
+    if (ok) toast.success(`${ok} ${ok === 1 ? meta.label.toLowerCase() : meta.plural.toLowerCase()} deleted`);
+    if (errors.length) toast.error(errors.join(' · '));
+  }
   const empty = !data?.length && status === 'all' && !q;
   return (
     <div className="flex h-full flex-col">
-      <ListHeader kind={kind} status={status} setStatus={setStatus} />
+      {selected.length ? (
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
+          <div className="flex items-center gap-2">
+            {kind === 'bill' && (
+              <button className="btn-primary btn-sm" disabled={!payable.length} title={payable.length ? undefined : 'Select open bills with a balance due'} onClick={() => navigate(`/purchases/payments-made/bulk?bills=${payable.map((b) => b.id).join(',')}`)}>
+                Record Payment{payable.length ? ` (${payable.length})` : ''}
+              </button>
+            )}
+            <button className="btn-secondary btn-sm" onClick={() => exportCsv(kind, rows.filter((r) => selected.includes(r.id)))}>
+              <Download size={13} /> Export Selected
+            </button>
+            <button className="btn-secondary btn-sm text-red-600" onClick={() => confirm.ask(`Delete ${meta.plural}`, `Delete ${selected.length} ${selected.length === 1 ? meta.label.toLowerCase() : meta.plural.toLowerCase()}? This cannot be undone.`, bulkDelete, { danger: true, label: 'Delete' })}>
+              <Trash2 size={13} /> Delete
+            </button>
+            <span className="ml-2 text-[13px] text-slate-600">{selected.length} selected</span>
+          </div>
+          <button className="btn-ghost w-8 px-0" aria-label="Clear selection" onClick={() => setSelected([])}>
+            <X size={16} />
+          </button>
+        </div>
+      ) : (
+        <ListHeader kind={kind} status={status} setStatus={(v) => { setStatus(v); setSelected([]); }} />
+      )}
       {empty ? (
         ui.lifecycle ? (
           <Lifecycle title={ui.lifecycle.title} subtitle={ui.lifecycle.subtitle} steps={ui.lifecycle.steps} actions={<><button className="btn-primary" onClick={() => navigate(`${meta.path}/new`)}>{ui.lifecycle.cta}</button><button className="btn-secondary" onClick={() => navigate('/settings/import')}>Import {meta.plural}</button></>} />
@@ -194,6 +241,9 @@ export function DocListPage({ kind }: { kind: DocKind }) {
           <table className="table">
             <thead>
               <tr>
+                <th className="w-8">
+                  <input type="checkbox" className="h-3.5 w-3.5 accent-brand-600" aria-label="Select all" checked={allChecked} onChange={() => setSelected(allChecked ? [] : rows.map((r) => r.id))} />
+                </th>
                 {cols.map((c) => (
                   <th key={c} className={clsx(['amount', 'balance'].includes(c) && 'text-right')}>
                     {headerFor(kind, c)}
@@ -203,7 +253,10 @@ export function DocListPage({ kind }: { kind: DocKind }) {
             </thead>
             <tbody>
               {data!.map((d) => (
-                <tr key={d.id} className="row-link" onClick={() => navigate(`${meta.path}/${d.id}`)}>
+                <tr key={d.id} className={clsx('row-link', selected.includes(d.id) && 'bg-brand-50/50')} onClick={() => navigate(`${meta.path}/${d.id}`)}>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" className="h-3.5 w-3.5 accent-brand-600" aria-label={`Select ${d.number}`} checked={selected.includes(d.id)} onChange={() => toggle(d.id)} />
+                  </td>
                   {cols.map((c) => (
                     <td key={c} className={clsx(['amount', 'balance'].includes(c) && 'text-right')}>
                       {cell(c, d, data!)}
@@ -213,7 +266,7 @@ export function DocListPage({ kind }: { kind: DocKind }) {
               ))}
               {!data!.length && (
                 <tr>
-                  <td colSpan={cols.length} className="py-10 text-center text-slate-400">
+                  <td colSpan={cols.length + 1} className="py-10 text-center text-slate-400">
                     No {meta.plural.toLowerCase()} match this view.
                   </td>
                 </tr>
@@ -222,6 +275,7 @@ export function DocListPage({ kind }: { kind: DocKind }) {
           </table>
         </div>
       )}
+      {confirm.node}
     </div>
   );
 }

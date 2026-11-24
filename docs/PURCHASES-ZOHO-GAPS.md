@@ -31,11 +31,24 @@ Purchase Orders, Bills, Recurring Bills, Payments Made and Vendor Credits.
 - Payments Made: bill payments, vendor advances, PDF, email, void.
 - Vendor Credits: open, apply to bills, refund, void, journal.
 
+## Closed in the second pass (full replica)
+
+- GST engine (shared/gst.ts): GST0 to GST28, Exempt, Non-GST and Out of Scope; CGST + SGST when the
+  source and destination of supply are the same state, IGST otherwise (and for overseas and SEZ).
+- GST treatment, GSTIN, source and destination of supply and reverse charge on Bills, Recurring Bills,
+  Purchase Orders, Vendor Credits, Expenses and Recurring Expenses, with Tax Exclusive / Tax Inclusive amounts.
+- Input tax credit journals (Input CGST/SGST/IGST accounts); reverse charge books the tax to
+  "Reverse Charge Tax Payable" instead of the vendor.
+- Tax column, tax breakdown and GST facts on forms, detail pages, PDFs and CSV exports.
+- Vendors: GST treatment, GSTIN (validated, source of supply read from it), place of supply.
+- Items: HSN/SAC, tax preference and default tax rate.
+- Expenses: Tax, Amount Is, Expense Type (goods/services) with HSN/SAC, projects for billable expenses.
+- Bills: "Credits Available" banner to apply vendor credits and advances from the bill.
+- Bills list: select rows to record a bulk payment (one payment per vendor), export or delete.
+- Payments Made: apply an unused vendor advance to bills.
+
 ## Not done (larger pieces of work, left for later)
 
-- GST: tax rates, GST treatment, source/destination of supply, reverse charge and input tax credit.
-  The app has no tax engine yet, so this affects every module and needs its own piece of work.
 - Receipt OCR (Autoscan): needs an OCR provider.
-- Bulk payments for multiple bills from different vendors in one screen.
 - Multi-currency and exchange rates.
-- Projects on expenses and billable mileage rates per employee.
+- Billable mileage rates per employee.

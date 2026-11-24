@@ -992,6 +992,45 @@ export function recurringExpenseAction(id: string, action: string) {
   return r;
 }
 
+/** Zoho's "Record Bulk Payment" for several bills (one payment per vendor). All or nothing. */
+export function savePaymentsBulk(list: Partial<PaymentMade>[]) {
+  const db = getDb();
+  if (!list.length) throw bad('Select at least one bill to pay');
+  const before = JSON.stringify({ p: db.paymentsMade, a: db.activities.length, c: db.counters.payment_made });
+  try {
+    return list.map((x) => savePaymentMade({ ...x, type: 'bill_payment' }));
+  } catch (e) {
+    const snap = JSON.parse(before) as { p: PaymentMade[]; a: number; c: number };
+    db.paymentsMade = snap.p;
+    db.activities.length = snap.a;
+    db.counters.payment_made = snap.c;
+    throw e;
+  }
+}
+
+/** Applies the unused part of a vendor payment / advance to bills (Zoho: Apply Credits on a bill). */
+export function applyPaymentMade(id: string, add: { docId: string; amount: number }[]) {
+  const db = getDb();
+  const p = db.paymentsMade.find((x) => x.id === id);
+  if (!p) throw notFound('Payment');
+  if (p.status !== 'paid') throw bad('Only paid payments can be applied');
+  const total = round2(add.reduce((s2, a) => s2 + n(a.amount), 0));
+  if (total > p.unusedAmount + 0.004) throw bad(`Only ${money(p.unusedAmount)} of this payment is unused`);
+  for (const a of add) {
+    if (!(n(a.amount) > 0)) continue;
+    const bill = getDoc(a.docId, 'bill');
+    if (bill.contactId !== p.contactId) throw bad('Payments can only be applied to bills of the same vendor');
+    if (n(a.amount) > bill.balance + 0.004) throw bad(`${bill.number}: amount exceeds the balance due (${money(bill.balance)})`);
+    const cur = p.allocations.find((x) => x.docId === a.docId);
+    if (cur) cur.amount = round2(cur.amount + n(a.amount));
+    else p.allocations.push({ docId: a.docId, amount: round2(n(a.amount)) });
+    logActivity(db, 'bill', bill.id, bill.contactId, `Payment of ${money(n(a.amount))} applied`, `From payment #${p.number}`);
+  }
+  // an advance that has been used against bills behaves as a bill payment from here on
+  p.type = 'bill_payment';
+  return p;
+}
+
 /** Records money the vendor paid back out of an excess payment or advance. */
 export function refundPaymentMade(id: string, body: Partial<Refund>) {
   const db = getDb();
