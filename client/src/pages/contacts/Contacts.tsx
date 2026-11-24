@@ -9,7 +9,8 @@ import { api, qs, useAction, useApi } from '../../api';
 import { useOrg } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { Dropdown, KV, MenuItem, Modal, SearchBox, Select, Spinner, Status, Tabs, clsx, useConfirm, DateInput } from '../../components/ui';
-import { Attachments, Comments, EmailModal, Timeline } from '../../components/shared';
+import { Attachments, Comments, EmailModal, MailLog, Timeline } from '../../components/shared';
+import { PortalAccessModal, PortalStatusBlock } from '../../components/portal/PaymentNotices';
 import { AddressBlock } from '../../components/DocumentPreview';
 import { ContactForm } from './ContactForm';
 
@@ -144,7 +145,7 @@ function ContactDetail({ kind }: { kind: ContactKind }) {
   const status = useAction((s: string) => api(`/contacts/${id}/status`, { body: { status: s } }), 'Status updated');
   const del = useAction(() => api(`/contacts/${id}`, { method: 'DELETE' }), 'Deleted');
   const clone = useAction(() => api<Contact>(`/contacts/${id}/clone`, { body: {} }), 'Cloned');
-  const portal = useAction(() => api(`/contacts/${id}`, { method: 'PUT', body: { portalEnabled: !c?.portalEnabled } }), 'Portal settings updated');
+  const [portalOpen, setPortalOpen] = useState(false);
   const saveDocs = useAction((documents: Contact['documents']) => api(`/contacts/${id}`, { method: 'PUT', body: { documents } }), 'Attachments updated');
   if (!c) return <Spinner />;
   const vendor = kind === 'vendor';
@@ -179,7 +180,7 @@ function ContactDetail({ kind }: { kind: ContactKind }) {
           </Dropdown>
           <Dropdown align="right" button={() => <button className="btn-secondary">More <ChevronDown size={13} /></button>}>
             {vendor && <MenuItem onClick={() => toast.success('PDF templates associated with this vendor')}>Associate Templates</MenuItem>}
-            <MenuItem onClick={() => portal.mutate()}>{c.portalEnabled ? 'Disable Portal Access' : `Configure ${vendor ? 'Vendor' : 'Customer'} Portal`}</MenuItem>
+            {!vendor && <MenuItem onClick={() => setPortalOpen(true)}>Customer Portal Access</MenuItem>}
             {vendor && <MenuItem onClick={() => navigate(`${basePath(kind)}/${c.id}/edit`)}>Add Bank Account</MenuItem>}
             <MenuItem onClick={() => setLinkOpen(true)}>Link to {vendor ? 'Customer' : 'Vendor'}</MenuItem>
             <MenuItem onClick={() => clone.mutate(undefined, { onSuccess: (r) => navigate(`${basePath(kind)}/${r.id}/edit`) })}>Clone</MenuItem>
@@ -208,7 +209,7 @@ function ContactDetail({ kind }: { kind: ContactKind }) {
         />
       </div>
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        {tab === 'overview' && <Overview c={c} />}
+        {tab === 'overview' && <Overview c={c} onPortal={() => setPortalOpen(true)} />}
         {tab === 'comments' && <Comments entityType="contact" entityId={c.id} />}
         {tab === 'transactions' && <Transactions c={c} />}
         {tab === 'mails' && <Mails c={c} />}
@@ -216,12 +217,13 @@ function ContactDetail({ kind }: { kind: ContactKind }) {
       </div>
       {mergeOpen && <MergeModal c={c} onClose={() => setMergeOpen(false)} />}
       {linkOpen && <LinkModal c={c} onClose={() => setLinkOpen(false)} />}
+      {portalOpen && <PortalAccessModal contactId={c.id} name={c.displayName} onClose={() => setPortalOpen(false)} />}
       {confirm.node}
     </div>
   );
 }
 
-function Overview({ c }: { c: Row }) {
+function Overview({ c, onPortal }: { c: Row; onPortal: () => void }) {
   const [period, setPeriod] = useState<PeriodKey>('last_6_months');
   const [basis, setBasis] = useState<'accrual' | 'cash'>('accrual');
   const { data: income } = useApi<{ total: number; series: { month: string; amount: number }[] }>(`/contacts/${c.id}/income${qs({ period, basis })}`);
@@ -264,7 +266,7 @@ function Overview({ c }: { c: Row }) {
           <KV k="Default Currency" v={c.currencyCode} />
           <KV k="PAN" v={c.pan} />
           {vendor && <KV k="MSME Registered" v={c.msmeRegistered ? 'Yes' : 'No'} />}
-          <KV k="Portal Status" v={c.portalEnabled ? <span className="text-emerald-600">Enabled</span> : <span className="text-slate-500">Disabled</span>} />
+          {!vendor && <KV k="Portal Status" v={<PortalStatusBlock contactId={c.id} onManage={onPortal} />} />}
           <KV k={`${vendor ? 'Vendor' : 'Customer'} Language`} v={c.language} />
           <KV k="Website" v={c.website} />
           {c.remarks && <KV k="Remarks" v={c.remarks} />}
@@ -501,90 +503,32 @@ function TxnSection({ title, count, newTo, head, rows, onRow }: { title: string;
 }
 
 function Mails({ c }: { c: Row }) {
-  const { data = [] } = useApi<MailT[]>(`/mails${qs({ contactId: c.id })}`);
-  const { data: mailSettings, refetch: refetchMailSettings } = useApi<{
-    configured: boolean;
-    from?: string;
-    googleConnected: boolean;
-    googleOAuthConfigured: boolean;
-    googleCallbackOrigin: string;
-  }>('/mail-settings');
-  const [open, setOpen] = useState<string | null>(null);
-  const disconnectGoogle = useAction(() => api('/mail/google/account', { method: 'DELETE' }), 'Gmail account disconnected.');
-  const linkGoogle = () => {
-    if (!mailSettings?.googleOAuthConfigured) {
-      toast.error('Configure GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env to link Gmail (see README).');
-      return;
-    }
-
-    const nonce = crypto.randomUUID();
-    const popup = window.open(`/api/mail/google/start?nonce=${encodeURIComponent(nonce)}`, 'gmail-oauth', 'popup,width=600,height=720');
-    if (!popup) {
-      toast.error('Allow popups for this app to link Gmail.');
-      return;
-    }
-
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as Record<string, unknown> | null;
-      const allowedOrigins = [window.location.origin, mailSettings.googleCallbackOrigin];
-      if (event.source !== popup || !allowedOrigins.includes(event.origin) || !data || data.type !== 'gmail-oauth-result' || data.nonce !== nonce) return;
-      window.removeEventListener('message', onMessage);
-      window.clearInterval(closeCheck);
-      if (data.ok === true && typeof data.email === 'string') {
-        toast.success(`Gmail connected as ${data.email}`);
-        void refetchMailSettings();
-      } else {
-        toast.error(typeof data.error === 'string' ? data.error : 'Could not connect the Gmail account');
-      }
-    };
-    window.addEventListener('message', onMessage);
-    const closeCheck = window.setInterval(() => {
-      if (popup.closed) {
-        window.clearInterval(closeCheck);
-        window.removeEventListener('message', onMessage);
-      }
-    }, 500);
-  };
+  const org = useOrg();
+  const navigate = useNavigate();
+  const [compose, setCompose] = useState(false);
+  const { data: settings } = useApi<{ configured: boolean; from?: string; provider?: string }>('/mail-settings');
   return (
     <div className="max-w-4xl">
       <div className="mb-3 flex items-center justify-between">
-        <div className="font-semibold">System Mails</div>
-        {mailSettings?.googleConnected ? (
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-slate-500">Gmail: {mailSettings.from}</span>
-            <button className="link" onClick={linkGoogle}>Switch account</button>
-            <button className="link text-red-600" onClick={() => disconnectGoogle.mutate()}>Disconnect</button>
+        <div>
+          <div className="font-semibold">Emails</div>
+          <div className="text-xs text-slate-500">
+            {settings?.configured ? (
+              <>Sending as {settings.from} via {settings.provider === 'google-oauth' ? 'Gmail' : 'SMTP'}.</>
+            ) : (
+              <span className="text-amber-700">Email sending is not set up: new emails go to the outbox.</span>
+            )}{' '}
+            <button className="link" onClick={() => navigate('/settings/emails')}>
+              Email settings
+            </button>
           </div>
-        ) : (
-          <button className="link inline-flex items-center gap-1 text-xs" onClick={linkGoogle}>
-            <Link2 size={12} /> Link Gmail account
-          </button>
-        )}
+        </div>
+        <button className="btn-primary" onClick={() => setCompose(true)}>
+          <Mail size={14} /> New Email
+        </button>
       </div>
-      {data.length === 0 && <div className="rounded-md border border-dashed border-slate-300 p-6 text-center text-slate-400">No emails sent to this contact yet.</div>}
-      <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
-        {data.map((m) => (
-          <li key={m.id} className="cursor-pointer px-4 py-3 hover:bg-slate-50" onClick={() => setOpen(open === m.id ? null : m.id)}>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-brand-700">
-                  <Send size={13} />
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500">To {m.to.join(', ')}</div>
-                  <div className="font-medium">
-                    {m.subject}
-                    {m.delivered === false && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xxs font-medium text-amber-800">Not delivered</span>}
-                  </div>
-                  {m.attachments.length > 0 && <div className="text-xxs text-slate-500">📎 {m.attachments.join(', ')}</div>}
-                </div>
-              </div>
-              <div className="shrink-0 text-xxs text-slate-400">{fmtDateTime(m.createdAt)}</div>
-            </div>
-            {open === m.id && <pre className="mt-3 whitespace-pre-wrap rounded bg-slate-50 p-3 font-sans text-[13px] text-slate-700">{m.body}</pre>}
-          </li>
-        ))}
-      </ul>
+      <MailLog contactId={c.id} emptyText={`No emails sent to ${c.displayName} yet.`} />
+      {compose && <EmailModal open onClose={() => setCompose(false)} title={`Email ${c.displayName}`} to={c.email ? [c.email] : []} subject={`Message from ${org.name}`} body={`Dear ${c.displayName},\n\n\n\nRegards,\n${org.name}`} contactId={c.id} />}
     </div>
   );
 }

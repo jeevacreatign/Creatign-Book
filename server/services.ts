@@ -704,9 +704,6 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
     logActivity(db, 'invoice', inv.id, inv.contactId, `Payment of ${money(a.amount)} recorded`, `Payment #${number} via ${p.mode}`);
   }
   logActivity(db, 'payment_received', p.id, p.contactId, existing ? 'Payment updated' : 'Payment recorded', `${money(amount)} received via ${p.mode}`);
-  if (p.sendThankYou && !existing && contact.email) {
-    db.mails.push({ id: newId('mail'), contactId: contact.id, entityType: 'payment_received', entityId: p.id, from: db.organization.email, to: [contact.email], cc: [], subject: `Thank you for your payment - ${db.organization.name}`, body: `Dear ${contact.displayName},\n\nWe have received your payment of ${money(amount)}. Thank you for your business.\n\nRegards,\n${db.organization.name}`, attachments: [], createdAt: ts });
-  }
   return p;
 }
 

@@ -14,6 +14,8 @@ import { DocumentPreview, ReceiptPreview } from '../../components/DocumentPrevie
 import { TemplatesSettings, useDocTemplate } from '../../components/pdf/Customize';
 import type { PdfTemplate } from '@shared/pdfTemplate';
 import { StatementView } from '../contacts/Contacts';
+import EmailSettings from '../settings/Emails';
+import PortalSettingsPage from '../settings/Portal';
 
 // ------------------------------------------------------------ time tracking
 
@@ -426,6 +428,8 @@ export function Settings() {
     { to: '/settings/preferences', label: 'Preferences' },
     { to: '/settings/approvals', label: 'Approvals' },
     { to: '/settings/templates', label: 'PDF Templates' },
+    { to: '/settings/emails', label: 'Emails' },
+    { to: '/settings/portal', label: 'Customer Portal' },
     { to: '/settings/features', label: 'Configure Features' },
     { to: '/settings/import', label: 'Import Data' },
     { to: '/settings/data', label: 'Data & Backup' },
@@ -446,6 +450,8 @@ export function Settings() {
           <Route path="preferences" element={<Preferences />} />
           <Route path="approvals" element={<Approvals />} />
           <Route path="templates" element={<TemplatesSettings />} />
+          <Route path="emails/*" element={<EmailSettings />} />
+          <Route path="portal" element={<PortalSettingsPage />} />
           <Route path="features" element={<Features />} />
           <Route path="import" element={<ImportData />} />
           <Route path="data" element={<DataAdmin />} />
@@ -519,29 +525,4 @@ export function PrintStatement() {
   const { data: c } = useApi<Contact>(`/contacts/${id}`);
   const { data: s } = useApi<Parameters<typeof StatementView>[0]['s']>(`/contacts/${id}/statement${qs(Object.fromEntries(search.entries()))}`);
   return <PrintShell ready={!!(c && s)}>{c && s ? <StatementView c={c} s={s} org={organization} /> : <Spinner />}</PrintShell>;
-}
-
-export function SharePage() {
-  const { token } = useParams();
-  const { data, error } = useApi<{ doc: TxnDoc & { contact?: Contact }; organization: Organization; template: PdfTemplate; preferences: Record<string, unknown> }>(`/public/share/${token}`, { retry: false });
-  if (error) return <div className="p-16 text-center text-slate-500">{(error as Error).message}</div>;
-  if (!data) return <Spinner />;
-  return (
-    <div className="min-h-full bg-slate-100 py-8">
-      <div className="mx-auto mb-4 flex max-w-[820px] items-center justify-between">
-        <div className="text-[13px] text-slate-600">
-          {DOC_META[data.doc.kind].label} from <b>{data.organization.name}</b>
-        </div>
-        <div className="flex gap-2">
-          {data.doc.kind === 'invoice' && data.doc.balance > 0 && <span className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">Balance due {money(data.doc.balance)}</span>}
-          <button className="btn-secondary" onClick={() => window.print()}>
-            Download PDF
-          </button>
-        </div>
-      </div>
-      <div className="mx-auto max-w-[900px] px-4">
-        <DocumentPreview doc={data.doc} org={data.organization} contact={data.doc.contact} template={data.template} preferences={data.preferences} ribbon={false} />
-      </div>
-    </div>
-  );
 }

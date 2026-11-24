@@ -1,6 +1,7 @@
 import type { Account, Contact, Database, Item } from '../shared/types';
 import { ACCOUNT_IDS as A } from '../shared/docmeta';
 import { builtInTemplates } from '../shared/pdfTemplate';
+import { builtInEmailTemplates } from '../shared/email';
 
 const ts = () => new Date().toISOString();
 
@@ -114,6 +115,10 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     activities: [],
     mails: [],
     shareLinks: [],
+    emailTemplates: builtInEmailTemplates(),
+    portalUsers: [],
+    portalSessions: [],
+    paymentNotices: [],
     projects: [],
     timeEntries: [],
     counters: {},

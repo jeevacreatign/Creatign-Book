@@ -51,10 +51,11 @@ export interface GoogleMailMessage {
   replyTo?: string;
   to: string[];
   cc: string[];
+  bcc?: string[];
   subject: string;
   text: string;
   html: string;
-  attachments: { filename: string; content: Buffer }[];
+  attachments: { filename: string; content: Buffer; cid?: string; contentType?: string }[];
 }
 
 function config(): GoogleOAuthConfig | undefined {
@@ -251,6 +252,7 @@ async function rawMessage(message: GoogleMailMessage, from: string) {
     replyTo: message.replyTo && message.replyTo !== from ? message.replyTo : undefined,
     to: message.to,
     cc: message.cc.length ? message.cc : undefined,
+    bcc: message.bcc?.length ? message.bcc : undefined,
     subject: message.subject,
     text: message.text,
     html: message.html,
