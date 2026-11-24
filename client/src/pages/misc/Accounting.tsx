@@ -1,6 +1,6 @@
 // Banking, Accountant (chart of accounts, manual journals) and Reports.
 import { useState, type ReactNode } from 'react';
-import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, X, Printer, Landmark, Wallet, BarChart3 } from 'lucide-react';
 import { DOC_META } from '@shared/docmeta';
 import { PERIODS, fmtDate, money, today, type PeriodKey } from '@shared/format';
@@ -260,13 +260,16 @@ function JournalList() {
 function JournalForm() {
   const navigate = useNavigate();
   const { accounts } = useBoot();
+  const [search] = useSearchParams();
+  const { data: projects = [] } = useApi<{ id: string; name: string; status: string }[]>('/projects?view=active');
+  const [projectId, setProjectId] = useState(search.get('projectId') || '');
   const [date, setDate] = useState(today());
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Partial<JournalLine>[]>([{}, {}]);
   const dr = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
   const cr = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
-  const save = useAction(() => api<Journal>('/journals', { body: { date, reference, notes, lines } }), 'Journal posted');
+  const save = useAction(() => api<Journal>('/journals', { body: { date, reference, notes, lines, projectId: projectId || undefined } }), 'Journal posted');
   return (
     <div className="flex min-h-full flex-col">
       <PageHeader title="New Journal">
@@ -284,6 +287,9 @@ function JournalForm() {
           </Field>
           <Field label="Notes" required>
             <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+          <Field label="Project">
+            <Select className="max-w-xs" value={projectId} onChange={(e) => setProjectId(e.target.value)} placeholder="Select a project" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
           </Field>
         </div>
         <table className="table max-w-5xl border border-slate-200">

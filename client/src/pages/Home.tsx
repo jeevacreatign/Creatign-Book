@@ -7,6 +7,7 @@ import type { Activity } from '@shared/types';
 import { qs, useApi } from '../api';
 import { useOrg } from '../lib/app';
 import { Dropdown, MenuItem, Tabs, clsx } from '../components/ui';
+import { fmtHours } from '@shared/projects';
 
 // Validated categorical slots (light surface): blue, orange
 const SERIES_1 = '#2a78d6';
@@ -20,7 +21,7 @@ interface Dash {
   incomeExpense: { totalIncome: number; totalExpense: number; series: { month: string; income: number; expense: number }[] };
   topExpenses: { items: { name: string; amount: number }[] };
   banks: { id: string; name: string; subType: string; balance: number }[];
-  projects: { id: string; name: string; customer?: string; hours: number; budgetHours?: number; unbilled: number }[];
+  projects: { id: string; name: string; customer?: string; hours: number; budgetHours?: number; unbilledHours: number; unbilled: number; billed: number }[];
 }
 
 const compact = (n: number) => {
@@ -120,6 +121,7 @@ function ChartTip({ active, payload, label }: { active?: boolean; payload?: { na
   );
 }
 
+  const navigate = useNavigate();
 function Dashboard() {
   const [cashPeriod, setCashPeriod] = useState<PeriodKey>('this_fiscal_year');
   const [incomePeriod, setIncomePeriod] = useState<PeriodKey>('this_fiscal_year');
@@ -226,29 +228,39 @@ function Dashboard() {
         )}
       </Card>
 
-      <Card title="Projects" action={<Link to="/time-tracking/projects" className="text-xs text-brand-600 hover:underline">View all</Link>}>
+      <Card title="Projects Watchlist" action={<Link to="/time-tracking/projects" className="text-xs text-brand-600 hover:underline">View all</Link>}>
         {data.projects.length === 0 ? (
-          <div className="py-8 text-center text-slate-400">No active projects. Track billable time to see it here.</div>
+          <div className="py-8 text-center text-slate-400">
+            No projects on your watchlist. Turn on “Add to dashboard watchlist” on a project to follow its hours here.
+          </div>
         ) : (
           <table className="table">
             <thead>
               <tr>
                 <th>Project</th>
-                <th>Customer</th>
                 <th className="text-right">Logged Hours</th>
                 <th className="text-right">Unbilled</th>
+                <th className="text-right">Billed</th>
               </tr>
             </thead>
             <tbody>
               {data.projects.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td>{p.customer}</td>
-                  <td className="text-right">
-                    {p.hours}
-                    {p.budgetHours ? ` / ${p.budgetHours}` : ''}
+                <tr key={p.id} className="row-link" onClick={() => navigate(`/time-tracking/projects/${p.id}`)}>
+                  <td>
+                    <div className="link">{p.name}</div>
+                    <div className="text-xs text-slate-500">{p.customer}</div>
                   </td>
-                  <td className="text-right">{money(p.unbilled)}</td>
+                  <td className="text-right tabular-nums">
+                    {fmtHours(p.hours)}
+                    {p.budgetHours ? <span className="text-slate-400"> / {fmtHours(p.budgetHours)}</span> : ''}
+                    {p.budgetHours ? (
+                      <div className="ml-auto mt-1 h-1 w-20 rounded-full bg-slate-100">
+                        <div className={clsx('h-1 rounded-full', p.hours > p.budgetHours ? 'bg-red-500' : 'bg-emerald-500')} style={{ width: `${Math.min(100, (p.hours / p.budgetHours) * 100)}%` }} />
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="text-right tabular-nums text-emerald-700">{money(p.unbilled)}</td>
+                  <td className="text-right tabular-nums">{money(p.billed)}</td>
                 </tr>
               ))}
             </tbody>

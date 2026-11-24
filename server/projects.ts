@@ -78,7 +78,7 @@ function projectInvoices(db: Database, id: string) {
   return db.docs.filter((d) => d.kind === 'invoice' && d.status !== 'void' && docProjectId(db, d) === id);
 }
 
-function stats(db: Database, prj: Project) {
+export function stats(db: Database, prj: Project) {
   const entries = db.timeEntries.filter((t) => t.projectId === prj.id);
   const hours = (f: (t: TimeEntry) => boolean) => sum(entries.filter(f).map((t) => t.hours));
   const billedAmount = sum(projectInvoices(db, prj.id).map(projectFee));
