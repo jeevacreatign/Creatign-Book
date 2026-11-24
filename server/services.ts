@@ -793,6 +793,8 @@ export function savePaymentMade(body: Partial<PaymentMade>, id?: string): Paymen
     allocations,
     updatedAt: ts,
   } as PaymentMade;
+  const refunded = (p.refunds ?? []).reduce((a, r) => a + r.amount, 0);
+  if (used + refunded > amount + 0.004) throw bad('The amount is less than what has been applied and refunded');
   if (existing) Object.assign(existing, p);
   else {
     db.paymentsMade.push(p);
@@ -847,10 +849,49 @@ export function saveExpense(body: Partial<Expense>, id?: string): Expense {
     updatedAt: ts,
   } as Expense;
   if (e.receipts.length > 10) throw bad('You can upload a maximum of 10 receipts');
+  if (e.reportingTags && typeof e.reportingTags !== 'object') e.reportingTags = {};
+  const receiptsOnly = existing && Object.keys(body).every((k) => k === 'receipts');
   if (existing) Object.assign(existing, e);
   else db.expenses.push(e);
-  if (e.vendorId) logActivity(db, 'expense', e.id, e.vendorId, `Expense of ${money(e.amount)} recorded`);
+  if (receiptsOnly) logActivity(db, 'expense', e.id, e.vendorId, 'Receipts updated', `${e.receipts.length} receipt(s) attached`);
+  else logActivity(db, 'expense', e.id, e.vendorId, existing ? 'Expense updated' : `Expense of ${money(e.amount)} recorded`);
   return e;
+}
+
+/** Zoho blocks deleting an expense that has already been billed to a customer. */
+export function deleteExpenses(ids: string[]) {
+  const db = getDb();
+  const blocked = db.expenses.filter((e) => ids.includes(e.id) && e.status === 'invoiced' && e.invoiceId && db.docs.some((d) => d.id === e.invoiceId));
+  if (blocked.length) throw bad(blocked.length === 1 ? 'This expense has been invoiced. Delete the invoice first.' : `${blocked.length} of the selected expenses have been invoiced. Delete their invoices first.`);
+  const before = db.expenses.length;
+  db.expenses = db.expenses.filter((e) => !ids.includes(e.id));
+  return { deleted: before - db.expenses.length };
+}
+
+/** Creates one expense from a recurring profile right away (Zoho's "Create Expense" on a profile). */
+export function expenseFromProfile(r: RecurringExpense, date: string): Expense {
+  const ts = now();
+  return {
+    id: newId('exp'),
+    date,
+    accountId: r.accountId,
+    amount: r.amount,
+    itemized: false,
+    lines: [],
+    paidThroughAccountId: r.paidThroughAccountId,
+    vendorId: r.vendorId,
+    invoiceNumber: undefined,
+    notes: r.notes,
+    customerId: r.customerId,
+    billable: r.billable,
+    status: r.billable ? 'unbilled' : 'non_billable',
+    isMileage: false,
+    receipts: [],
+    recurringProfileId: r.id,
+    reportingTags: { ...r.reportingTags },
+    createdAt: ts,
+    updatedAt: ts,
+  };
 }
 
 export function convertExpenseToInvoice(id: string): TxnDoc {
@@ -911,6 +952,7 @@ export function saveRecurringExpense(body: Partial<RecurringExpense>, id?: strin
   if (r.neverExpires) r.endsOn = undefined;
   if (existing) Object.assign(existing, r);
   else db.recurringExpenses.push(r);
+  logActivity(db, 'recurring_expense', r.id, r.vendorId, existing ? 'Profile updated' : 'Recurring expense profile created', `Repeats every ${r.repeatEvery.n} ${r.repeatEvery.unit}(s)`);
   return r;
 }
 
@@ -922,8 +964,34 @@ export function recurringExpenseAction(id: string, action: string) {
   else if (action === 'resume') {
     r.status = 'active';
     if (r.nextDate && r.nextDate < today()) r.nextDate = today();
+  } else if (action === 'create_expense') {
+    const e = expenseFromProfile(r, today());
+    db.expenses.push(e);
+    r.lastGeneratedDate = e.date;
+    logActivity(db, 'recurring_expense', r.id, r.vendorId, 'Expense created manually from the profile', money(e.amount));
+    return { ...r, createdExpenseId: e.id };
   } else throw bad('Unknown action');
+  logActivity(db, 'recurring_expense', r.id, r.vendorId, action === 'stop' ? 'Profile stopped' : 'Profile resumed');
   return r;
+}
+
+/** Records money the vendor paid back out of an excess payment or advance. */
+export function refundPaymentMade(id: string, body: Partial<Refund>) {
+  const db = getDb();
+  const p = db.paymentsMade.find((x) => x.id === id);
+  if (!p) throw notFound('Payment');
+  if (p.status !== 'paid') throw bad('Only paid payments can be refunded');
+  const r = validRefund(body, p.unusedAmount);
+  p.refunds = [...(p.refunds ?? []), r];
+  logActivity(db, 'payment_made', p.id, p.contactId, 'Refund recorded', `${money(r.amount)} refunded via ${r.mode}`);
+  return p;
+}
+
+export function deletePaymentMadeRefund(id: string, refundId: string) {
+  const p = getDb().paymentsMade.find((x) => x.id === id);
+  if (!p) throw notFound('Payment');
+  p.refunds = (p.refunds ?? []).filter((r) => r.id !== refundId);
+  return p;
 }
 
 export function generateRecurringNow() {

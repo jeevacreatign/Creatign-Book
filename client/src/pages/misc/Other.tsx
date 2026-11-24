@@ -15,6 +15,7 @@ import { TemplatesSettings, useDocTemplate } from '../../components/pdf/Customiz
 import type { PdfTemplate } from '@shared/pdfTemplate';
 import { StatementView } from '../contacts/Contacts';
 import EmailSettings from '../settings/Emails';
+import type { ExpenseDetailData } from '../expenses/ExpenseDetail';
 import PortalSettingsPage from '../settings/Portal';
 
 // ------------------------------------------------------------ time tracking
@@ -516,6 +517,79 @@ export function PrintPayment({ made }: { made?: boolean }) {
   const template = useDocTemplate('payment', search.get('template') || undefined);
   const rows = (data?.invoices || data?.bills || []).filter((x) => x.doc).map((x) => ({ number: x.doc!.number, date: x.doc!.date, total: x.doc!.total, amount: x.amount }));
   return <PrintShell ready={!!data}>{data ? <ReceiptPreview payment={data} org={organization} contact={data.contact} kind={made ? 'made' : 'received'} rows={rows} template={template} /> : <Spinner />}</PrintShell>;
+}
+
+/** Printable expense voucher (Zoho's expense PDF/Print). */
+export function PrintExpense() {
+  const { id } = useParams();
+  const { organization: org, accounts } = useBoot();
+  const { data: e } = useApi<ExpenseDetailData>(`/expenses/${id}`);
+  const acct = (a?: string) => accounts.find((x) => x.id === a)?.name || '';
+  const lines = e ? (e.itemized && e.lines.length ? e.lines.map((l) => ({ account: acct(l.accountId), notes: l.notes, amount: l.amount })) : [{ account: e.isMileage ? `Mileage (${e.distance} km @ ${money(e.ratePerKm)})` : e.accountName || acct(e.accountId), notes: e.notes, amount: e.amount }]) : [];
+  return (
+    <PrintShell ready={!!e}>
+      {!e ? (
+        <Spinner />
+      ) : (
+        <div className="mx-auto max-w-[900px] bg-white p-12 text-[13px] text-slate-800 shadow print:shadow-none">
+          <div className="flex items-start justify-between border-b border-slate-200 pb-6">
+            <div>
+              {org.logo ? <img src={org.logo} alt="" className="mb-2 h-12" /> : null}
+              <div className="text-lg font-semibold">{org.name}</div>
+              <div className="text-slate-500">{[org.address?.street1, org.address?.city, org.address?.state].filter(Boolean).join(', ')}</div>
+              {org.gstin && <div className="text-slate-500">GSTIN {org.gstin}</div>}
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-light uppercase tracking-wide text-slate-700">Expense</div>
+              <div className="mt-2 text-slate-500">Date: {fmtDate(e.date)}</div>
+              {e.invoiceNumber && <div className="text-slate-500">Ref#: {e.invoiceNumber}</div>}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-6 py-6">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-slate-400">Paid To</div>
+              <div className="font-medium">{e.vendorName || '-'}</div>
+              <div className="mt-3 text-xs uppercase tracking-wide text-slate-400">Paid Through</div>
+              <div className="font-medium">{e.paidThroughName}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-slate-400">Customer</div>
+              <div className="font-medium">{e.customerName || '-'}</div>
+              <div className="mt-3 text-xs uppercase tracking-wide text-slate-400">Status</div>
+              <div className="font-medium">{e.billable ? 'Billable' : 'Non-Billable'}</div>
+            </div>
+          </div>
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-slate-800 text-left text-white">
+                <th className="px-3 py-2 font-medium">#</th>
+                <th className="px-3 py-2 font-medium">Expense Account</th>
+                <th className="px-3 py-2 font-medium">Notes</th>
+                <th className="px-3 py-2 text-right font-medium">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l, i) => (
+                <tr key={i} className="border-b border-slate-200">
+                  <td className="px-3 py-2">{i + 1}</td>
+                  <td className="px-3 py-2">{l.account}</td>
+                  <td className="px-3 py-2 text-slate-500">{l.notes}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{money(l.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-4 flex justify-end">
+            <div className="w-64 rounded bg-slate-50 px-4 py-3 text-right">
+              <div className="text-xs text-slate-500">Total</div>
+              <div className="text-xl font-semibold">{money(e.amount)}</div>
+            </div>
+          </div>
+          {e.receipts.length > 0 && <div className="mt-8 text-xs text-slate-500">Receipts attached: {e.receipts.map((r) => r.name).join(', ')}</div>}
+        </div>
+      )}
+    </PrintShell>
+  );
 }
 
 export function PrintStatement() {
