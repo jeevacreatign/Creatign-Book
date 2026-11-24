@@ -15,7 +15,7 @@ import PaymentsReceived from './pages/payments/PaymentsReceived';
 import PaymentsMade from './pages/payments/PaymentsMade';
 import Expenses, { RecurringExpenses } from './pages/expenses/Expenses';
 import { Accountant, Banking, Reports } from './pages/misc/Accounting';
-import { AppPlaceholder, Documents, PrintDoc, PrintPayment, PrintStatement, Settings, TimeTracking } from './pages/misc/Other';
+import { AppPlaceholder, Documents, PrintDoc, PrintExpense, PrintPayment, PrintStatement, Settings, TimeTracking } from './pages/misc/Other';
 import SharePage from './customer/SharePage';
 import PortalApp from './customer/Portal';
 
@@ -65,6 +65,7 @@ function App() {
       <Route path="/print/payment/:id" element={<PrintPayment />} />
       <Route path="/print/payment-made/:id" element={<PrintPayment made />} />
       <Route path="/print/statement/:id" element={<PrintStatement />} />
+      <Route path="/print/expense/:id" element={<PrintExpense />} />
       <Route element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="items/*" element={<Items />} />

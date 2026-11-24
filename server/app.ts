@@ -453,6 +453,8 @@ export function createApp() {
     if (!x) throw new S.HttpError(404, 'Payment not found');
     return { ...x, contactName: S.contactName(db, x.contactId), contact: db.contacts.find((c) => c.id === x.contactId), bills: x.allocations.map((a) => ({ ...a, doc: db.docs.find((d) => d.id === a.docId) })), journals: journalsFor(x.id) };
   }));
+  api.post('/payments-made/:id/refunds', m((req) => S.refundPaymentMade(p(req, 'id'), req.body)));
+  api.delete('/payments-made/:id/refunds/:refundId', m((req) => S.deletePaymentMadeRefund(p(req, 'id'), p(req, 'refundId'))));
   api.post('/payments-made', m((req) => S.savePaymentMade(req.body)));
   api.put('/payments-made/:id', m((req) => S.savePaymentMade(req.body, p(req, 'id'))));
   api.delete('/payments-made/:id', m((req) => {
@@ -501,14 +503,25 @@ export function createApp() {
     const db = getDb();
     const e = db.expenses.find((x) => x.id === p(req, 'id'));
     if (!e) throw new S.HttpError(404, 'Expense not found');
-    return { ...e, vendorName: S.contactName(db, e.vendorId), customerName: S.contactName(db, e.customerId), journals: journalsFor(e.id) };
+    const accs = new Map(db.accounts.map((a) => [a.id, a.name]));
+    const profile = e.recurringProfileId ? db.recurringExpenses.find((r) => r.id === e.recurringProfileId) : undefined;
+    const invoice = e.invoiceId ? db.docs.find((d) => d.id === e.invoiceId) : undefined;
+    return {
+      ...e,
+      accountName: e.isMileage ? 'Mileage' : e.itemized ? 'Itemized' : accs.get(e.accountId),
+      paidThroughName: accs.get(e.paidThroughAccountId),
+      vendorName: S.contactName(db, e.vendorId),
+      customerName: S.contactName(db, e.customerId),
+      profile: profile && { id: profile.id, profileName: profile.profileName, status: profile.status },
+      invoice: invoice && { id: invoice.id, number: invoice.number, status: invoice.status },
+      journals: journalsFor(e.id),
+    };
   }));
   api.post('/expenses', m((req) => S.saveExpense(req.body)));
   api.post('/expenses/bulk', m((req) => (req.body.expenses as unknown[]).map((e) => S.saveExpense(e as never))));
   api.put('/expenses/:id', m((req) => S.saveExpense(req.body, p(req, 'id'))));
-  api.delete('/expenses/:id', m((req) => {
-    getDb().expenses = getDb().expenses.filter((x) => x.id !== p(req, 'id'));
-  }));
+  api.delete('/expenses/:id', m((req) => S.deleteExpenses([p(req, 'id')])));
+  api.post('/expenses/bulk-delete', m((req) => S.deleteExpenses(((req.body?.ids as unknown[]) || []).map(String))));
   api.post('/expenses/:id/convert-to-invoice', m((req) => S.convertExpenseToInvoice(p(req, 'id'))));
   api.post('/expenses/:id/reimburse', m((req) => {
     const e = getDb().expenses.find((x) => x.id === p(req, 'id'));
@@ -526,7 +539,15 @@ export function createApp() {
     const db = getDb();
     const r = db.recurringExpenses.find((x) => x.id === p(req, 'id'));
     if (!r) throw new S.HttpError(404, 'Recurring expense not found');
-    return { ...r, vendorName: S.contactName(db, r.vendorId), customerName: S.contactName(db, r.customerId), children: db.expenses.filter((e) => e.recurringProfileId === r.id) };
+    const accs = new Map(db.accounts.map((a) => [a.id, a.name]));
+    return {
+      ...r,
+      accountName: accs.get(r.accountId),
+      paidThroughName: accs.get(r.paidThroughAccountId),
+      vendorName: S.contactName(db, r.vendorId),
+      customerName: S.contactName(db, r.customerId),
+      children: db.expenses.filter((e) => e.recurringProfileId === r.id).sort((a, b) => b.date.localeCompare(a.date)),
+    };
   }));
   api.post('/recurring-expenses', m((req) => S.saveRecurringExpense(req.body)));
   api.put('/recurring-expenses/:id', m((req) => S.saveRecurringExpense(req.body, p(req, 'id'))));

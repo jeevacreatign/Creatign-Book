@@ -358,7 +358,10 @@ export interface PaymentMade {
   notes?: string;
   attachments: Attachment[];
   status: 'draft' | 'paid' | 'void';
+  /** refunds of an excess payment / vendor advance received back from the vendor */
+  refunds?: Refund[];
   usedAmount: number;
+  refundedAmount?: number;
   unusedAmount: number;
   createdAt: string;
   updatedAt: string;
