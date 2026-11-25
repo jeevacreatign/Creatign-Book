@@ -1,4 +1,4 @@
-// Settings > Customer Portal: turn the portal on, choose what customers can do,
+// Settings > Client Portal: turn the portal on, choose what customers can do,
 // payment instructions (UPI / bank), portal users and customer-reported payments.
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,12 +19,12 @@ export default function PortalSettingsPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-1 flex items-center justify-between">
-        <div className="text-[15px] font-semibold">Customer Portal</div>
+        <div className="text-[15px] font-semibold">Client Portal</div>
         <a className="btn-secondary btn-sm" href="/portal" target="_blank" rel="noreferrer">
           <ExternalLink size={13} /> Open portal
         </a>
       </div>
-      <div className="mb-4 text-slate-600">A secure, branded place where your customers sign in to view and download quotes, invoices and receipts, accept quotes, check their statement and tell you about payments.</div>
+      <div className="mb-4 text-slate-600">A secure, branded place where your clients sign in to view and download estimates, invoices and receipts, accept estimates, check their statement and tell you about payments.</div>
       <Tabs
         className="mb-5"
         value={tab}
@@ -67,12 +67,12 @@ function General() {
   return (
     <div className="space-y-6">
       <div className="card divide-y divide-slate-100">
-        <Toggle label="Enable the customer portal" desc="Customers you invite can sign in. Turning it off signs everyone out; their invitations stay." on={f.enabled} onChange={(v) => set({ enabled: v })} />
-        <Toggle label="Customers can accept or decline quotes" desc="The quote changes to Accepted or Declined and you get notified." on={f.allowQuoteAcceptance} onChange={(v) => set({ allowQuoteAcceptance: v })} />
-        <Toggle label="Customers can view their statement" desc="Statement of accounts for any period, with PDF download." on={f.allowStatements} onChange={(v) => set({ allowStatements: v })} />
-        <Toggle label="Customers can report payments" desc="They tell you about a UPI or bank payment with its reference; you review and record it." on={f.allowPaymentNotices} onChange={(v) => set({ allowPaymentNotices: v })} />
-        <Toggle label="Allow these actions on shared links" desc="Shared and emailed links can accept quotes and report payments without signing in." on={f.allowActionsOnSharedLinks} onChange={(v) => set({ allowActionsOnSharedLinks: v })} />
-        <Toggle label="Email me when customers respond" desc="Notifications go to your organization email address." on={f.notifyOrganization} onChange={(v) => set({ notifyOrganization: v })} />
+        <Toggle label="Enable the client portal" desc="Clients you invite can sign in. Turning it off signs everyone out; their invitations stay." on={f.enabled} onChange={(v) => set({ enabled: v })} />
+        <Toggle label="Clients can accept or decline estimates" desc="The estimate changes to Accepted or Declined and you get notified." on={f.allowQuoteAcceptance} onChange={(v) => set({ allowQuoteAcceptance: v })} />
+        <Toggle label="Clients can view their statement" desc="Statement of accounts for any period, with PDF download." on={f.allowStatements} onChange={(v) => set({ allowStatements: v })} />
+        <Toggle label="Clients can report payments" desc="They tell you about a UPI or bank payment with its reference; you review and record it." on={f.allowPaymentNotices} onChange={(v) => set({ allowPaymentNotices: v })} />
+        <Toggle label="Allow these actions on shared links" desc="Shared and emailed links can accept estimates and report payments without signing in." on={f.allowActionsOnSharedLinks} onChange={(v) => set({ allowActionsOnSharedLinks: v })} />
+        <Toggle label="Email me when clients respond" desc="Notifications go to your organization email address." on={f.notifyOrganization} onChange={(v) => set({ notifyOrganization: v })} />
       </div>
 
       <div className="card p-5">
@@ -83,7 +83,7 @@ function General() {
           <Field label="Portal Name" inline={false}>
             <input className="input" value={f.name} onChange={(e) => set({ name: e.target.value })} />
           </Field>
-          <Field label="Portal URL" inline={false} hint={<>Links in emails use this address. Leave blank to use {window.location.origin}. Customers sign in at {portalUrl}</>}>
+          <Field label="Portal URL" inline={false} hint={<>Links in emails use this address. Leave blank to use {window.location.origin}. Clients sign in at {portalUrl}</>}>
             <input className="input" value={f.publicUrl || ''} onChange={(e) => set({ publicUrl: e.target.value })} placeholder="https://books.creatign.in" />
           </Field>
           <Field label="Welcome message" inline={false} className="md:col-span-2" hint="Shown at the top of the portal dashboard.">
@@ -99,7 +99,7 @@ function General() {
         <div className="mb-1 flex items-center gap-2 font-semibold">
           <IndianRupee size={16} className="text-emerald-600" /> Payment instructions
         </div>
-        <div className="mb-3 text-xs text-slate-600">Shown on unpaid invoices in the portal and on shared links. With a UPI ID, customers get a QR code and a “Pay with UPI” button with the amount filled in.</div>
+        <div className="mb-3 text-xs text-slate-600">Shown on unpaid invoices in the portal and on shared links. With a UPI ID, clients get a QR code and a “Pay with UPI” button with the amount filled in.</div>
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
           <Field label="UPI ID" inline={false}>
             <input className="input" value={f.upiId || ''} onChange={(e) => set({ upiId: e.target.value.trim() })} placeholder="creatign@hdfcbank" />
@@ -115,7 +115,7 @@ function General() {
 
       <div className="flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
         <ShieldCheck size={15} className="mt-0.5 shrink-0 text-slate-500" />
-        Customers only see transactions that were sent to them. Drafts and transactions waiting for approval never appear. Passwords are hashed, sessions expire after 14 days, and repeated wrong passwords lock the account for 15 minutes.
+        Clients only see transactions that were sent to them. Drafts and transactions waiting for approval never appear. Passwords are hashed, sessions expire after 14 days, and repeated wrong passwords lock the account for 15 minutes.
       </div>
 
       <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate(undefined, { onSuccess: (r) => setF(r) })}>
@@ -134,7 +134,7 @@ function Users_() {
       <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-slate-300 px-6 py-12 text-center text-slate-500">
         <Users size={24} className="text-slate-300" />
         No one has been invited yet.
-        <div className="text-xs">Open a customer and choose More &gt; Customer Portal Access to invite their contacts.</div>
+        <div className="text-xs">Open a client and choose More &gt; Client Portal Access to invite their contacts.</div>
       </div>
     );
   return (
@@ -142,7 +142,7 @@ function Users_() {
       <thead>
         <tr>
           <th>Name</th>
-          <th>Customer</th>
+          <th>Client</th>
           <th>Status</th>
           <th>Last sign-in</th>
         </tr>
@@ -175,14 +175,14 @@ function Payments({ notices }: { notices: (PaymentNotice & { contactName: string
   const navigate = useNavigate();
   const [record, setRecord] = useState<PaymentNotice | null>(null);
   const dismiss = useAction((id: string) => api(`/payment-notices/${id}/dismiss`, { body: {} }), 'Dismissed');
-  if (!notices.length) return <div className="rounded-md border border-dashed border-slate-300 p-10 text-center text-slate-500">Payments your customers report from the portal or shared links appear here for review.</div>;
+  if (!notices.length) return <div className="rounded-md border border-dashed border-slate-300 p-10 text-center text-slate-500">Payments your clients report from the portal or shared links appear here for review.</div>;
   return (
     <>
       <table className="table rounded-md border border-slate-200">
         <thead>
           <tr>
             <th>Reported</th>
-            <th>Customer</th>
+            <th>Client</th>
             <th>Invoice</th>
             <th>Payment</th>
             <th className="text-right">Amount</th>

@@ -35,9 +35,9 @@ function List() {
       </div>
       {!data.length && !q ? (
         <Lifecycle
-          title="Pay your vendors, record the payment."
-          subtitle="Record payments against bills or make advance payments to vendors."
-          steps={['BILLS', ['ACH PAYMENT', 'CHECK', 'MANUAL / OFFLINE']]}
+          title="Record supplier payments"
+          subtitle="Record payments against bills or make advance payments to suppliers."
+          steps={['OPEN BILLS', ['NEFT / RTGS / UPI', 'CHEQUE', 'CASH']]}
           actions={
             <>
               <button className="btn-primary" onClick={() => navigate('/purchases/bills?status=unpaid')}>
@@ -62,7 +62,7 @@ function List() {
                 <th>Date</th>
                 <th>Payment #</th>
                 <th>Reference#</th>
-                <th>Vendor Name</th>
+                <th>Supplier Name</th>
                 <th>Bill#</th>
                 <th>Mode</th>
                 <th>Status</th>
@@ -77,7 +77,7 @@ function List() {
                   <td className="text-brand-600">{p.number}</td>
                   <td>{p.referenceNumber}</td>
                   <td>{p.contactName}</td>
-                  <td>{p.type === 'vendor_advance' ? <span className="text-xs text-slate-500">Vendor Advance</span> : p.billNumbers.join(', ')}</td>
+                  <td>{p.type === 'vendor_advance' ? <span className="text-xs text-slate-500">Supplier Advance</span> : p.billNumbers.join(', ')}</td>
                   <td>{p.mode}</td>
                   <td>
                     <Status status={p.status} />
@@ -171,14 +171,14 @@ function PaymentDrawer() {
       <Tabs
         tabs={[
           { value: 'bill_payment', label: 'Bill Payment' },
-          { value: 'vendor_advance', label: 'Vendor Advance' },
+          { value: 'vendor_advance', label: 'Supplier Advance' },
         ]}
         value={f.type || 'bill_payment'}
         onChange={(t) => !id && set({ type: t })}
         className="mb-4"
       />
       <div className="max-w-2xl space-y-3.5">
-        <Field label="Vendor Name" required>
+        <Field label="Supplier Name" required>
           <ContactPicker
             kind="vendor"
             value={f.contactId}
@@ -192,7 +192,7 @@ function PaymentDrawer() {
         <Field label="Payment #" required>
           <input className="input max-w-xs" value={f.number || ''} onChange={(e) => set({ number: e.target.value })} />
         </Field>
-        <Field label="Payment Made" required>
+        <Field label="Supplier Payment" required>
           <MoneyInput className="max-w-xs" value={f.amount} onChange={(v) => set({ amount: v as unknown as number })} />
           {!advance && unpaid.length > 0 && (
             <button
@@ -300,7 +300,7 @@ function PaymentDrawer() {
       )}
       <div className="mt-5 grid gap-6 md:grid-cols-2">
         <div>
-          <div className="mb-1 text-[13px]">Notes (Internal use. Not visible to vendor)</div>
+          <div className="mb-1 text-[13px]">Notes (Internal use. Not visible to supplier)</div>
           <textarea className="input" rows={3} value={f.notes || ''} onChange={(e) => set({ notes: e.target.value })} />
         </div>
         <Attachments value={f.attachments || []} onChange={(v) => set({ attachments: v })} max={5} maxMB={10} label="Attachments" />
@@ -441,7 +441,7 @@ function DetailView() {
   );
 }
 
-/** Money the vendor returned from an excess payment or advance (Zoho: Payments Made > Refund). */
+/** Money the vendor returned from an excess payment or advance. */
 function VendorRefund({ p, onClose }: { p: Detail; onClose: () => void }) {
   const { accounts } = useBoot();
   const [f, setF] = useState({ amount: String(p.unusedAmount), date: today(), mode: 'Bank Transfer', referenceNumber: '', accountId: p.paidThroughAccountId, description: '' });
@@ -464,7 +464,7 @@ function VendorRefund({ p, onClose }: { p: Detail; onClose: () => void }) {
       }
     >
       <div className="space-y-3">
-        <Field label="Vendor">
+        <Field label="Supplier">
           <div className="pt-2 text-[13px] font-medium">{p.contactName}</div>
         </Field>
         <Field label="Amount" required hint={`Balance : ${money(p.unusedAmount)}`}>
@@ -490,7 +490,7 @@ function VendorRefund({ p, onClose }: { p: Detail; onClose: () => void }) {
   );
 }
 
-/** Zoho's Bulk Payments: pay several bills (from one or more vendors) in one go. */
+/** the Bulk Payments: pay several bills (from one or more vendors) in one go. */
 function BulkPayment() {
   const [search] = useSearchParams();
   const navigate = useNavigate();
@@ -552,7 +552,7 @@ function BulkPayment() {
           <table className="table rounded-md border border-slate-200">
             <thead>
               <tr>
-                <th>Vendor</th>
+                <th>Supplier</th>
                 <th>Bill#</th>
                 <th>Bill Date</th>
                 <th>Due Date</th>
@@ -590,7 +590,7 @@ function BulkPayment() {
             </tfoot>
           </table>
         )}
-        <div className="mt-2 text-xs text-slate-500">One payment is recorded for each vendor and applied to their bills.</div>
+        <div className="mt-2 text-xs text-slate-500">One payment is recorded for each supplier and applied to their bills.</div>
       </div>
       <div className="sticky bottom-0 flex gap-2 border-t border-slate-200 bg-white px-5 py-3">
         <button className="btn-primary" disabled={saving || !picked.length || total <= 0} onClick={save}>

@@ -44,7 +44,7 @@ export default function EmailSettings() {
   return (
     <div className="max-w-5xl">
       <div className="mb-1 text-[15px] font-semibold">Emails</div>
-      <div className="mb-4 text-slate-600">Send quotes, invoices, receipts, statements and portal invitations from your own address, with templates your team can reuse.</div>
+      <div className="mb-4 text-slate-600">Send estimates, invoices, receipts, statements and portal invitations from your own address, with templates your team can reuse.</div>
       <div className="mb-5 flex gap-6 border-b border-slate-200">
         {tabs.map((t) => (
           <NavLink key={t.to} to={t.to} end={t.end} className={({ isActive }) => clsx('tab', isActive && 'tab-active')}>
@@ -85,7 +85,7 @@ function Delivery() {
           <div className="font-medium text-slate-900">Sending through: {active}</div>
           <div className="text-xs text-slate-600">
             {s.configured
-              ? 'Emails are delivered to your customers. Every email is also kept in the Email Log.'
+              ? 'Emails are delivered to your clients. Every email is also kept in the Email Log.'
               : 'Nothing is delivered yet. Emails are kept in the outbox (Email Log) so you can preview them, and can be retried once sending is set up.'}
           </div>
         </div>
@@ -132,7 +132,7 @@ function Delivery() {
           </label>
         </div>
         <div className="mb-4 text-xs text-slate-600">
-          Works with Gmail app passwords, Zoho Mail, Microsoft 365, Amazon SES, Mailgun and others. The password is stored encrypted. {s.envSmtpConfigured && !f.enabled && 'SMTP from your .env file is in use while this is off.'}
+          Works with Gmail app passwords, Microsoft 365, Amazon SES, Mailgun and others. The password is stored encrypted. {s.envSmtpConfigured && !f.enabled && 'SMTP from your .env file is in use while this is off.'}
         </div>
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
           <Field label="SMTP Host" inline={false}>
@@ -169,7 +169,7 @@ function Delivery() {
           <Field label="From Email" inline={false} hint="Must be allowed by your mail server. Defaults to the username.">
             <input className="input" value={f.fromEmail || ''} onChange={(e) => set({ fromEmail: e.target.value })} placeholder={f.user || 'billing@yourcompany.in'} />
           </Field>
-          <Field label="Reply-To" inline={false} hint="Where customer replies go, if different.">
+          <Field label="Reply-To" inline={false} hint="Where client replies go, if different.">
             <input className="input" value={f.replyTo || ''} onChange={(e) => set({ replyTo: e.target.value })} placeholder={org.email} />
           </Field>
         </div>
@@ -189,7 +189,7 @@ function Templates() {
   const { data } = useApi<EmailTemplate[]>('/email-templates');
   const [edit, setEdit] = useState<EmailTemplate | { kind: EmailTemplateKind; new: true } | null>(null);
   if (!data) return <Spinner />;
-  const groups = ['Sales', 'Purchases', 'Customer Portal'] as const;
+  const groups = ['Sales', 'Purchases', 'Client Portal'] as const;
   return (
     <div className="space-y-6">
       {groups.map((g) => (

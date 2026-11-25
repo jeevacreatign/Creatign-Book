@@ -188,12 +188,12 @@ export default function ImportStatement() {
         {step === 1 && preview && (
           <div className="mx-auto max-w-3xl">
             <p className="mb-4 text-[13px] text-slate-600">
-              Match the columns of <b>{fileName || doc?.name}</b> ({preview.total} rows) to Creatign Books fields. Use either Withdrawals and Deposits, or one signed Amount column.
+              Match the columns of <b>{fileName || doc?.name}</b> ({preview.total} rows) to Creatign Ledger fields. Use either Withdrawals and Deposits, or one signed Amount column.
             </p>
             <table className="table rounded-md border border-slate-200">
               <thead>
                 <tr>
-                  <th className="pl-4">Creatign Books Field</th>
+                  <th className="pl-4">Creatign Ledger Field</th>
                   <th>Column in Your File</th>
                   <th>First Value</th>
                 </tr>

@@ -32,7 +32,7 @@ export interface EmailTemplate {
 export interface EmailTemplateKindMeta {
   kind: EmailTemplateKind;
   label: string;
-  group: 'Sales' | 'Purchases' | 'Customer Portal';
+  group: 'Sales' | 'Purchases' | 'Client Portal';
   /** placeholder groups that make sense for this kind */
   groups: PlaceholderGroup[];
   /** the email carries a "View" button linking to the online copy */
@@ -42,17 +42,17 @@ export interface EmailTemplateKindMeta {
 export type PlaceholderGroup = 'contact' | 'organization' | 'document' | 'payment' | 'statement' | 'portal';
 
 export const EMAIL_TEMPLATE_KINDS: EmailTemplateKindMeta[] = [
-  { kind: 'quote', label: 'Quote Notification', group: 'Sales', groups: ['contact', 'organization', 'document'], link: true },
+  { kind: 'quote', label: 'Estimate Notification', group: 'Sales', groups: ['contact', 'organization', 'document'], link: true },
   { kind: 'sales_order', label: 'Sales Order Notification', group: 'Sales', groups: ['contact', 'organization', 'document'], link: true },
   { kind: 'invoice', label: 'Invoice Notification', group: 'Sales', groups: ['contact', 'organization', 'document'], link: true },
   { kind: 'payment_reminder', label: 'Payment Reminder', group: 'Sales', groups: ['contact', 'organization', 'document'], link: true },
   { kind: 'credit_note', label: 'Credit Note Notification', group: 'Sales', groups: ['contact', 'organization', 'document'], link: true },
   { kind: 'payment_received', label: 'Payment Thank-you', group: 'Sales', groups: ['contact', 'organization', 'payment'] },
-  { kind: 'statement', label: 'Customer Statement', group: 'Sales', groups: ['contact', 'organization', 'statement'] },
+  { kind: 'statement', label: 'Client Statement', group: 'Sales', groups: ['contact', 'organization', 'statement'] },
   { kind: 'purchase_order', label: 'Purchase Order Notification', group: 'Purchases', groups: ['contact', 'organization', 'document'] },
-  { kind: 'payment_made', label: 'Vendor Payment Notification', group: 'Purchases', groups: ['contact', 'organization', 'payment'] },
-  { kind: 'portal_invite', label: 'Portal Invitation', group: 'Customer Portal', groups: ['contact', 'organization', 'portal'] },
-  { kind: 'portal_reset', label: 'Portal Password Reset', group: 'Customer Portal', groups: ['contact', 'organization', 'portal'] },
+  { kind: 'payment_made', label: 'Supplier Payment Notification', group: 'Purchases', groups: ['contact', 'organization', 'payment'] },
+  { kind: 'portal_invite', label: 'Portal Invitation', group: 'Client Portal', groups: ['contact', 'organization', 'portal'] },
+  { kind: 'portal_reset', label: 'Portal Password Reset', group: 'Client Portal', groups: ['contact', 'organization', 'portal'] },
 ];
 
 export const templateKindMeta = (k: EmailTemplateKind) => EMAIL_TEMPLATE_KINDS.find((x) => x.kind === k)!;
@@ -76,7 +76,7 @@ export const PLACEHOLDERS: PlaceholderDef[] = [
   { key: 'DocumentNumber', label: 'Document number', group: 'document' },
   { key: 'DocumentDate', label: 'Document date', group: 'document' },
   { key: 'DueDate', label: 'Due date', group: 'document' },
-  { key: 'ExpiryDate', label: 'Quote expiry date', group: 'document' },
+  { key: 'ExpiryDate', label: 'Estimate expiry date', group: 'document' },
   { key: 'ReferenceNumber', label: 'Reference number', group: 'document' },
   { key: 'Total', label: 'Total amount', group: 'document' },
   { key: 'BalanceDue', label: 'Balance due', group: 'document' },
@@ -122,7 +122,7 @@ export function builtInEmailTemplates(): EmailTemplate[] {
   return [
     t(
       'quote',
-      'Quote %DocumentNumber% from %CompanyName%',
+      'Estimate %DocumentNumber% from %CompanyName%',
       `Dear %ContactPersonName%,
 
 Thank you for your interest. Please find our quote %DocumentNumber% for %Total%, valid until %ExpiryDate%.

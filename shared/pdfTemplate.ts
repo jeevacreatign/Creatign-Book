@@ -167,7 +167,7 @@ const BASE: Omit<PdfTemplate, 'id' | 'name' | 'layout'> = {
   backgroundColor: '#ffffff',
   backgroundImage: '',
   header: { showLogo: true, logoSize: 44, showOrgName: true, showOrgAddress: true, showOrgContact: true, showGstin: true, showTitle: true, title: '', footerText: '', showPageNumber: true },
-  details: { billToLabel: 'Bill To', vendorLabel: 'Vendor Address', showShipTo: true, shipToLabel: 'Ship To', numberLabel: '#', showReference: true, showPaymentTerms: true, showDueDate: true, showSalesperson: true, showSubject: true, showCustomFields: true },
+  details: { billToLabel: 'Bill To', vendorLabel: 'Supplier Address', showShipTo: true, shipToLabel: 'Ship To', numberLabel: '#', showReference: true, showPaymentTerms: true, showDueDate: true, showSalesperson: true, showSubject: true, showCustomFields: true },
   table: { headerBg: '', headerText: '#ffffff', stripes: false, borders: 'rows', showIndex: true, showDescription: true, showUnit: true, labels: { index: '#', item: 'Item & Description', qty: 'Qty', rate: 'Rate', discount: 'Discount', amount: 'Amount' } },
   total: { showSubTotal: true, showAmountInWords: true, showPaymentMade: true, showBalanceDue: true, totalLabel: 'Total', balanceLabel: 'Balance Due' },
   other: { showNotes: true, notesLabel: 'Notes', showTerms: true, termsLabel: 'Terms & Conditions', showBankDetails: false, bankDetails: '', showSignature: true, signatureLabel: 'Authorized Signature' },
@@ -425,7 +425,7 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
       facts.push([f.label, f.dataType === 'date' ? fmtDate(v) : f.dataType === 'checkbox' ? (v === 'true' ? 'Yes' : 'No') : v]);
     }
   }
-  if (doc.gstin && !sales) facts.push(['Vendor GSTIN', doc.gstin]);
+  if (doc.gstin && !sales) facts.push(['Supplier GSTIN', doc.gstin]);
   if (doc.sourceOfSupply && !sales) facts.push(['Source of Supply', doc.sourceOfSupply]);
   if (doc.destinationOfSupply && !sales) facts.push(['Destination of Supply', doc.destinationOfSupply]);
   if (doc.reverseCharge) facts.push(['Reverse Charge', 'Yes']);
@@ -467,7 +467,7 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
   const hasBalance = doc.kind === 'invoice' || doc.kind === 'bill';
   const credits = doc.kind === 'credit_note' || doc.kind === 'vendor_credit';
   const paid = doc.amountPaid ?? 0;
-  if (hasBalance && t.total.showPaymentMade && paid > 0) totals.push({ label: 'Payment Made', value: `(-) ${money(paid)}`, emphasis: 'negative' });
+  if (hasBalance && t.total.showPaymentMade && paid > 0) totals.push({ label: 'Supplier Payment', value: `(-) ${money(paid)}`, emphasis: 'negative' });
   if (hasBalance && t.total.showBalanceDue) totals.push({ label: t.total.balanceLabel || 'Balance Due', value: money(doc.balance), emphasis: 'balance' });
   if (credits) totals.push({ label: 'Credits Remaining', value: money(doc.balance), emphasis: 'balance' });
   const highlight = hasBalance && t.total.showBalanceDue ? { label: t.total.balanceLabel || 'Balance Due', value: money(doc.balance) } : credits ? { label: 'Credits Remaining', value: money(doc.balance) } : { label: t.total.totalLabel || 'Total', value: money(doc.total) };
@@ -486,7 +486,7 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
       sales && t.details.showShipTo && shipLines.length
         ? { label: t.details.shipToLabel, lines: shipLines }
         : doc.kind === 'purchase_order' && t.details.showShipTo
-          ? { label: 'Deliver To', lines: doc.deliveryAddressType === 'customer' ? shipLines.length ? shipLines : ['Customer address'] : [org.name, ...addressLines(org.address)] }
+          ? { label: 'Deliver To', lines: doc.deliveryAddressType === 'customer' ? shipLines.length ? shipLines : ['Client address'] : [org.name, ...addressLines(org.address)] }
           : undefined,
     facts: facts.filter(([k, v]) => k && v) as [string, string][],
     subject: t.details.showSubject ? doc.subject || undefined : undefined,

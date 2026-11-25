@@ -525,7 +525,7 @@ export function ReceiptPreview({ payment, org, contact, kind, rows, template }: 
       <PrintPageStyle t={t} />
       <FitPaper t={t}>
         <PdfPage t={t}>
-          <PdfHeader t={t} m={{ title: kind === 'received' ? 'Payment Receipt' : 'Payment Made', number: payment.number, numberLabel: t.details.numberLabel, org: o }} />
+          <PdfHeader t={t} m={{ title: kind === 'received' ? 'Payment Receipt' : 'Supplier Payment', number: payment.number, numberLabel: t.details.numberLabel, org: o }} />
           <div className="flex items-start justify-between" style={{ gap: pt(24), marginTop: t.layout === 'spreadsheet' ? pt(12) : 0 }}>
             <table style={{ borderCollapse: 'collapse' }}>
               <tbody>

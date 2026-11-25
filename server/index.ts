@@ -19,5 +19,5 @@ if (fs.existsSync(dist)) {
 }
 
 app.listen(PORT, () => {
-  console.log(`Creatign Books API listening on http://localhost:${PORT}`);
+  console.log(`Creatign Ledger API listening on http://localhost:${PORT}`);
 });

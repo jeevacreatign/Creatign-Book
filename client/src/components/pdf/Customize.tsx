@@ -1,4 +1,4 @@
-// Zoho-style PDF customisation for transactions: the "Customize" menu on the PDF preview,
+// PDF customisation for transactions: the "Customize" menu on the PDF preview,
 // the Choose Template drawer, the full-screen template editor, organisation logo & address,
 // module custom fields and the notes / terms & conditions of a document.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -514,9 +514,9 @@ export function TemplateEditor({ template, doc, onClose }: { template: PdfTempla
           )}
           {tab === 'details' && (
             <>
-              <Collapse title="Customer & Vendor" defaultOpen>
+              <Collapse title="Client & Supplier" defaultOpen>
                 <Row label="Billing Address Label">{text(t.details.billToLabel, (v) => setIn('details', { billToLabel: v }))}</Row>
-                <Row label="Vendor Address Label">{text(t.details.vendorLabel, (v) => setIn('details', { vendorLabel: v }))}</Row>
+                <Row label="Supplier Address Label">{text(t.details.vendorLabel, (v) => setIn('details', { vendorLabel: v }))}</Row>
                 {check(t.details.showShipTo, (v) => setIn('details', { showShipTo: v }), 'Show Shipping Address')}
                 {t.details.showShipTo && <Row label="Shipping Address Label">{text(t.details.shipToLabel, (v) => setIn('details', { shipToLabel: v }))}</Row>}
               </Collapse>
@@ -572,7 +572,7 @@ export function TemplateEditor({ template, doc, onClose }: { template: PdfTempla
             <Collapse title="Total Section" defaultOpen>
               {check(t.total.showSubTotal, (v) => setIn('total', { showSubTotal: v }), 'Show Sub Total')}
               {check(t.total.showAmountInWords, (v) => setIn('total', { showAmountInWords: v }), 'Show Total in Words')}
-              {check(t.total.showPaymentMade, (v) => setIn('total', { showPaymentMade: v }), 'Show Payment Made')}
+              {check(t.total.showPaymentMade, (v) => setIn('total', { showPaymentMade: v }), 'Show Supplier Payment')}
               {check(t.total.showBalanceDue, (v) => setIn('total', { showBalanceDue: v }), 'Show Balance Due')}
               <Row label="Total Label">{text(t.total.totalLabel, (v) => setIn('total', { totalLabel: v }))}</Row>
               <Row label="Balance Due Label">{text(t.total.balanceLabel, (v) => setIn('total', { balanceLabel: v }))}</Row>
@@ -916,7 +916,7 @@ function ModulePreferences({ kind }: { kind: DocKind }) {
         <Row label="Default PDF Template" hint={`Used for new and existing ${meta.plural.toLowerCase()} that have no template of their own.`}>
           <Select className="h-9" value={tpl} onChange={(e) => setTpl(e.target.value)} options={templates.map((t) => ({ value: t.id, label: t.name }))} />
         </Row>
-        <Row label={meta.side === 'sales' ? 'Customer Notes' : 'Notes'} hint={`Pre-filled on every new ${meta.label.toLowerCase()}.`}>
+        <Row label={meta.side === 'sales' ? 'Client Notes' : 'Notes'} hint={`Pre-filled on every new ${meta.label.toLowerCase()}.`}>
           <textarea className="input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Row>
         <Row label="Terms & Conditions" hint={`Pre-filled on every new ${meta.label.toLowerCase()}.`}>
@@ -961,7 +961,7 @@ function TermsModal({ doc, kind, onClose }: { doc: TxnDoc; kind: DocKind; onClos
       <div className="space-y-5">
         <div>
           <div className="mb-2 text-[14px] font-medium text-slate-800">Notes</div>
-          <textarea className="input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={sales ? 'Will be displayed on the PDF' : 'Notes for the vendor'} />
+          <textarea className="input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={sales ? 'Will be displayed on the PDF' : 'Notes for the supplier'} />
           <div className="mt-2">
             <Checkbox checked={notesDefault} onChange={setNotesDefault} label={everyone} />
           </div>
@@ -995,7 +995,7 @@ export function TemplatesSettings() {
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1>PDF Templates</h1>
-          <div className="mt-1 text-[13px] text-slate-500">Design how your quotes, sales orders, invoices, bills and receipts look when printed or emailed. Pick a template for a single transaction from its Customize menu.</div>
+          <div className="mt-1 text-[13px] text-slate-500">Design how your estimates, sales orders, invoices, bills and receipts look when printed or emailed. Pick a template for a single transaction from its Customize menu.</div>
         </div>
         <button className="btn-primary" onClick={() => setCreating({})}>
           <Plus size={14} /> New Template

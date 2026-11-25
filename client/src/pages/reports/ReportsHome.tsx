@@ -1,4 +1,4 @@
-// Reports Center: categories, search, favourites, recently viewed and custom (saved) reports.
+// Report Library: categories, search, favourites, recently viewed and custom (saved) reports.
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BarChart3, Clock, FolderHeart, LayoutGrid, Search, Star, Trash2 } from 'lucide-react';
@@ -66,7 +66,7 @@ export default function ReportsHome() {
         ))}
       </aside>
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <ListHeader title={<h1 className="text-[19px]">Reports Center</h1>}>
+        <ListHeader title={<h1 className="text-[19px]">Report Library</h1>}>
           <div className="relative w-72">
             <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
             <input className="input pl-8" placeholder="Search reports" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search reports" />

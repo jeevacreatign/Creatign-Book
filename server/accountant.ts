@@ -35,7 +35,7 @@ export function assertUnlocked(db: Database, module: LockModule, ...dates: (stri
   if (!through) return;
   if (dates.some((d) => d && d <= through)) {
     const label = LOCK_MODULES.find((m) => m.value === module)!.label;
-    throw bad(`${label} transactions dated on or before ${fmtDate(through)} are locked. Unlock ${label} in Accountant > Transaction Locking to make changes.`);
+    throw bad(`${label} transactions dated on or before ${fmtDate(through)} are locked. Unlock ${label} in Accountant > Period Close to make changes.`);
   }
 }
 
@@ -165,13 +165,13 @@ function deleteAccount(db: Database, id: string) {
 const SOURCE_LABEL: Record<string, string> = {
   invoice: 'Invoice',
   credit_note: 'Credit Note',
-  payment_received: 'Customer Payment',
+  payment_received: 'Client Payment',
   payment_refund: 'Refund',
   credit_note_refund: 'Credit Note Refund',
   write_off: 'Write Off',
   bill: 'Bill',
-  vendor_credit: 'Vendor Credits',
-  payment_made: 'Vendor Payment',
+  vendor_credit: 'Debit Notes',
+  payment_made: 'Supplier Payment',
   expense: 'Expense',
   opening_balance: 'Opening Balance',
   bank_transaction: 'Bank Transaction',
@@ -664,7 +664,7 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     return db.currencyAdjustments.filter((a) => a.date >= r.from && a.date <= r.to).slice().sort((a, b) => b.date.localeCompare(a.date));
   }));
   api.post('/currency-adjustments/preview', h((req) => {
-    // Creatign Books records every transaction in INR, so there are no open foreign currency balances to revalue.
+    // Creatign Ledger records every transaction in INR, so there are no open foreign currency balances to revalue.
     const db = getDb();
     const code = String(req.body?.currencyCode || '');
     if (!db.currencies.some((c) => c.code === code && c.code !== 'INR')) throw bad('Select a foreign currency');

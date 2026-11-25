@@ -19,13 +19,13 @@ type Tab = 'uncategorized' | 'categorized' | 'excluded' | 'all';
 
 const MONEY_OUT: { value: string; label: string }[] = [
   { value: 'expense', label: 'Expense' },
-  { value: 'vendor_payment', label: 'Vendor Payment' },
+  { value: 'vendor_payment', label: 'Supplier Payment' },
   { value: 'transfer_out', label: 'Transfer To Another Account' },
   { value: 'card_payment', label: 'Card Payment' },
   { value: 'owner_drawings', label: 'Owner Drawings' },
 ];
 const MONEY_IN: { value: string; label: string }[] = [
-  { value: 'customer_payment', label: 'Customer Payment' },
+  { value: 'customer_payment', label: 'Client Payment' },
   { value: 'deposit', label: 'Deposit' },
   { value: 'transfer_in', label: 'Transfer From Another Account' },
   { value: 'owner_contribution', label: "Owner's Contribution" },
@@ -104,8 +104,8 @@ export default function AccountDetail() {
 
       <div className="grid grid-cols-2 gap-px border-b border-slate-200 bg-slate-200 md:grid-cols-4">
         <Stat label="Amount in Bank" value={acc.statementBalance == null ? '-' : money(acc.statementBalance)} hint={acc.statementBalance != null ? `Per statement imported ${fmtDate(acc.lastImport?.slice(0, 10))}` : acc.lastImport ? 'Map the Balance column on import to see it' : 'Import a statement to compare'} />
-        <Stat label="Amount in Creatign Books" value={money(acc.booksBalance)} />
-        <Stat label="Uncategorized" value={String(acc.uncategorized)} tone={acc.uncategorized ? 'text-amber-700' : undefined} />
+        <Stat label="Amount in Creatign Ledger" value={money(acc.booksBalance)} />
+        <Stat label="For Review" value={String(acc.uncategorized)} tone={acc.uncategorized ? 'text-amber-700' : undefined} />
         <Stat label="Reconciled Through" value={acc.lastReconciled ? fmtDate(acc.lastReconciled) : 'Never'} action={<Link className="link text-xs" to={`/banking/${id}/reconcile`}>Reconcile</Link>} />
       </div>
 
@@ -114,10 +114,10 @@ export default function AccountDetail() {
           value={tab}
           onChange={setTab}
           tabs={[
-            { value: 'uncategorized', label: `Uncategorized Transactions${acc.uncategorized ? ` (${acc.uncategorized})` : ''}` },
-            { value: 'categorized', label: 'Categorized' },
+            { value: 'uncategorized', label: `For Review${acc.uncategorized ? ` (${acc.uncategorized})` : ''}` },
+            { value: 'categorized', label: 'Posted' },
             { value: 'excluded', label: 'Excluded' },
-            { value: 'all', label: 'All Transactions' },
+            { value: 'all', label: 'Ledger Entries' },
           ]}
         />
       </div>
@@ -495,7 +495,7 @@ function CategorizePane({ line, accountId, onDone }: { line: LineDetail; account
   const { data: docsData } = useApi<OpenDoc[]>(isPayment && f.contactId ? `/docs${qs({ kind: docKind, contactId: f.contactId, status: 'unpaid' })}` : null);
   const docs = useMemo(() => docsData ?? [], [docsData]);
   useEffect(() => {
-    // fill the oldest documents first, like Zoho's auto-apply
+    // fill the oldest documents first, like the auto-apply
     let left = amount;
     const next: Record<string, string> = {};
     for (const d of docs.slice().sort((a, b) => a.date.localeCompare(b.date))) {
@@ -526,7 +526,7 @@ function CategorizePane({ line, accountId, onDone }: { line: LineDetail; account
         </select>
       </Field>
       {isPayment ? (
-        <Field label={f.as === 'customer_payment' ? 'Customer' : 'Vendor'} required>
+        <Field label={f.as === 'customer_payment' ? 'Client' : 'Supplier'} required>
           <ContactPicker kind={f.as === 'customer_payment' ? 'customer' : 'vendor'} value={f.contactId} onChange={(v) => setF({ ...f, contactId: v })} />
         </Field>
       ) : (
@@ -535,7 +535,7 @@ function CategorizePane({ line, accountId, onDone }: { line: LineDetail; account
             <AccountSelect accounts={accounts} value={f.offsetAccountId} onChange={(v) => setF({ ...f, offsetAccountId: v })} filter={offsetFilter(txType, accountId)} />
           </Field>
           {(f.as === 'expense' || f.as === 'deposit' || f.as === 'other_income' || f.as === 'expense_refund') && (
-            <Field label={f.as === 'expense' ? 'Vendor' : 'Contact'}>
+            <Field label={f.as === 'expense' ? 'Supplier' : 'Contact'}>
               {f.as === 'expense' ? <ContactPicker kind="vendor" value={f.contactId} onChange={(v) => setF({ ...f, contactId: v })} /> : <ContactPicker kind="customer" value={f.contactId} onChange={(v) => setF({ ...f, contactId: v })} />}
             </Field>
           )}
@@ -573,7 +573,7 @@ function CategorizePane({ line, accountId, onDone }: { line: LineDetail; account
               {!docs.length && (
                 <tr>
                   <td colSpan={4} className="py-5 text-center text-[13px] text-slate-500">
-                    Nothing unpaid. The full amount is recorded as {f.as === 'customer_payment' ? 'an excess payment' : 'a vendor advance'}.
+                    Nothing unpaid. The full amount is recorded as {f.as === 'customer_payment' ? 'an excess payment' : 'a supplier advance'}.
                   </td>
                 </tr>
               )}

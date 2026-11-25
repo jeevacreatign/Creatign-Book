@@ -1,5 +1,5 @@
 // Time tracking: projects (four billing methods, tasks, users, budgets), timesheet entries,
-// the running timer, and invoicing unbilled time. Mirrors Zoho Books' Projects + Timesheet.
+// the running timer, and invoicing unbilled time.
 import type { Request, RequestHandler, Router } from 'express';
 import { DOC_META } from '../shared/docmeta';
 import { round2, today } from '../shared/format';
@@ -225,7 +225,7 @@ function saveProject(db: Database, b: Partial<Project> & { users?: Project['user
   if (db.projects.some((x) => x.name.toLowerCase() === name.toLowerCase() && x.id !== existing?.id)) throw bad(`A project named "${name}" already exists`);
   const customerId = str(b.customerId) ?? existing?.customerId;
   const customer = db.contacts.find((c) => c.id === customerId && c.kind === 'customer');
-  if (!customer) throw bad('Customer Name is required');
+  if (!customer) throw bad('Client Name is required');
   const code = str(b.code) ?? (b.code === '' ? undefined : existing?.code);
   if (code && db.projects.some((x) => x.code === code && x.id !== existing?.id)) throw bad(`Project code ${code} is already used`);
   const billingMethod = normalizeBillingMethod(b.billingMethod ?? existing?.billingMethod);
@@ -364,7 +364,7 @@ function timeLines(db: Database, prj: Project, entries: TimeEntry[], groupBy: In
 
 export function invoiceProject(db: Database, id: string, r: InvoiceRequest): TxnDoc {
   const prj = getProject(db, id);
-  if (!prj.customerId) throw bad('Associate a customer with this project first');
+  if (!prj.customerId) throw bad('Associate a client with this project first');
   const { entries, expenses } = unbilled(db, prj, r);
   const lines: TxnDoc['lineItems'] = [];
   let fee = 0;

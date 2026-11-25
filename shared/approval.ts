@@ -1,4 +1,4 @@
-// Transaction approval workflow (Zoho Books style).
+// Transaction approval workflow.
 //   Draft -> Submit for Approval -> Pending Approval -> Approve -> Approved -> Send / Confirm / Open
 //                                                    \-> Reject -> Rejected -> edit & resubmit
 // Documents in any of the pre-approval states are "unposted": they never hit the ledger,

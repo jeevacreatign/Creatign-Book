@@ -37,7 +37,7 @@ function DocPdf({ d, preferences }: { d: DocDetailData; preferences: Record<stri
   return <DocumentPreview doc={d} org={org} contact={d.contact} template={template} preferences={preferences} />;
 }
 
-/** Plain (non-PDF) view of a transaction, like Zoho's details view with "Show PDF View" off. */
+/** Plain (non-PDF) view of a transaction, like the details view with "Show PDF View" off. */
 function DocSummary({ d }: { d: DocDetailData }) {
   const meta = DOC_META[d.kind];
   return (
@@ -45,7 +45,7 @@ function DocSummary({ d }: { d: DocDetailData }) {
       <div className="grid grid-cols-2 gap-x-10 gap-y-1 p-5">
         <KV k={meta.numberLabel} v={d.number || d.profileName} />
         <KV k={meta.dateLabel} v={fmtDate(d.date)} />
-        <KV k={meta.side === 'sales' ? 'Customer' : 'Vendor'} v={d.contactName} />
+        <KV k={meta.side === 'sales' ? 'Client' : 'Supplier'} v={d.contactName} />
         {d.dueDate && <KV k="Due Date" v={fmtDate(d.dueDate)} />}
         {d.referenceNumber && <KV k="Reference#" v={d.referenceNumber} />}
         {d.salesperson && <KV k="Salesperson" v={d.salesperson} />}
@@ -283,7 +283,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
       more = (
         <>
           <MenuItem icon={<Repeat size={13} />} onClick={() => convert('recurring_bill')}>Make Recurring</MenuItem>
-          {posted && <MenuItem onClick={() => convert('vendor_credit')}>Create Vendor Credits</MenuItem>}
+          {posted && <MenuItem onClick={() => convert('vendor_credit')}>Create Debit Notes</MenuItem>}
           {cloneItem}
           {d.status !== 'void' && voidItem}
           {journalItem}
@@ -318,7 +318,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         { value: 'activity', label: 'Recent Activities' },
       ]
     : [
-        { value: 'document', label: kind === 'quote' ? 'Quote Details' : 'Details' },
+        { value: 'document', label: kind === 'quote' ? 'Estimate Details' : 'Details' },
         ...(kind === 'quote' || kind === 'sales_order' || kind === 'delivery_challan' ? [{ value: 'invoices', label: 'Invoices' }] : []),
         ...(kind === 'purchase_order' ? [{ value: 'invoices', label: 'Bills' }] : []),
         ...(kind === 'invoice' || kind === 'bill' ? [{ value: 'payments', label: 'Payments' }] : []),
@@ -423,7 +423,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         {kind === 'invoice' && unpaid && (
           <div className="mb-3 flex items-center justify-between rounded-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px]">
             <span>
-              <span className="font-semibold">What's next?</span> {d.sentAt ? 'Record the payment once you receive it.' : 'Send this invoice to your customer or record a payment for it.'}
+              <span className="font-semibold">What's next?</span> {d.sentAt ? 'Record the payment once you receive it.' : 'Send this invoice to your client or record a payment for it.'}
             </span>
             <span className="flex gap-2">
               {!d.sentAt && (
@@ -634,7 +634,7 @@ function ToolbarBtn({ children, icon, onClick }: { children: ReactNode; icon?: R
 function MoreInformation({ d }: { d: DocDetailData }) {
   const r = d.related;
   const links: { label: string; doc?: TxnDoc }[] = [
-    { label: 'Quote', doc: r.quote },
+    { label: 'Estimate', doc: r.quote },
     { label: 'Sales Order', doc: r.salesOrder },
     { label: 'Delivery Challan', doc: r.deliveryChallan },
     { label: 'Purchase Order', doc: r.purchaseOrder },
@@ -726,7 +726,7 @@ function RecurringOverview({ d }: { d: DocDetailData }) {
             <span className="text-slate-500">· {frequencyLabel(d.repeatEvery)}</span>
           </div>
           <KV k="Profile Name" v={d.profileName} />
-          <KV k={d.kind === 'recurring_invoice' ? 'Customer' : 'Vendor'} v={d.contactName} />
+          <KV k={d.kind === 'recurring_invoice' ? 'Client' : 'Supplier'} v={d.contactName} />
           <KV k="Start Date" v={fmtDate(d.startOn)} />
           <KV k="End Date" v={d.neverExpires ? 'Never Expires' : fmtDate(d.endsOn)} />
           <KV k="Next Date" v={d.status === 'active' ? fmtDate(d.nextDate) : '-'} />
@@ -935,7 +935,7 @@ function RefundModal({ d, onClose, accounts }: { d: DocDetailData; onClose: () =
     >
       <div className="mb-4 flex gap-8 text-[13px]">
         <div>
-          <div className="text-xs text-slate-500">{d.kind === 'credit_note' ? 'Customer Name' : 'Vendor Name'}</div>
+          <div className="text-xs text-slate-500">{d.kind === 'credit_note' ? 'Client Name' : 'Supplier Name'}</div>
           <div className="font-medium">{d.contactName}</div>
         </div>
         <div>
@@ -969,7 +969,7 @@ function RefundModal({ d, onClose, accounts }: { d: DocDetailData; onClose: () =
 
 type VendorCredit = { id: string; source: 'credit' | 'payment'; number: string; date: string; available: number };
 
-/** Zoho's "Credits Available" strip on a bill: vendor credits and unused payments/advances can be applied here. */
+/** the "Credits Available" strip on a bill: vendor credits and unused payments/advances can be applied here. */
 function BillCredits({ d }: { d: DocDetailData }) {
   const { data: credits = [] } = useApi<TxnDoc[]>(`/docs${qs({ kind: 'vendor_credit', contactId: d.contactId, status: 'open' })}`);
   const { data: payments = [] } = useApi<{ id: string; number: string; date: string; unusedAmount: number; status: string }[]>(`/payments-made${qs({ contactId: d.contactId })}`);
@@ -1040,7 +1040,7 @@ function ApplyToBillModal({ d, list, onClose }: { d: DocDetailData; list: Vendor
             <tr key={c.id}>
               <td>
                 {c.number}
-                <div className="text-xxs text-slate-500">{c.source === 'credit' ? 'Vendor Credit' : 'Excess payment'}</div>
+                <div className="text-xxs text-slate-500">{c.source === 'credit' ? 'Debit Note' : 'Excess payment'}</div>
               </td>
               <td>{fmtDate(c.date)}</td>
               <td className="text-right tabular-nums">{money(c.available)}</td>

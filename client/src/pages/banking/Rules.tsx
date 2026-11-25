@@ -53,8 +53,8 @@ export function RulesList() {
       <ListHeader
         title={
           <div>
-            <div className="text-xs text-slate-500">Banking</div>
-            <h1 className="text-[19px]">Transaction Rules</h1>
+            <div className="text-xs text-slate-500">Cash &amp; Bank</div>
+            <h1 className="text-[19px]">Auto-Categorization Rules</h1>
           </div>
         }
       >

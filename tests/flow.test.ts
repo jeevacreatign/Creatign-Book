@@ -1,13 +1,13 @@
 // End-to-end API tests for the two core workflows:
-//  Item -> Quote -> Sales Order -> Invoice -> Journal & Payment Received
-//  Vendor -> Bill -> Payment Made
+//  Item -> Estimate -> Sales Order -> Invoice -> Journal & Client Payment
+//  Supplier -> Bill -> Supplier Payment
 // Runs against an in-memory database (DB_FILE=:memory:).
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 
 let app: Express;
 const api = () => request(app);
@@ -43,7 +43,7 @@ describe('sales flow', () => {
     expect(r.status).toBe(400);
   });
 
-  it('creates a quote with discount and TDS', async () => {
+  it('creates an estimate with discount and TDS', async () => {
     const r = await api()
       .post('/api/docs')
       .send({ kind: 'quote', mode: 'send', contactId: 'cus_test', date: '2026-11-01', expiryDate: '2099-12-31', lineItems: [{ itemId, name: 'Brand Strategy Workshop', quantity: 2, rate: 50000 }], discountPercent: 10, tdsRate: 2, adjustment: 0 });
@@ -57,7 +57,7 @@ describe('sales flow', () => {
     quoteId = r.body.id;
   });
 
-  it('converts the quote to a sales order, which waits for approval', async () => {
+  it('converts the estimate to a sales order, which waits for approval', async () => {
     const t = await api().get(`/api/docs/${quoteId}/convert`).query({ to: 'sales_order' });
     expect(t.body.quoteId).toBe(quoteId);
     const r = await api().post('/api/docs').send({ ...t.body, kind: 'sales_order', mode: 'open' });
@@ -73,7 +73,7 @@ describe('sales flow', () => {
     expect(confirmed.body.status).toBe('confirmed');
   });
 
-  it('converts the sales order to an invoice, closing the loop on the quote', async () => {
+  it('converts the sales order to an invoice, closing the loop on the estimate', async () => {
     const t = await api().get(`/api/docs/${soId}/convert`).query({ to: 'invoice' });
     const r = await api().post('/api/docs').send({ ...t.body, kind: 'invoice', mode: 'open', date: '2026-11-01', paymentTerms: 'net_15' });
     expect(r.status).toBe(200);
@@ -149,7 +149,7 @@ describe('purchase flow', () => {
   let vendorId = '';
   let billId = '';
 
-  it('creates a vendor', async () => {
+  it('creates a supplier', async () => {
     const r = await api().post('/api/contacts').send({ kind: 'vendor', displayName: 'Kovai Paper Mills', companyName: 'Kovai Paper Mills', email: 'sales@kovaipaper.example', msmeRegistered: true, paymentTerms: 'net_30' });
     expect(r.status).toBe(200);
     expect(r.body.accountId).toBe('acc_ap');

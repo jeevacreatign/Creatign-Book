@@ -1,4 +1,4 @@
-// Customer email: compose defaults from templates, fill placeholders, render the branded
+// Client email: compose defaults from templates, fill placeholders, render the branded
 // HTML email, attach PDFs and files, deliver through mailer.ts and keep the email log.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +22,7 @@ const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 // ------------------------------------------------------------ public URL
 
-/** Base URL for links in emails: Settings > Customer Portal > Portal URL, APP_ORIGIN, or the staff browser's origin. */
+/** Base URL for links in emails: Settings > Client Portal > Portal URL, APP_ORIGIN, or the staff browser's origin. */
 export function publicOrigin(requestOrigin?: string) {
   const configured = portalSettings(getDb().preferences).publicUrl?.trim();
   const candidates = [configured, process.env.APP_ORIGIN?.trim(), requestOrigin, 'http://localhost:5173'];
@@ -432,7 +432,7 @@ export async function sendEmail(b: SendEmailInput, origin: string): Promise<Mail
   const text = fillPlaceholders(String(b.body || ''), values);
   const card = cardFor(r);
   const button = link && r.doc ? { label: `View ${DOC_META[r.doc.kind].label}`, url: linkUrl! } : undefined;
-  const secondary = portal.enabled && r.contact?.portalEnabled && db.portalUsers.some((u) => u.contactId === r.contact!.id && u.status === 'active') ? { text: 'All your documents are also in the', label: values.PortalName || 'Customer Portal', url: `${origin}/portal` } : undefined;
+  const secondary = portal.enabled && r.contact?.portalEnabled && db.portalUsers.some((u) => u.contactId === r.contact!.id && u.status === 'active') ? { text: 'All your documents are also in the', label: values.PortalName || 'Client Portal', url: `${origin}/portal` } : undefined;
   const logo = logoAttachment(db);
   const html = renderEmailHtml({ bodyText: text, card, button, secondary, logoSrc: logo ? `cid:${logo.cid}` : undefined, preheader: card?.amount ? `${card.title} ${card.number || ''} · ${card.amountLabel}: ${card.amount}` : undefined });
   const previewHtml = logo ? html.replace(`cid:${logo.cid}`, db.organization.logo!) : html;

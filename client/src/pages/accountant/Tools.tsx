@@ -1,4 +1,4 @@
-// Accountant tools: Bulk Update, Base Currency Adjustments, Transaction Locking.
+// Accountant tools: Batch Reclassify, Base FX Revaluations, Period Close.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, Lock, LockOpen, Plus, ShieldCheck, Trash2 } from 'lucide-react';
@@ -41,21 +41,21 @@ export function BulkUpdate() {
         <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-orange-300 text-white shadow-lg">
           <ShieldCheck size={36} />
         </div>
-        <h1 className="text-[20px] font-medium">Bulk Update Accounts in Transactions</h1>
-        <p className="mt-1 text-[13px] text-slate-600">Filter transactions (Invoices, Credit Notes, Purchase Orders, Expenses, Bills, Vendor Credits) and bulk-update its accounts with a new account</p>
+        <h1 className="text-[20px] font-medium">Batch Reclassify Transactions</h1>
+        <p className="mt-1 text-[13px] text-slate-600">Filter transactions (Invoices, Credit Notes, Purchase Orders, Expenses, Bills, Debit Notes) and bulk-update its accounts with a new account</p>
         <div className="mt-5 flex max-w-lg items-start gap-3 rounded-lg bg-orange-50 px-4 py-3 text-left text-[13px] text-slate-700">
           <AlertCircle size={20} className="shrink-0 text-amber-500" />
           Bulk-updating accounts in transactions will cause significant changes to the financial data of your business. We recommend that you do this with the assistance of an accountant.
         </div>
         <button className="btn-primary mt-6" onClick={() => setOpen(true)}>
-          Filter and Bulk Update
+          Filter and Batch Reclassify
         </button>
         {open && <BulkFilterModal initial={filter ?? undefined} busy={search.isPending} onClose={() => setOpen(false)} onSearch={run} />}
       </div>
     );
   return (
     <div className="px-5 py-4">
-      <h1 className="mb-3 text-[20px] font-medium">Bulk Update Accounts in Transactions</h1>
+      <h1 className="mb-3 text-[20px] font-medium">Batch Reclassify Transactions</h1>
       <div className="mb-5 max-w-4xl rounded-lg bg-emerald-50/70 px-4 py-3 text-[13px]">
         <div className="mb-1 text-xs font-medium italic text-emerald-700">Filtered based on</div>
         <ul className="list-inside list-disc space-y-0.5 text-slate-700">
@@ -72,7 +72,7 @@ export function BulkUpdate() {
         </button>
       </div>
       {rows.length === 0 ? (
-        <div className="py-10 text-center text-[13px] text-slate-500">No transactions (Invoices, Credit Notes, Purchase Orders, Expenses, Bills, Vendor Credits) Available. Please change the filter criteria and try again.</div>
+        <div className="py-10 text-center text-[13px] text-slate-500">No transactions (Invoices, Credit Notes, Purchase Orders, Expenses, Bills, Debit Notes) Available. Please change the filter criteria and try again.</div>
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -184,7 +184,7 @@ export function CurrencyAdjustments() {
   const sel = useSelection(data.map((a) => a.id));
   return (
     <div>
-      <ListHeader title={<h1 className="text-[19px]">Base Currency Adjustments</h1>}>
+      <ListHeader title={<h1 className="text-[19px]">FX Revaluations</h1>}>
         <button className="btn-primary" onClick={() => setOpen(true)} title="Make an Adjustment">
           <Plus size={15} /> New
         </button>
@@ -238,7 +238,7 @@ export function CurrencyAdjustments() {
             {!data.length && (
               <tr>
                 <td colSpan={7} className="py-10 text-center text-slate-500">
-                  Record a Base Currency Adjustment to correct fluctuations in exchange rates
+                  Record a Base FX Revaluation to correct fluctuations in exchange rates
                 </td>
               </tr>
             )}
@@ -267,7 +267,7 @@ export function CurrencyAdjustments() {
             ))}
           </tbody>
         </table>
-        <p className="mt-2 text-xs text-slate-500">Every transaction in Creatign Books is recorded in INR, so adjustments revalue no open balances and the gain or loss is 0.</p>
+        <p className="mt-2 text-xs text-slate-500">Every transaction in Creatign Ledger is recorded in INR, so adjustments revalue no open balances and the gain or loss is 0.</p>
       </div>
       {open && <AdjustmentModal currencies={currencies.filter((c) => c.code !== 'INR')} onClose={() => setOpen(false)} />}
     </div>
@@ -281,7 +281,7 @@ function AdjustmentModal({ currencies, onClose }: { currencies: Currency[]; onCl
     <Modal
       open
       onClose={onClose}
-      title="Base Currency Adjustment"
+      title="Base FX Revaluation"
       footer={
         <>
           <button className="btn-primary" onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
@@ -330,7 +330,7 @@ export function TransactionLocking() {
   const all = data.all;
   return (
     <div className="pb-24">
-      <ListHeader title={<h1 className="text-[19px]">Transaction Locking</h1>} />
+      <ListHeader title={<h1 className="text-[19px]">Period Close</h1>} />
       <div className="max-w-4xl px-5 py-4">
         <p className="mb-4 text-[13px] text-slate-600">Transaction locking prevents you and your users from making any changes to transactions that might affect your accounts. Once transactions are locked, users cannot edit, modify, or delete any transactions that were recorded before the specified date in this module.</p>
         {all ? (

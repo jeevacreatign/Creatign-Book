@@ -1,4 +1,4 @@
-// Customer portal settings and visibility rules (Settings > Customer Portal).
+// Client portal settings and visibility rules (Settings > Client Portal).
 import type { DocKind, TxnDoc } from './types';
 
 export interface PortalSettings {
@@ -25,7 +25,7 @@ export interface PortalSettings {
 
 export const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
   enabled: true,
-  name: 'Customer Portal',
+  name: 'Client Portal',
   bannerMessage: '',
   allowQuoteAcceptance: true,
   allowStatements: true,

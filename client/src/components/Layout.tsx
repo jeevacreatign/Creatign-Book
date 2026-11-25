@@ -11,33 +11,33 @@ import { TimerChip } from '../pages/time/common';
 
 type NavItem = { to: string; label: string; noNew?: boolean };
 const SALES: NavItem[] = [
-  { to: '/sales/customers', label: 'Customers' },
-  { to: '/sales/quotes', label: 'Quotes' },
+  { to: '/sales/customers', label: 'Clients' },
+  { to: '/sales/quotes', label: 'Estimates' },
   { to: '/sales/sales-orders', label: 'Sales Orders' },
   { to: '/sales/invoices', label: 'Invoices' },
-  { to: '/sales/recurring-invoices', label: 'Recurring Invoices' },
+  { to: '/sales/recurring-invoices', label: 'Invoice Schedules' },
   { to: '/sales/delivery-challans', label: 'Delivery Challans' },
-  { to: '/sales/payments-received', label: 'Payments Received' },
+  { to: '/sales/payments-received', label: 'Client Payments' },
   { to: '/sales/credit-notes', label: 'Credit Notes' },
 ];
 const PURCHASES: NavItem[] = [
-  { to: '/purchases/vendors', label: 'Vendors' },
+  { to: '/purchases/vendors', label: 'Suppliers' },
   { to: '/purchases/expenses', label: 'Expenses' },
-  { to: '/purchases/recurring-expenses', label: 'Recurring Expenses' },
+  { to: '/purchases/recurring-expenses', label: 'Expense Schedules' },
   { to: '/purchases/purchase-orders', label: 'Purchase Orders' },
-  { to: '/purchases/bills', label: 'Bills' },
-  { to: '/purchases/recurring-bills', label: 'Recurring Bills' },
-  { to: '/purchases/payments-made', label: 'Payments Made' },
-  { to: '/purchases/vendor-credits', label: 'Vendor Credits' },
+  { to: '/purchases/bills', label: 'Purchase Bills' },
+  { to: '/purchases/recurring-bills', label: 'Bill Schedules' },
+  { to: '/purchases/payments-made', label: 'Supplier Payments' },
+  { to: '/purchases/vendor-credits', label: 'Debit Notes' },
 ];
 const ACCOUNTANT: NavItem[] = [
-  { to: '/accountant/manual-journals', label: 'Manual Journals' },
-  { to: '/accountant/recurring-journals', label: 'Recurring Journals' },
-  { to: '/accountant/bulk-update', label: 'Bulk Update', noNew: true },
-  { to: '/accountant/currency-adjustments', label: 'Currency Adjustments', noNew: true },
+  { to: '/accountant/manual-journals', label: 'Journal Vouchers' },
+  { to: '/accountant/recurring-journals', label: 'Voucher Schedules' },
+  { to: '/accountant/bulk-update', label: 'Batch Reclassify', noNew: true },
+  { to: '/accountant/currency-adjustments', label: 'FX Revaluations', noNew: true },
   { to: '/accountant/chart-of-accounts', label: 'Chart of Accounts', noNew: true },
   { to: '/accountant/budgets', label: 'Budgets' },
-  { to: '/accountant/transaction-locking', label: 'Transaction Locking', noNew: true },
+  { to: '/accountant/transaction-locking', label: 'Period Close', noNew: true },
 ];
 const TIME: NavItem[] = [
   { to: '/time-tracking/projects', label: 'Projects' },
@@ -46,8 +46,8 @@ const TIME: NavItem[] = [
 
 /** Labels used by the top-bar search placeholder ("Search in Invoices ( / )") */
 export function moduleLabel(pathname: string): string {
-  const all = [...SALES, ...PURCHASES, ...ACCOUNTANT, ...TIME, { to: '/items', label: 'Items' }, { to: '/banking', label: 'Banking' }, { to: '/reports', label: 'Reports' }, { to: '/documents', label: 'Documents' }];
-  return all.find((n) => pathname.startsWith(n.to))?.label ?? 'Creatign Books';
+  const all = [...SALES, ...PURCHASES, ...ACCOUNTANT, ...TIME, { to: '/items', label: 'Products & Services' }, { to: '/banking', label: 'Cash & Bank' }, { to: '/reports', label: 'Financial Reports' }, { to: '/documents', label: 'Document Vault' }];
+  return all.find((n) => pathname.startsWith(n.to))?.label ?? 'Creatign Ledger';
 }
 
 function Group({ icon, label, items, base }: { icon: ReactNode; label: string; items: NavItem[]; base: string }) {
@@ -116,21 +116,21 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
   return (
     <aside className="no-print flex w-[220px] shrink-0 flex-col border-r border-slate-200 bg-slate-50">
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
-        <Leaf to="/" end icon={<Home size={15} className={ic} />} label="Home" />
-        <Leaf to="/items" icon={<Package size={15} className={ic} />} label="Items" />
-        <Group base="/sales" icon={<ShoppingCart size={15} className={ic} />} label="Sales" items={SALES} />
-        <Group base="/purchases" icon={<ShoppingBag size={15} className={ic} />} label="Purchases" items={PURCHASES} />
-        <Group base="/time-tracking" icon={<Clock size={15} className={ic} />} label="Time Tracking" items={TIME} />
-        <Leaf to="/banking" icon={<Landmark size={15} className={ic} />} label="Banking" />
-        <Group base="/accountant" icon={<UserCog size={15} className={ic} />} label="Accountant" items={ACCOUNTANT} />
-        <Leaf to="/reports" icon={<BarChart3 size={15} className={ic} />} label="Reports" />
-        <Leaf to="/documents" icon={<FolderOpen size={15} className={ic} />} label="Documents" />
+        <Leaf to="/" end icon={<Home size={15} className={ic} />} label="Dashboard" />
+        <Leaf to="/items" icon={<Package size={15} className={ic} />} label="Products & Services" />
+        <Group base="/sales" icon={<ShoppingCart size={15} className={ic} />} label="Receivables" items={SALES} />
+        <Group base="/purchases" icon={<ShoppingBag size={15} className={ic} />} label="Payables" items={PURCHASES} />
+        <Group base="/time-tracking" icon={<Clock size={15} className={ic} />} label="Projects & Time" items={TIME} />
+        <Leaf to="/banking" icon={<Landmark size={15} className={ic} />} label="Cash & Bank" />
+        <Group base="/accountant" icon={<UserCog size={15} className={ic} />} label="General Ledger" items={ACCOUNTANT} />
+        <Leaf to="/reports" icon={<BarChart3 size={15} className={ic} />} label="Financial Reports" />
+        <Leaf to="/documents" icon={<FolderOpen size={15} className={ic} />} label="Document Vault" />
         <div className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Apps</div>
         <Leaf to="/apps/payroll" icon={<Wallet size={15} className={ic} />} label="Payroll" badge="Soon" />
         <Leaf to="/apps/payments" icon={<CreditCard size={15} className={ic} />} label="Payment Gateway" badge="Soon" />
         <div className="pt-4">
           <Link to="/settings/features" className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 hover:border-brand-300">
-            Configure Features <ChevronRight size={14} />
+            Feature Settings <ChevronRight size={14} />
           </Link>
         </div>
       </nav>
@@ -144,9 +144,9 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 }
 
 const QUICK_CREATE: { group: string; items: NavItem[] }[] = [
-  { group: 'General', items: [{ to: '/items/new', label: 'Item' }, { to: '/accountant/manual-journals/new', label: 'Journal Entry' }, { to: '/time-tracking/timesheet?new=1', label: 'Log Time' }, { to: '/time-tracking/projects/new', label: 'Project' }] },
-  { group: 'Sales', items: [{ to: '/sales/customers/new', label: 'Customer' }, { to: '/sales/quotes/new', label: 'Quote' }, { to: '/sales/sales-orders/new', label: 'Sales Order' }, { to: '/sales/invoices/new', label: 'Invoice' }, { to: '/sales/recurring-invoices/new', label: 'Recurring Invoice' }, { to: '/sales/delivery-challans/new', label: 'Delivery Challan' }, { to: '/sales/payments-received/new', label: 'Customer Payment' }, { to: '/sales/credit-notes/new', label: 'Credit Note' }] },
-  { group: 'Purchases', items: [{ to: '/purchases/vendors/new', label: 'Vendor' }, { to: '/purchases/expenses/new', label: 'Expense' }, { to: '/purchases/recurring-expenses/new', label: 'Recurring Expense' }, { to: '/purchases/purchase-orders/new', label: 'Purchase Order' }, { to: '/purchases/bills/new', label: 'Bill' }, { to: '/purchases/recurring-bills/new', label: 'Recurring Bill' }, { to: '/purchases/payments-made/new', label: 'Vendor Payment' }, { to: '/purchases/vendor-credits/new', label: 'Vendor Credit' }] },
+  { group: 'General', items: [{ to: '/items/new', label: 'Product or Service' }, { to: '/accountant/manual-journals/new', label: 'Journal Voucher' }, { to: '/time-tracking/timesheet?new=1', label: 'Log Time' }, { to: '/time-tracking/projects/new', label: 'Project' }] },
+  { group: 'Receivables', items: [{ to: '/sales/customers/new', label: 'Client' }, { to: '/sales/quotes/new', label: 'Estimate' }, { to: '/sales/sales-orders/new', label: 'Sales Order' }, { to: '/sales/invoices/new', label: 'Invoice' }, { to: '/sales/recurring-invoices/new', label: 'Invoice Schedule' }, { to: '/sales/delivery-challans/new', label: 'Delivery Challan' }, { to: '/sales/payments-received/new', label: 'Client Payment' }, { to: '/sales/credit-notes/new', label: 'Credit Note' }] },
+  { group: 'Payables', items: [{ to: '/purchases/vendors/new', label: 'Supplier' }, { to: '/purchases/expenses/new', label: 'Expense' }, { to: '/purchases/recurring-expenses/new', label: 'Expense Schedule' }, { to: '/purchases/purchase-orders/new', label: 'Purchase Order' }, { to: '/purchases/bills/new', label: 'Bill' }, { to: '/purchases/recurring-bills/new', label: 'Bill Schedule' }, { to: '/purchases/payments-made/new', label: 'Supplier Payment' }, { to: '/purchases/vendor-credits/new', label: 'Debit Note' }] },
 ];
 
 function GlobalSearch() {
@@ -239,7 +239,7 @@ function Topbar() {
       <Link to="/" className="flex w-[196px] items-center gap-2">
         <img src="/logo.svg" alt="" className="h-6 w-6" />
         <span className="text-[15px] font-semibold tracking-tight">
-          Creatign <span className="font-normal text-brand-300">Books</span>
+          Creatign <span className="font-normal text-brand-300">Ledger</span>
         </span>
       </Link>
       <button className="rounded p-1 text-slate-300 hover:bg-white/10" title="Refresh" onClick={() => window.location.reload()}>

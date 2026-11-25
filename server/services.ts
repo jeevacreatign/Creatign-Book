@@ -83,7 +83,7 @@ export function upsertContact(body: Partial<Contact>, id?: string): Contact {
   const displayName = str(body.displayName) ?? existing?.displayName;
   if (!displayName) throw bad('Display Name is required');
   const kind = (body.kind ?? existing?.kind) as Contact['kind'];
-  if (kind !== 'customer' && kind !== 'vendor') throw bad('Contact kind must be customer or vendor');
+  if (kind !== 'customer' && kind !== 'vendor') throw bad('Contact kind must be client or supplier');
   if (db.contacts.some((c) => c.kind === kind && c.displayName.toLowerCase() === displayName.toLowerCase() && c.id !== id)) {
     throw bad(`A ${kind} with the display name "${displayName}" already exists`);
   }
@@ -247,7 +247,7 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
   const contactId = body.contactId ?? existing?.contactId;
   const contact = db.contacts.find((c) => c.id === contactId);
   const expectedKind = meta.side === 'sales' ? 'customer' : 'vendor';
-  if (!contact || contact.kind !== expectedKind) throw bad(`${expectedKind === 'customer' ? 'Customer Name' : 'Vendor Name'} is required`);
+  if (!contact || contact.kind !== expectedKind) throw bad(`${expectedKind === 'customer' ? 'Client Name' : 'Supplier Name'} is required`);
 
   const date = str(body.date) ?? existing?.date ?? today();
   let number = str(body.number) ?? existing?.number;
@@ -373,7 +373,7 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
   // converted documents: mark the source
   if (!existing && kind === 'invoice' && doc.quoteId) {
     const q = db.docs.find((d) => d.id === doc.quoteId);
-    if (q) logActivity(db, 'quote', q.id, q.contactId, `Quote converted to invoice ${doc.number}`);
+    if (q) logActivity(db, 'quote', q.id, q.contactId, `Estimate converted to invoice ${doc.number}`);
   }
   if (!existing && kind === 'sales_order' && doc.quoteId) {
     const q = db.docs.find((d) => d.id === doc.quoteId);
@@ -700,7 +700,7 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
   if (existing?.locked) throw bad('This payment is locked');
   const contactId = body.contactId ?? existing?.contactId;
   const contact = db.contacts.find((c) => c.id === contactId && c.kind === 'customer');
-  if (!contact) throw bad('Customer Name is required');
+  if (!contact) throw bad('Client Name is required');
   const amount = round2(n(body.amount ?? existing?.amount));
   if (amount <= 0) throw bad('Amount Received must be greater than zero');
   const depositToAccountId = body.depositToAccountId ?? existing?.depositToAccountId;
@@ -714,7 +714,7 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
   if (used > amount + tdsAmount + 0.004) throw bad(`The amount applied to invoices (${money(used)}) exceeds the amount received (${money(amount + tdsAmount)})`);
   for (const a of allocations) {
     const inv = getDoc(a.docId, 'invoice');
-    if (inv.contactId !== contact.id) throw bad('Payments can only be applied to invoices of the same customer');
+    if (inv.contactId !== contact.id) throw bad('Payments can only be applied to invoices of the same client');
     if (isUnposted(inv.status) || inv.status === 'void') throw bad(`${inv.number} is ${inv.status.replace(/_/g, ' ')} and cannot receive payments`);
     const prev = existing?.allocations.find((x) => x.docId === a.docId)?.amount ?? 0;
     if (a.amount > inv.balance + (existing?.status === 'paid' ? prev : 0) + 0.004) throw bad(`${inv.number}: payment exceeds the balance due`);
@@ -812,9 +812,9 @@ export function savePaymentMade(body: Partial<PaymentMade>, id?: string): Paymen
   if (id && !existing) throw notFound('Payment');
   const contactId = body.contactId ?? existing?.contactId;
   const vendor = db.contacts.find((c) => c.id === contactId && c.kind === 'vendor');
-  if (!vendor) throw bad('Vendor Name is required');
+  if (!vendor) throw bad('Supplier Name is required');
   const amount = round2(n(body.amount ?? existing?.amount));
-  if (amount <= 0) throw bad('Payment Made must be greater than zero');
+  if (amount <= 0) throw bad('Supplier Payment must be greater than zero');
   const type = (body.type ?? existing?.type ?? 'bill_payment') as PaymentMade['type'];
   const paidThroughAccountId = body.paidThroughAccountId ?? existing?.paidThroughAccountId;
   if (!paidThroughAccountId) throw bad('Paid Through is required');
@@ -823,7 +823,7 @@ export function savePaymentMade(body: Partial<PaymentMade>, id?: string): Paymen
   if (used > amount + 0.004) throw bad(`The amount applied to bills (${money(used)}) exceeds the payment (${money(amount)})`);
   for (const a of allocations) {
     const bill = getDoc(a.docId, 'bill');
-    if (bill.contactId !== vendor.id) throw bad('Payments can only be applied to bills of the same vendor');
+    if (bill.contactId !== vendor.id) throw bad('Payments can only be applied to bills of the same supplier');
     if (isUnposted(bill.status) || bill.status === 'void') throw bad(`${bill.number} is ${bill.status.replace(/_/g, ' ')}`);
     const prev = existing?.allocations.find((x) => x.docId === a.docId)?.amount ?? 0;
     if (a.amount > bill.balance + prev + 0.004) throw bad(`${bill.number}: payment exceeds the balance due`);
@@ -862,7 +862,7 @@ export function savePaymentMade(body: Partial<PaymentMade>, id?: string): Paymen
     const b = getDoc(a.docId);
     logActivity(db, 'bill', b.id, b.contactId, `Payment of ${money(a.amount)} made`, `Payment #${number} via ${p.mode}`);
   }
-  logActivity(db, 'payment_made', p.id, p.contactId, existing ? 'Payment updated' : type === 'vendor_advance' ? 'Vendor advance recorded' : 'Bill payment recorded', `${money(amount)} paid via ${p.mode}`);
+  logActivity(db, 'payment_made', p.id, p.contactId, existing ? 'Payment updated' : type === 'vendor_advance' ? 'Supplier advance recorded' : 'Bill payment recorded', `${money(amount)} paid via ${p.mode}`);
   return p;
 }
 
@@ -924,7 +924,7 @@ export function saveExpense(body: Partial<Expense>, id?: string): Expense {
   return e;
 }
 
-/** Zoho blocks deleting an expense that has already been billed to a customer. */
+/** Block deleting an expense that has already been billed to a customer. */
 export function deleteExpenses(ids: string[]) {
   const db = getDb();
   const blocked = db.expenses.filter((e) => ids.includes(e.id) && e.status === 'invoiced' && e.invoiceId && db.docs.some((d) => d.id === e.invoiceId));
@@ -938,7 +938,7 @@ export function convertExpenseToInvoice(id: string): TxnDoc {
   const db = getDb();
   const e = db.expenses.find((x) => x.id === id);
   if (!e) throw notFound('Expense');
-  if (!e.billable || !e.customerId) throw bad('Only billable expenses with a customer can be converted to an invoice');
+  if (!e.billable || !e.customerId) throw bad('Only billable expenses with a client can be converted to an invoice');
   if (e.status === 'invoiced') throw bad('This expense has already been invoiced');
   const acct = db.accounts.find((a) => a.id === e.accountId);
   const inv = saveDoc('invoice', {
@@ -1021,7 +1021,7 @@ export function recurringExpenseAction(id: string, action: string) {
   return r;
 }
 
-/** Zoho's "Record Bulk Payment" for several bills (one payment per vendor). All or nothing. */
+/** the "Record Bulk Payment" for several bills (one payment per vendor). All or nothing. */
 export function savePaymentsBulk(list: Partial<PaymentMade>[]) {
   const db = getDb();
   if (!list.length) throw bad('Select at least one bill to pay');
@@ -1037,7 +1037,7 @@ export function savePaymentsBulk(list: Partial<PaymentMade>[]) {
   }
 }
 
-/** Applies the unused part of a vendor payment / advance to bills (Zoho: Apply Credits on a bill). */
+/** Applies the unused part of a vendor payment / advance to bills. */
 export function applyPaymentMade(id: string, add: { docId: string; amount: number }[]) {
   const db = getDb();
   const p = db.paymentsMade.find((x) => x.id === id);
@@ -1048,7 +1048,7 @@ export function applyPaymentMade(id: string, add: { docId: string; amount: numbe
   for (const a of add) {
     if (!(n(a.amount) > 0)) continue;
     const bill = getDoc(a.docId, 'bill');
-    if (bill.contactId !== p.contactId) throw bad('Payments can only be applied to bills of the same vendor');
+    if (bill.contactId !== p.contactId) throw bad('Payments can only be applied to bills of the same supplier');
     if (n(a.amount) > bill.balance + 0.004) throw bad(`${bill.number}: amount exceeds the balance due (${money(bill.balance)})`);
     const cur = p.allocations.find((x) => x.docId === a.docId);
     if (cur) cur.amount = round2(cur.amount + n(a.amount));

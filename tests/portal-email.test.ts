@@ -1,10 +1,10 @@
-// Customer email (templates, outbox, log), shared links and the customer portal.
+// Client email (templates, outbox, log), shared links and the customer portal.
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 process.env.MAIL_TRANSPORT = 'outbox';
 process.env.APP_SECRET = 'test-secret';
 process.env.APP_ORIGIN = 'http://books.test';
@@ -38,12 +38,12 @@ const lastInviteToken = async () => {
   return /\/portal\/invite\/([\w-]+)/.exec(m.body + (m.html || ''))![1];
 };
 
-describe('customer email', () => {
+describe('client email', () => {
   it('fills the default template and lists the contact persons as recipients', async () => {
     const r = await api().get('/api/mail/compose').query({ entityType: 'quote', entityId: quoteId });
     expect(r.status).toBe(200);
     expect(r.body.kind).toBe('quote');
-    expect(r.body.subject).toMatch(/^Quote QT-\d+ from Creatign/);
+    expect(r.body.subject).toMatch(/^Estimate QT-\d+ from Creatign/);
     expect(r.body.body).toContain('Arun Kumar');
     expect(r.body.body).not.toContain('%DocumentNumber%');
     expect(r.body.to).toEqual(['accounts@testcompany.in']);
@@ -51,7 +51,7 @@ describe('customer email', () => {
     expect(r.body.linkAvailable).toBe(true);
   });
 
-  it('keeps unsent email in the outbox with the branded HTML, marks the quote sent and adds a view link', async () => {
+  it('keeps unsent email in the outbox with the branded HTML, marks the estimate sent and adds a view link', async () => {
     const c = (await api().get('/api/mail/compose').query({ entityType: 'quote', entityId: quoteId })).body;
     const r = await api().post('/api/mails').send({ entityType: 'quote', entityId: quoteId, to: c.to, cc: ['boss@testcompany.in'], bcc: ['archive@creatign.in'], subject: c.subject, body: `${c.body}\n\nLink: %DocumentLink%`, attachPdf: true, includeLink: true, templateId: c.templateId });
     expect(r.status).toBe(200);
@@ -59,7 +59,7 @@ describe('customer email', () => {
     expect(r.body.html).toBeUndefined(); // list rows leave the HTML out
     expect(r.body.bcc).toEqual(['archive@creatign.in']);
     const full = (await api().get(`/api/mails/${r.body.id}`)).body;
-    expect(full.html).toContain('View Quote');
+    expect(full.html).toContain('View Estimate');
     expect(full.html).toContain('http://books.test/share/');
     expect(full.body).toMatch(/Link: http:\/\/books\.test\/share\/[\w-]+/);
     expect((await api().get(`/api/docs/${quoteId}`)).body.status).toBe('sent');
@@ -142,7 +142,7 @@ describe('shared links', () => {
   });
 });
 
-describe('customer portal', () => {
+describe('client portal', () => {
   const agent = () => request.agent(app);
   let a: ReturnType<typeof agent>;
 
@@ -181,7 +181,7 @@ describe('customer portal', () => {
     expect((await portal(agent()).get('/me')).status).toBe(401);
   });
 
-  it('shows only the customer’s own sent documents', async () => {
+  it('shows only the client’s own sent documents', async () => {
     const draft = await api().post('/api/docs').send({ kind: 'invoice', mode: 'draft', contactId: 'cus_test', lineItems: [{ itemId: 'item_logo', name: 'Logo Design', quantity: 1, rate: 100 }] });
     const docs = (await portal(a).get('/docs')).body as { id: string; kind: string }[];
     expect(docs.some((d) => d.id === quoteId)).toBe(true);
@@ -195,7 +195,7 @@ describe('customer portal', () => {
     expect((await portal(a).get(`/docs/${invoiceId}/pdf`)).headers['content-type']).toBe('application/pdf');
   });
 
-  it('accepts a quote from the portal and records who did it', async () => {
+  it('accepts an estimate from the portal and records who did it', async () => {
     expect((await portal(a).post(`/docs/${quoteId}/respond`, { action: 'decline' })).status).toBe(400); // reason required
     const r = await portal(a).post(`/docs/${quoteId}/respond`, { action: 'accept', comment: 'Go ahead' });
     expect(r.status).toBe(200);
@@ -213,7 +213,7 @@ describe('customer portal', () => {
     expect((await portal(a).get(`/payments/${pays[0].id}/pdf`)).headers['content-type']).toBe('application/pdf');
     const st = await portal(a).get('/statement').query({ from: '2020-01-01', to: '2999-12-31' });
     expect(st.status).toBe(200);
-    expect(st.body.rows.some((r: { type: string }) => r.type === 'Payment Received')).toBe(true);
+    expect(st.body.rows.some((r: { type: string }) => r.type === 'Client Payment')).toBe(true);
   });
 
   it('locks out after repeated wrong passwords, and resets the password by email', async () => {
@@ -234,7 +234,7 @@ describe('customer portal', () => {
     expect((await portal(agent()).post('/login', { email: 'accounts@testcompany.in', password: 'NewPass2027' })).status).toBe(200);
   });
 
-  it('turning off portal access for the customer signs them out', async () => {
+  it('turning off portal access for the client signs them out', async () => {
     const b = agent();
     await portal(b).post('/login', { email: 'accounts@testcompany.in', password: 'NewPass2027' });
     expect((await portal(b).get('/me')).status).toBe(200);

@@ -22,7 +22,7 @@ function ContactList({ kind }: { kind: ContactKind }) {
   const [status, setStatus] = useState('active');
   const [q, setQ] = useState('');
   const { data = [], isLoading } = useApi<Row[]>(`/contacts${qs({ kind, status, q })}`);
-  const label = kind === 'customer' ? 'Customers' : 'Vendors';
+  const label = kind === 'customer' ? 'Clients' : 'Suppliers';
   const views = [
     { value: 'active', label: `Active ${label}` },
     { value: 'inactive', label: `Inactive ${label}` },
@@ -51,11 +51,11 @@ function ContactList({ kind }: { kind: ContactKind }) {
       </div>
       {empty ? (
         <div className="flex flex-col items-center gap-3 py-20 text-center">
-          <div className="text-lg font-semibold">{kind === 'vendor' ? 'Business is no fun without people.' : 'Get started with your first customer.'}</div>
+          <div className="text-lg font-semibold">{kind === 'vendor' ? 'Add your first supplier.' : 'Add your first client.'}</div>
           <div className="text-slate-500">Create and manage your {label.toLowerCase()}, all in one place.</div>
           <div className="flex gap-2">
             <button className="btn-primary" onClick={() => navigate(`${basePath(kind)}/new`)}>
-              + Create New {kind === 'vendor' ? 'Vendor' : 'Customer'}
+              + Create New {kind === 'vendor' ? 'Supplier' : 'Client'}
             </button>
             <button className="btn-secondary" onClick={() => navigate('/settings/import')}>
               Import File
@@ -113,7 +113,7 @@ function ContactListPane({ kind }: { kind: ContactKind }) {
   return (
     <div className="no-print flex w-[280px] shrink-0 flex-col border-r border-slate-200">
       <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
-        <span className="font-semibold">All {kind === 'customer' ? 'Customers' : 'Vendors'}</span>
+        <span className="font-semibold">All {kind === 'customer' ? 'Clients' : 'Suppliers'}</span>
         <button className="btn-primary w-8 px-0" onClick={() => navigate(`${basePath(kind)}/new`)} aria-label="New">
           <Plus size={15} />
         </button>
@@ -175,16 +175,16 @@ function ContactDetail({ kind }: { kind: ContactKind }) {
                 {DOC_META[k as keyof typeof DOC_META].label}
               </MenuItem>
             ))}
-            <MenuItem onClick={() => navigate(vendor ? `/purchases/payments-made/new?contactId=${c.id}` : `/sales/payments-received/new?contactId=${c.id}`)}>{vendor ? 'Payment Made' : 'Customer Payment'}</MenuItem>
+            <MenuItem onClick={() => navigate(vendor ? `/purchases/payments-made/new?contactId=${c.id}` : `/sales/payments-received/new?contactId=${c.id}`)}>{vendor ? 'Supplier Payment' : 'Client Payment'}</MenuItem>
             {vendor && <MenuItem onClick={() => navigate(`/purchases/expenses/new?vendorId=${c.id}`)}>Expense</MenuItem>}
           </Dropdown>
           <Dropdown align="right" button={() => <button className="btn-secondary">More <ChevronDown size={13} /></button>}>
-            {vendor && <MenuItem onClick={() => toast.success('PDF templates associated with this vendor')}>Associate Templates</MenuItem>}
-            {!vendor && <MenuItem onClick={() => setPortalOpen(true)}>Customer Portal Access</MenuItem>}
+            {vendor && <MenuItem onClick={() => toast.success('PDF templates associated with this supplier')}>Associate Templates</MenuItem>}
+            {!vendor && <MenuItem onClick={() => setPortalOpen(true)}>Client Portal Access</MenuItem>}
             {vendor && <MenuItem onClick={() => navigate(`${basePath(kind)}/${c.id}/edit`)}>Add Bank Account</MenuItem>}
-            <MenuItem onClick={() => setLinkOpen(true)}>Link to {vendor ? 'Customer' : 'Vendor'}</MenuItem>
+            <MenuItem onClick={() => setLinkOpen(true)}>Link to {vendor ? 'Client' : 'Supplier'}</MenuItem>
             <MenuItem onClick={() => clone.mutate(undefined, { onSuccess: (r) => navigate(`${basePath(kind)}/${r.id}/edit`) })}>Clone</MenuItem>
-            <MenuItem onClick={() => setMergeOpen(true)}>Merge {vendor ? 'Vendors' : 'Customers'}</MenuItem>
+            <MenuItem onClick={() => setMergeOpen(true)}>Merge {vendor ? 'Suppliers' : 'Clients'}</MenuItem>
             <MenuItem onClick={() => status.mutate(c.status === 'active' ? 'inactive' : 'active')}>Mark as {c.status === 'active' ? 'Inactive' : 'Active'}</MenuItem>
             <MenuItem danger onClick={() => confirm.ask(`Delete ${c.displayName}`, 'This cannot be undone.', () => del.mutate(undefined, { onSuccess: () => navigate(basePath(kind)) }), { danger: true, label: 'Delete' })}>
               Delete
@@ -262,12 +262,12 @@ function Overview({ c, onPortal }: { c: Row; onPortal: () => void }) {
           <AddressBlock a={c.shippingAddress} />
         </Block>
         <Block title="Other Details">
-          {!vendor && <KV k="Customer Type" v={c.customerType === 'business' ? 'Business' : 'Individual'} />}
+          {!vendor && <KV k="Client Type" v={c.customerType === 'business' ? 'Business' : 'Individual'} />}
           <KV k="Default Currency" v={c.currencyCode} />
           <KV k="PAN" v={c.pan} />
           {vendor && <KV k="MSME Registered" v={c.msmeRegistered ? 'Yes' : 'No'} />}
           {!vendor && <KV k="Portal Status" v={<PortalStatusBlock contactId={c.id} onManage={onPortal} />} />}
-          <KV k={`${vendor ? 'Vendor' : 'Customer'} Language`} v={c.language} />
+          <KV k={`${vendor ? 'Supplier' : 'Client'} Language`} v={c.language} />
           <KV k="Website" v={c.website} />
           {c.remarks && <KV k="Remarks" v={c.remarks} />}
         </Block>
@@ -281,7 +281,7 @@ function Overview({ c, onPortal }: { c: Row; onPortal: () => void }) {
           ))}
         </Block>
         <Block title="Record Info">
-          <KV k={`${vendor ? 'Vendor' : 'Customer'} ID`} v={c.id} />
+          <KV k={`${vendor ? 'Supplier' : 'Client'} ID`} v={c.id} />
           <KV k="Created On" v={fmtDate(c.createdAt.slice(0, 10))} />
           <KV k="Created By" v="Creatign" />
         </Block>
@@ -395,18 +395,18 @@ function Transactions({ c }: { c: Row }) {
       ? [
           docSection('Invoices', data.invoices, 'invoice'),
           {
-            title: 'Customer Payments',
+            title: 'Client Payments',
             count: data.customerPayments.length,
             newTo: `/sales/payments-received/new?contactId=${c.id}`,
             head: ['Date', 'Payment#', 'Reference#', 'Mode', 'Amount', 'Unused'],
             rows: data.customerPayments.map((p) => ({ key: p.id, to: `/sales/payments-received/${p.id}`, cells: [fmtDate(p.date), p.number, p.referenceNumber, p.mode, money(p.amount), money(p.unusedAmount)] })),
           },
-          docSection('Quotes', data.quotes, 'quote'),
+          docSection('Estimates', data.quotes, 'quote'),
           docSection('Sales Orders', data.salesOrders, 'sales_order'),
           docSection('Delivery Challans', data.deliveryChallans, 'delivery_challan'),
-          docSection('Recurring Invoices', data.recurringInvoices, 'recurring_invoice'),
+          docSection('Invoice Schedules', data.recurringInvoices, 'recurring_invoice'),
           expenseSection(data.expenses, c, 'Expenses'),
-          { title: 'Recurring Expenses', count: data.recurringExpenses.length, newTo: '/purchases/recurring-expenses/new', head: ['Profile', 'Frequency', 'Status', 'Amount'], rows: data.recurringExpenses.map((r) => ({ key: r.id, to: `/purchases/recurring-expenses/${r.id}`, cells: [r.profileName, `${r.repeatEvery.n} ${r.repeatEvery.unit}`, <Status key="s" status={r.status} />, money(r.amount)] })) },
+          { title: 'Expense Schedules', count: data.recurringExpenses.length, newTo: '/purchases/recurring-expenses/new', head: ['Profile', 'Frequency', 'Status', 'Amount'], rows: data.recurringExpenses.map((r) => ({ key: r.id, to: `/purchases/recurring-expenses/${r.id}`, cells: [r.profileName, `${r.repeatEvery.n} ${r.repeatEvery.unit}`, <Status key="s" status={r.status} />, money(r.amount)] })) },
           { title: 'Projects', count: data.projects.length, newTo: '/time-tracking/projects', head: ['Project', 'Billing', 'Rate', 'Status'], rows: data.projects.map((p) => ({ key: p.id, to: '/time-tracking/projects', cells: [p.name, p.billingMethod, money(p.rate), <Status key="s" status={p.status} />] })) },
           journalSection(data.journals),
           docSection('Bills', data.bills, 'bill'),
@@ -422,10 +422,10 @@ function Transactions({ c }: { c: Row }) {
             rows: data.billPayments.map((p) => ({ key: p.id, to: `/purchases/payments-made/${p.id}`, cells: [fmtDate(p.date), p.number, p.referenceNumber, p.mode, money(p.amount), money(p.unusedAmount)] })),
           },
           expenseSection(data.expenses, c, 'Expenses'),
-          docSection('Recurring Bills', data.recurringBills, 'recurring_bill'),
-          { title: 'Recurring Expenses', count: data.recurringExpenses.length, newTo: '/purchases/recurring-expenses/new', head: ['Profile', 'Frequency', 'Status', 'Amount'], rows: data.recurringExpenses.map((r) => ({ key: r.id, to: `/purchases/recurring-expenses/${r.id}`, cells: [r.profileName, `${r.repeatEvery.n} ${r.repeatEvery.unit}`, <Status key="s" status={r.status} />, money(r.amount)] })) },
+          docSection('Bill Schedules', data.recurringBills, 'recurring_bill'),
+          { title: 'Expense Schedules', count: data.recurringExpenses.length, newTo: '/purchases/recurring-expenses/new', head: ['Profile', 'Frequency', 'Status', 'Amount'], rows: data.recurringExpenses.map((r) => ({ key: r.id, to: `/purchases/recurring-expenses/${r.id}`, cells: [r.profileName, `${r.repeatEvery.n} ${r.repeatEvery.unit}`, <Status key="s" status={r.status} />, money(r.amount)] })) },
           docSection('Purchase Orders', data.purchaseOrders, 'purchase_order'),
-          docSection('Vendor Credits', data.vendorCredits, 'vendor_credit'),
+          docSection('Debit Notes', data.vendorCredits, 'vendor_credit'),
           journalSection(data.journals),
         ];
   return (
@@ -457,7 +457,7 @@ function journalSection(journals: Journal[]) {
 }
 
 function TxnSection({ title, count, newTo, head, rows, onRow }: { title: string; count: number; newTo: string; head: string[]; rows: { key: string; to: string; cells: ReactNode[] }[]; onRow: (to: string) => void }) {
-  const [open, setOpen] = useState(count > 0 && ['Invoices', 'Bills', 'Customer Payments', 'Bill Payments'].includes(title));
+  const [open, setOpen] = useState(count > 0 && ['Invoices', 'Bills', 'Client Payments', 'Bill Payments'].includes(title));
   const navigate = useNavigate();
   return (
     <div className="rounded-md border border-slate-200">
@@ -560,7 +560,7 @@ export function StatementView({ c, s, org }: { c: Contact; s: StatementData; org
           <AddressBlock a={c.billingAddress} />
         </div>
         <div className="text-right">
-          <div className="text-xl font-semibold">{vendor ? 'Vendor Statement' : 'Statement of Accounts'}</div>
+          <div className="text-xl font-semibold">{vendor ? 'Supplier Statement' : 'Statement of Accounts'}</div>
           <div className="mt-1 border-y border-slate-300 py-1 text-xs">
             {fmtDate(s.from)} To {fmtDate(s.to)}
           </div>
@@ -677,7 +677,7 @@ function Statement({ c }: { c: Row }) {
           extra={{ statement: { from: s.from, to: s.to } }}
           attachmentOptions={[
             ...(c.kind === 'customer' ? [{ key: 'unpaid', label: 'Attach Unpaid invoices List', defaultChecked: false }] : []),
-            { key: 'statement', label: c.kind === 'customer' ? 'Attach Customer Statement' : 'Attach Vendor Statement' },
+            { key: 'statement', label: c.kind === 'customer' ? 'Attach Client Statement' : 'Attach Supplier Statement' },
           ]}
         />
       )}
@@ -691,7 +691,7 @@ function MergeModal({ c, onClose }: { c: Row; onClose: () => void }) {
   const [src, setSrc] = useState('');
   const merge = useAction(() => api(`/contacts/${c.id}/merge`, { body: { sourceId: src } }), 'Merged successfully');
   return (
-    <Modal open onClose={onClose} title={`Merge ${c.kind === 'customer' ? 'Customers' : 'Vendors'}`} footer={<><button className="btn-primary" disabled={!src} onClick={() => merge.mutate(undefined, { onSuccess: () => { onClose(); navigate(`${basePath(c.kind)}/${c.id}`); } })}>Continue</button><button className="btn-secondary" onClick={onClose}>Cancel</button></>}>
+    <Modal open onClose={onClose} title={`Merge ${c.kind === 'customer' ? 'Clients' : 'Suppliers'}`} footer={<><button className="btn-primary" disabled={!src} onClick={() => merge.mutate(undefined, { onSuccess: () => { onClose(); navigate(`${basePath(c.kind)}/${c.id}`); } })}>Continue</button><button className="btn-secondary" onClick={onClose}>Cancel</button></>}>
       <div className="mb-3 text-[13px]">
         Select a {c.kind} to merge into <b>{c.displayName}</b>. All of its transactions move here and it is deleted.
       </div>
@@ -706,7 +706,7 @@ function LinkModal({ c, onClose }: { c: Row; onClose: () => void }) {
   const [sel, setSel] = useState(c.linkedContactId || '');
   const save = useAction(() => api(`/contacts/${c.id}`, { method: 'PUT', body: { linkedContactId: sel || undefined } }), 'Link saved');
   return (
-    <Modal open onClose={onClose} title={`Link to ${other === 'customer' ? 'Customer' : 'Vendor'}`} footer={<><button className="btn-primary" onClick={() => save.mutate(undefined, { onSuccess: onClose })}>Link</button><button className="btn-secondary" onClick={onClose}>Cancel</button></>}>
+    <Modal open onClose={onClose} title={`Link to ${other === 'customer' ? 'Client' : 'Supplier'}`} footer={<><button className="btn-primary" onClick={() => save.mutate(undefined, { onSuccess: onClose })}>Link</button><button className="btn-secondary" onClick={onClose}>Cancel</button></>}>
       <div className="mb-3 text-[13px]">Link {c.displayName} to a {other} to see receivables and payables together.</div>
       <Select value={sel} onChange={(e) => setSel(e.target.value)} placeholder={`Select a ${other}`} options={data.map((x) => ({ value: x.id, label: x.displayName }))} />
     </Modal>

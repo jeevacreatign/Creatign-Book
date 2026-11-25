@@ -1,6 +1,6 @@
-# Creatign Books
+# Creatign Ledger
 
-Accounting and billing for **Creatign** (Tamil Nadu, India): items, customers and vendors, the full sales cycle (quote → sales order → invoice → payment), the full purchase cycle (purchase order → bill → payment made), expenses, double-entry journals and financial reports.
+Accounting and billing for **Creatign** (Tamil Nadu, India): items, clients and suppliers, the full sales cycle (estimate → sales order → invoice → payment), the full purchase cycle (purchase order → bill → payment made), expenses, double-entry journals and financial reports.
 
 * Currency: Indian Rupee with Indian digit grouping, e.g. **₹1,00,000.00**
 * Dates: **dd/MM/yyyy**
@@ -29,7 +29,7 @@ npm run dev
 * App: http://localhost:5173
 * API: http://localhost:4000/api (Vite proxies `/api` and `/uploads` to it)
 
-On first start the server creates `server/data/db.json` with the Creatign organisation, a chart of accounts and a little sample data (4 items, customers *Test Company* and *Ananya Textiles*, vendors, two projects with tasks, users and time entries), so every screen has something to show.
+On first start the server creates `server/data/db.json` with the Creatign organisation, a chart of accounts and a little sample data (4 items, clients *Test Company* and *Ananya Textiles*, suppliers, two projects with tasks, users and time entries), so every screen has something to show.
 
 | Command | What it does |
 |---|---|
@@ -46,14 +46,14 @@ Environment variables go in a `.env` file in the project folder (copy `.env.exam
 Email is set up in **Settings → Emails**, which shows which transport is in use and has a **Send Test** button. The app tries, in order:
 
 1. a **Gmail account linked with OAuth** (see below),
-2. **SMTP saved in Settings → Emails** (host, port, STARTTLS / SSL, username, password, From name and address, Reply-To). Works with Gmail app passwords, Zoho Mail, Microsoft 365, Amazon SES, Mailgun and others. The password is encrypted with `APP_SECRET`, or with a random key generated once into `server/data/app-secret.json` (git-ignored; keep it with your backups of `db.json`),
+2. **SMTP saved in Settings → Emails** (host, port, STARTTLS / SSL, username, password, From name and address, Reply-To). Works with Gmail app passwords, Microsoft 365, Amazon SES, Mailgun and others. The password is encrypted with `APP_SECRET`, or with a random key generated once into `server/data/app-secret.json` (git-ignored; keep it with your backups of `db.json`),
 3. **SMTP from `.env`** (below),
-4. the **outbox**: with nothing set up, emails are kept in **Settings → Emails → Email Log** with the exact HTML the customer would get, marked *Outbox*, and can be sent later with **Retry Sending**. Set `MAIL_TRANSPORT=outbox` to force this during development.
+4. the **outbox**: with nothing set up, emails are kept in **Settings → Emails → Email Log** with the exact HTML the client would get, marked *Outbox*, and can be sent later with **Retry Sending**. Set `MAIL_TRANSPORT=outbox` to force this during development.
 
 To use Gmail over SMTP from `.env` instead of the Settings screen:
 
 1. Turn on **2-Step Verification** for the Gmail account (Google Account → Security).
-2. Open https://myaccount.google.com/apppasswords, create an app password (name it e.g. *Creatign Books*) and copy the 16 letters. Use this, not your normal Gmail password.
+2. Open https://myaccount.google.com/apppasswords, create an app password (name it e.g. *Creatign Ledger*) and copy the 16 letters. Use this, not your normal Gmail password.
 3. In the project folder, copy `.env.example` to `.env` (Windows: `copy .env.example .env`, macOS/Linux: `cp .env.example .env`) and fill in:
    ```
    SMTP_USER=yourname@gmail.com
@@ -64,14 +64,14 @@ To use Gmail over SMTP from `.env` instead of the Settings screen:
 
 If the mail server rejects the login or can't be reached, the email is logged as **Failed** with the reason and the document is not marked as sent. For another provider, also set `SMTP_HOST` and `SMTP_PORT`. If your network uses SMTP TLS inspection and the server certificate chain is signed by a private CA, set `SMTP_TLS_CA_FILE` to that CA's PEM file and restart the server. Obtain the certificate from your network administrator; do not disable certificate validation.
 
-### Customer emails (Zoho-style)
+### Client emails
 
-**Send → Send Email** on a quote, sales order, invoice, credit note, purchase order, payment or statement opens the composer:
+**Send → Send Email** on an estimate, sales order, invoice, credit note, purchase order, payment or statement opens the composer:
 
 * **Template** picker (Settings → Emails → Templates). Each kind has a built-in template that can be edited or restored, and you can add your own and choose the default. Placeholders such as `%CustomerName%`, `%DocumentNumber%`, `%Total%`, `%BalanceDue%`, `%DueDate%`, `%DaysOverdue%`, `%PaymentAmount%`, `%ClosingBalance%` or `%DocumentLink%` are filled in from the transaction. Overdue invoices start from the **Payment Reminder** template.
-* **To / Cc / Bcc** as recipient chips, with the customer's email and contact persons suggested.
+* **To / Cc / Bcc** as recipient chips, with the client's email and contact persons suggested.
 * **Attachments**: the transaction PDF (drawn with its PDF template), the transaction's own attachments, and extra uploaded files (20 MB total).
-* **Add a "View Invoice" button**: creates a secure share link (valid for 90 days by default) so the customer can open the document online, download the PDF, accept a quote or see how to pay.
+* **Add a "View Invoice" button**: creates a secure share link (valid for 90 days by default) so the client can open the document online, download the PDF, accept an estimate or see how to pay.
 * **Preview** shows the branded HTML email: your logo (sent inline so Gmail shows it), a summary card with the amount and dates, your message, the button, and your address in the footer.
 
 Every email is logged with its status (**Sent**, **Outbox**, **Failed**) and the exact HTML. The log is in the **Emails** tab of each transaction, the **Mails** tab of each contact, and **Settings → Emails → Email Log**, with **Send Again / Retry Sending**.
@@ -112,34 +112,38 @@ client/src/
                expenses, time (projects, timesheet, timer), misc (banking, accountant, reports, settings, print)
   email.ts     email templates, placeholders, branded HTML, attachments, email log
   mailer.ts    transports: Gmail OAuth, SMTP (settings or .env), outbox
-  portal.ts    customer portal API, invitations, sessions, shared links, payment notices
-client/src/customer/  customer-facing pages: /portal and /share/:token
+  portal.ts    client portal API, invitations, sessions, shared links, payment notices
+client/src/client/  client-facing pages: /portal and /share/:token
 tests/               workflow, approval, PDF template, email and portal tests
 docs/SCHEMA.md       architecture and data model
 ```
 
 ## Modules
 
-* **Home**: dashboard with receivables and payables (current and overdue buckets), cash flow, income and expense (accrual or cash), top expenses, projects, bank and credit card balances; Getting Started; Recent Updates.
-* **Items**: goods and services with sales and purchase information.
-* **Sales**: Customers, Quotes, Sales Orders, Invoices, Recurring Invoices, Delivery Challans, Payments Received, Credit Notes.
-* **Purchases**: Vendors, Expenses (including mileage and bulk), Recurring Expenses, Purchase Orders, Bills, Recurring Bills, Payments Made, Vendor Credits.
-* **Time Tracking** (Zoho-style, see `docs/TIME-TRACKING-ZOHO.md`): projects with four billing methods (fixed cost, project hours, task hours, staff hours), tasks, users, hours and cost budgets and a dashboard watchlist; a project page with Overview, Timesheet, Purchases, Sales, Budget Configuration, Journals, Activity Logs and Comments; a Timesheet with list, calendar and summary views, filters, weekly logs and a running timer in the top bar; invoicing of unbilled time (per project, task, user or entry) and fixed-cost project fees.
-* **Banking**, **Accountant** (chart of accounts, manual journals), **Reports**, **Documents**, **Settings**.
+* **Dashboard**: dashboard with receivables and payables (current and overdue buckets), cash flow, income and expense (accrual or cash), top expenses, projects, bank and credit card balances; Getting Started; Recent Updates.
+* **Products & Services**: goods and services with sales and purchase information.
+* **Receivables**: Clients, Estimates, Sales Orders, Invoices, Invoice Schedules, Delivery Challans, Client Payments, Credit Notes.
+* **Payables**: Suppliers, Expenses (including mileage and bulk), Expense Schedules, Purchase Orders, Purchase Bills, Bill Schedules, Supplier Payments, Debit Notes.
+* **Projects & Time**: projects with four billing methods (fixed cost, project hours, task hours, staff hours), tasks, users, hours and cost budgets and a dashboard watchlist; a project page with Overview, Timesheet, Purchases, Sales, Budget Configuration, Journals, Activity Logs and Comments; a Timesheet with list, calendar and summary views, filters, weekly logs and a running timer in the top bar; invoicing of unbilled time (per project, task, user or entry) and fixed-cost project fees.
+* **Cash & Bank**: bank and card accounts, statement import, matching and posting statement lines, auto-categorization rules, transfers and reconciliation.
+* **General Ledger**: Journal Vouchers, Voucher Schedules, Batch Reclassify, FX Revaluation, Chart of Accounts, Budget Planner and Period Close.
+* **Financial Reports**: the Report Library with financial statements, receivables, payables, GST returns (GSTR-1, GSTR-3B, HSN), ledgers and audit trail, with PDF, CSV and Excel export.
+* **Document Vault**: Uploads and Bank Statements inbox, folders, trash, preview and attaching files to transactions.
+* **Settings**.
 * **Payroll** and **Payment Gateway** appear in the sidebar as placeholders for future integrations.
 
-Every document supports PDF/print, email, share link, comments, activity history, attachments and a journal tab where it posts to the ledger. Conversions are one click: quote → sales order or invoice, sales order → invoice, delivery challan → invoice, purchase order → bill, expense → invoice.
+Every document supports PDF/print, email, share link, comments, activity history, attachments and a journal tab where it posts to the ledger. Conversions are one click: estimate → sales order or invoice, sales order → invoice, delivery challan → invoice, purchase order → bill, expense → invoice.
 
 ## Verify the workflows
 
 Run `npm run reset-data` first for a clean start, then `npm run dev` and open http://localhost:5173.
 
-### A. Item → Quote → Sales Order → Invoice → Journal and Payment Received
+### A. Item → Estimate → Sales Order → Invoice → Journal and Client Payment
 
-1. **Create an item.** Items → **New**. Name *Website Audit*, type Service, Selling Price `24000`, Sales Account *Sales*. Save.
-2. **Create a quote.** Sales → Quotes → **New**. Customer *Test Company*, add the item *Website Audit* (qty 1). Check the total reads ₹24,000.00. Click **Save and Send**, then **Send** in the email dialog. The quote's status becomes **Sent**.
-3. **Convert to a sales order.** On the quote, open **More → Convert to Sales Order**. The form opens prefilled with the customer and lines; click **Save and Submit**. The new order `SO-00001` is linked back to the quote and shows **Pending Approval** (sales orders need approval by default, see below). Click **Approve**, then **Mark as Confirmed**.
-4. **Convert to an invoice.** On the sales order, click **Convert to Invoice** and then **Save and Send** (or Save as Draft, then Mark as Sent). The sales order's Invoiced indicator turns green. The invoice gets number `INV-00001`, a due date from the customer's payment terms (Net 15), and status **Open/Due**.
+1. **Create an item.** Products & Services → **New**. Name *Website Audit*, type Service, Selling Price `24000`, Sales Account *Sales*. Save.
+2. **Create an estimate.** Receivables → Estimates → **New**. Client *Test Company*, add the item *Website Audit* (qty 1). Check the total reads ₹24,000.00. Click **Save and Send**, then **Send** in the email dialog. The estimate's status becomes **Sent**.
+3. **Convert to a sales order.** On the estimate, open **More → Convert to Sales Order**. The form opens prefilled with the client and lines; click **Save and Submit**. The new order `SO-00001` is linked back to the estimate and shows **Pending Approval** (sales orders need approval by default, see below). Click **Approve**, then **Mark as Confirmed**.
+4. **Convert to an invoice.** On the sales order, click **Convert to Invoice** and then **Save and Send** (or Save as Draft, then Mark as Sent). The sales order's Invoiced indicator turns green. The invoice gets number `INV-00001`, a due date from the client's payment terms (Net 15), and status **Open/Due**.
 5. **Check the journal.** Open the invoice's **Journal** tab:
    Accounts Receivable debit ₹24,000.00, Sales credit ₹24,000.00.
 6. **Record the payment.** On the invoice, **Record Payment → Record Payment**. The invoice is prefilled with ₹24,000. Choose mode *Cash* (Deposit To *Petty Cash*) and **Save as Paid**.
@@ -148,22 +152,22 @@ Run `npm run reset-data` first for a clean start, then `npm run dev` and open ht
    * Test Company's **Statement** and **Transactions** tabs list the invoice and the payment; its Overview shows ₹0.00 outstanding and the income chart shows ₹24,000 for this month.
 7. **Check the ledger.** Reports → **Trial Balance**: total debits equal total credits.
 
-Try also: a quote with 10% discount and 2% TDS (`₹1,00,000 → ₹88,200`), partial payments, overpayment (the excess becomes an unused credit), a credit note applied to an invoice and refunded.
+Try also: an estimate with 10% discount and 2% TDS (`₹1,00,000 → ₹88,200`), partial payments, overpayment (the excess becomes an unused credit), a credit note applied to an invoice and refunded.
 
-### B. Vendor → Bill → Payment Made
+### B. Supplier → Bill → Supplier Payment
 
-1. **Create a vendor.** Purchases → Vendors → **New**. Display name *Madurai Box Works*, payment terms *Due on Receipt*. Save.
-2. **Create a bill.** Purchases → Bills → **New**. Vendor *Madurai Box Works*, Bill# `MBW-771`, one line (pick an item such as *Printed Brochure*, or type a description), qty 1, rate `6000`. **Save as Open**. The bill shows ₹6,000.00 due and its journal shows the line's purchase account debited and Accounts Payable credited ₹6,000.00.
-3. **Pay the bill.** On the bill, **Record Payment** (or Purchases → Payments Made → **New**). The bill is prefilled with ₹6,000; choose Paid Through *Petty Cash*, **Save as Paid**.
+1. **Create a supplier.** Payables → Suppliers → **New**. Display name *Madurai Box Works*, payment terms *Due on Receipt*. Save.
+2. **Create a bill.** Payables → Purchase Bills → **New**. Supplier *Madurai Box Works*, Bill# `MBW-771`, one line (pick an item such as *Printed Brochure*, or type a description), qty 1, rate `6000`. **Save as Open**. The bill shows ₹6,000.00 due and its journal shows the line's purchase account debited and Accounts Payable credited ₹6,000.00.
+3. **Pay the bill.** On the bill, **Record Payment** (or Payables → Supplier Payments → **New**). The bill is prefilled with ₹6,000; choose Paid Through *Petty Cash*, **Save as Paid**.
    * The bill shows **PAID**.
    * The payment's journal shows Accounts Payable debit and Petty Cash credit ₹6,000.00.
-   * The vendor's payables drop to ₹0.00 and the Home dashboard's Total Payables updates.
+   * The supplier's payables drop to ₹0.00 and the Dashboard's Total Payables updates.
 
-Try also: a purchase order converted to a bill (the PO becomes **Billed**), bills with TDS (TDS Payable is credited), vendor credits, and expenses (Purchases → Expenses), which post straight to the expense account.
+Try also: a purchase order converted to a bill (the PO becomes **Billed**), bills with TDS (TDS Payable is credited), debit notes, and expenses (Payables → Expenses), which post straight to the expense account.
 
-### C. Submit for Approval (Zoho-style)
+### C. Submit for Approval
 
-Settings → **Approvals** turns approval on or off per module (Quotes, Sales Orders, Invoices, Credit Notes, Purchase Orders, Bills, Vendor Credits). Sales orders require approval out of the box; the others are off until you turn them on.
+Settings → **Approvals** turns approval on or off per module (Estimates, Sales Orders, Invoices, Credit Notes, Purchase Orders, Bills, Debit Notes). Sales orders require approval out of the box; the others are off until you turn them on.
 
 1. Create a sales order and click **Save as Draft**. The detail page shows a **Submit for Approval** toolbar button, a **What's next?** banner with **Submit for Approval** and **Approve**, and a diagonal **Draft** ribbon on the preview.
 2. Click **Submit for Approval**. Status becomes **Pending Approval** and the toolbar offers **Approve** and **Reject**. Send, Share, Mark as Confirmed and Convert to Invoice stay hidden until it is approved, and the API refuses them.
@@ -173,7 +177,7 @@ Settings → **Approvals** turns approval on or off per module (Quotes, Sales Or
 
 Documents that are draft, pending approval, approved or rejected never post to the ledger, receivables/payables or reports. Editing an approved document sends it back for approval.
 
-### D. PDF templates (Zoho-style Customize)
+### D. PDF templates
 
 Every transaction's **Details** tab shows the PDF preview with a **Show PDF View** switch and a **Customize** button:
 
@@ -181,32 +185,32 @@ Every transaction's **Details** tab shows the PDF preview with a **Show PDF View
 * **Edit Template** opens the full-screen editor: General (name, paper size A5 / A4 / Letter, orientation, margins, layout, font, colours, background), Header & Footer, Transaction Details, Table, Total and Other Details (notes, terms, bank details, signature). **Select Color Theme** recolours the template; the preview updates live and **Refresh Preview** redraws it.
 * **Update Logo & Address** uploads the organisation logo (jpg, png, gif, bmp up to 1 MB) and edits the address, phone, fax, website and industry printed on PDFs.
 * **Manage Custom Fields** adds fields to the module's form (text, number, date, dropdown, …); fields marked *Show in all PDFs* print with the document details. The **Preferences** tab sets the module's default template, notes and terms.
-* **Terms & Conditions** edits the notes and terms of this document, with *Use this in future for all … of all customers* to make them the default.
+* **Terms & Conditions** edits the notes and terms of this document, with *Use this in future for all … of all clients* to make them the default.
 
 Six designs ship with the app: Standard, Modern, Classic, Bold, Minimal and Spreadsheet. Settings → **PDF Templates** lists them with New, Clone, Edit and Delete, and picks a default template per module. The browser print view and the PDF attached to emails are drawn from the same template, with embedded fonts that print ₹.
 
-### E. Shared links and the customer portal
+### E. Shared links and the client portal
 
-**Share links.** **Share** on a sent quote, sales order, invoice or credit note creates a public link (`/share/<token>`) with an expiry date or *Never expires*. The page shows the document, its status and amount, **Download** / **Print** (server PDF), and, if allowed in Settings → Customer Portal, **Accept / Decline** for quotes and **How to pay** plus **I've made a payment** for invoices. The Share dialog lists active links with view counts and lets you disable one or all. Drafts and documents waiting for approval cannot be shared, and the link hides internal notes.
+**Share links.** **Share** on a sent estimate, sales order, invoice or credit note creates a public link (`/share/<token>`) with an expiry date or *Never expires*. The page shows the document, its status and amount, **Download** / **Print** (server PDF), and, if allowed in Settings → Client Portal, **Accept / Decline** for estimates and **How to pay** plus **I've made a payment** for invoices. The Share dialog lists active links with view counts and lets you disable one or all. Drafts and documents waiting for approval cannot be shared, and the link hides internal notes.
 
-**Customer portal** (`/portal`):
+**Client portal** (`/portal`):
 
-1. **Settings → Customer Portal**: turn the portal on, choose what customers can do (accept quotes, statements, report payments, act from shared links, email me when they do), set the portal name and public URL used in email links, a welcome message, and payment instructions (UPI ID for a QR code and *Pay with UPI* button, bank transfer details).
-2. Open a customer → **More → Customer Portal Access**, tick the primary email and/or contact persons, **Send Invitation**. The invitation email has an **Accept Invitation** button valid for 7 days. If email is not set up, the dialog shows the invitation link to share yourself. Resend, disable, remove a user, or turn off portal access for the customer from the same dialog; the customer's overview shows the portal status.
-3. The customer sets a password and lands on the dashboard: outstanding and overdue amounts, invoices to pay, quotes awaiting a response, recent payments and documents. They can list and open **Quotes, Sales Orders, Invoices, Credit Notes**, download PDFs, **accept or decline** quotes (name and comment recorded), see **how to pay** and **report a payment** with its UTR reference, download **payment receipts**, view and download their **statement** for any period, and change their name and password. **Forgot password** emails a reset link valid for 2 hours.
-4. Back in Creatign Books: the quote shows **Accepted by … via the customer portal** with the comment, and its status changes; documents show **Viewed by the customer**; an invoice with a reported payment shows a banner with **Record Payment** (choose the deposit account; the payment is applied to the invoice) or **Dismiss**. All reported payments are also listed in Settings → Customer Portal → Reported Payments. Everything is in the Activity timeline with the customer's name, and the organisation email gets a notification.
+1. **Settings → Client Portal**: turn the portal on, choose what clients can do (accept estimates, statements, report payments, act from shared links, email me when they do), set the portal name and public URL used in email links, a welcome message, and payment instructions (UPI ID for a QR code and *Pay with UPI* button, bank transfer details).
+2. Open a client → **More → Client Portal Access**, tick the primary email and/or contact persons, **Send Invitation**. The invitation email has an **Accept Invitation** button valid for 7 days. If email is not set up, the dialog shows the invitation link to share yourself. Resend, disable, remove a user, or turn off portal access for the client from the same dialog; the client's overview shows the portal status.
+3. The client sets a password and lands on the dashboard: outstanding and overdue amounts, invoices to pay, estimates awaiting a response, recent payments and documents. They can list and open **Estimates, Sales Orders, Invoices, Credit Notes**, download PDFs, **accept or decline** estimates (name and comment recorded), see **how to pay** and **report a payment** with its UTR reference, download **payment receipts**, view and download their **statement** for any period, and change their name and password. **Forgot password** emails a reset link valid for 2 hours.
+4. Back in Creatign Ledger: the estimate shows **Accepted by … via the client portal** with the comment, and its status changes; documents show **Viewed by the client**; an invoice with a reported payment shows a banner with **Record Payment** (choose the deposit account; the payment is applied to the invoice) or **Dismiss**. All reported payments are also listed in Settings → Client Portal → Reported Payments. Everything is in the Activity timeline with the client's name, and the organisation email gets a notification.
 
-Security: passwords are hashed with scrypt; sessions are random tokens stored hashed, in an HttpOnly SameSite=Lax cookie that expires after 14 days; invitation, reset and share tokens are 256-bit random values (invitation and reset tokens are stored hashed); five wrong passwords lock the account for 15 minutes and sign-in, reset and public actions are rate limited; customers only ever see their own documents that were sent to them.
+Security: passwords are hashed with scrypt; sessions are random tokens stored hashed, in an HttpOnly SameSite=Lax cookie that expires after 14 days; invitation, reset and share tokens are 256-bit random values (invitation and reset tokens are stored hashed); five wrong passwords lock the account for 15 minutes and sign-in, reset and public actions are rate limited; clients only ever see their own documents that were sent to them.
 
 ### Automated check
 
-`npm test` runs the workflows end to end through the API (65 tests, including email templates and the outbox, shared links, the customer portal, approvals and PDF templates): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
+`npm test` runs the workflows end to end through the API (65 tests, including email templates and the outbox, shared links, the client portal, approvals and PDF templates): totals with discount, TDS and TCS, number series, due dates, conversions and back-links, balanced journals, partial, full and excess payments, credit notes and refunds, PO → bill, payments made, expenses, the dashboard, P&L, balance sheet, trial balance, and a weekly recurring invoice profile that generates its invoices and then expires.
 
 ## Notes and limits
 
 * **Email** is delivered through Gmail or SMTP once set up (see *Sending email*); otherwise it waits in the outbox. Attached PDFs use the document's PDF template and the fonts in `client/public/fonts`. Automatic, scheduled payment reminders are not implemented; send reminders from the invoice (the Payment Reminder template is picked for overdue invoices).
-* **Online payments**: the portal shows UPI and bank details and lets customers report payments for you to confirm; there is no card or net-banking gateway, so nothing is charged online.
-* **Exposing the portal on the internet**: the portal and share links have their own authentication, but the staff app and its `/api` routes do not (Creatign Books is a single-user app). Only publish `/portal`, `/share` and `/api/portal`, `/api/public` through your reverse proxy, or put the staff app behind a VPN or a login, before making the portal public. Set `APP_ORIGIN` (or the Portal URL setting) to the public address so email links point there.
+* **Online payments**: the portal shows UPI and bank details and lets clients report payments for you to confirm; there is no card or net-banking gateway, so nothing is charged online.
+* **Exposing the portal on the internet**: the portal and share links have their own authentication, but the staff app and its `/api` routes do not (Creatign Ledger is a single-user app). Only publish `/portal`, `/share` and `/api/portal`, `/api/public` through your reverse proxy, or put the staff app behind a VPN or a login, before making the portal public. Set `APP_ORIGIN` (or the Portal URL setting) to the public address so email links point there.
 * **PDF** uses the browser's print-to-PDF from the PDF/Print buttons (pages under `/print/...`), sized to the template's paper and margins. Emailed PDFs embed JPG and PNG logos only, and page numbers appear on emailed PDFs only.
 * Recurring invoices, bills and expenses generate due documents when the server starts, on the first request each day, and from **More → Generate due invoices now**.
 * Single organisation and single user. GST tax lines, multi-currency, bank feeds and reconciliation are not implemented.

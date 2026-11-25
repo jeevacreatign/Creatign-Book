@@ -2,7 +2,7 @@ import type { PdfTemplate } from './pdfTemplate';
 import type { TaxBreakdownRow } from './gst';
 import type { EmailTemplate } from './email';
 import type { CustomerResponse, PaymentNotice, PortalSession, PortalUser } from './portal';
-// Shared domain model for Creatign Books. Used by both the API server and the React client.
+// Shared domain model for Creatign Ledger. Used by both the API server and the React client.
 // All money values are stored as numbers in INR, rounded to 2 decimals.
 // All dates are ISO strings 'yyyy-MM-dd' (timestamps are full ISO strings).
 
@@ -419,7 +419,7 @@ export interface ExpenseLine {
   taxAmount?: number;
 }
 
-/** GST fields shared by expenses and recurring expenses (Zoho India). */
+/** GST fields shared by expenses and recurring expenses. */
 export interface ExpenseGst {
   expenseType?: 'goods' | 'service';
   hsnSac?: string;
@@ -537,7 +537,7 @@ export interface Journal {
   updatedAt?: string;
 }
 
-/** Accountant > Manual Journals > Templates */
+/** Accountant > Journal Vouchers > Templates */
 export interface JournalTemplate {
   id: ID;
   name: string;
@@ -818,7 +818,7 @@ export interface ShareLink {
 export type ProjectBillingMethod = 'fixed' | 'project_hours' | 'task_hours' | 'staff_hours';
 export type ProjectBudgetHours = 'none' | 'total' | 'per_task' | 'per_staff';
 
-/** People who log time (Zoho "users"). */
+/** People who log time. */
 export interface User {
   id: ID;
   name: string;

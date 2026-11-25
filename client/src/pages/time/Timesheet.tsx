@@ -1,4 +1,4 @@
-// Zoho-style Timesheet: All Timesheets with Summary, list and calendar views, filters for
+// Timesheet: All Timesheets with Summary, list and calendar views, filters for
 // period, customer, project and user, per-row Start, New Log Entry and the weekly log.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -36,7 +36,7 @@ function savePref(key: string, v: string) {
 
 function exportCsv(rows: EntryRow[]) {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['Date', 'Project', 'Customer', 'Task', 'User', 'Time', 'Hours', 'Billing Status', 'Rate', 'Amount', 'Notes'];
+  const head = ['Date', 'Project', 'Client', 'Task', 'User', 'Time', 'Hours', 'Billing Status', 'Rate', 'Amount', 'Notes'];
   const body = rows.map((t) => [t.date, t.projectName, t.customerName, t.taskName, t.userName, fmtHours(t.hours), t.hours, t.billingStatusLabel, t.rate, t.amount, t.notes].map(esc).join(','));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' }));
@@ -174,7 +174,7 @@ export default function Timesheet() {
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">View by:</span>
         {layout === 'list' && <PeriodPill value={period} onChange={setPeriod} custom={custom} setCustom={setCustom} />}
         <span className="mx-1 h-5 w-px bg-slate-200" />
-        <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={customerId} onChange={(v) => { setCustomerId(v); setProjectId(''); }} placeholder="Select customer" options={[{ value: '', label: 'All customers' }, ...customers.map((c) => ({ value: c.id, label: c.displayName }))]} />
+        <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={customerId} onChange={(v) => { setCustomerId(v); setProjectId(''); }} placeholder="Select client" options={[{ value: '', label: 'All clients' }, ...customers.map((c) => ({ value: c.id, label: c.displayName }))]} />
         <FilterPill icon={<Briefcase size={13} className="text-slate-400" />} value={projectId} onChange={setProjectId} placeholder="Select a project" options={[{ value: '', label: 'All projects' }, ...projects.filter((p) => !customerId || p.customerId === customerId).map((p) => ({ value: p.id, label: p.name }))]} />
         <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={userId} onChange={setUserId} placeholder="Select user" options={[{ value: '', label: 'All users' }, ...users.map((u) => ({ value: u.id, label: u.name }))]} />
         {anyFilter && (
@@ -215,7 +215,7 @@ export default function Timesheet() {
                 </th>
                 <th>Date</th>
                 <th>Project</th>
-                <th>Customer</th>
+                <th>Client</th>
                 <th>Task</th>
                 <th>User</th>
                 <th className="text-right">Time</th>

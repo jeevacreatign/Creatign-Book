@@ -1,4 +1,4 @@
-// Zoho-style expense split view: the "All Expenses" list on the left and Expense Details on the right,
+// expense split view: the "All Expenses" list on the left and Expense Details on the right,
 // with the Edit | Make Recurring | PDF/Print | ... toolbar, the receipt drop zone and the Journal tab.
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -168,7 +168,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Journal in Zoho's format: base-currency note, "Expense - date" heading and the double entry table. */
+/** Journal in the format: base-currency note, "Expense - date" heading and the double entry table. */
 function ExpenseJournal({ e }: { e: ExpenseDetailData }) {
   const { accounts, organization } = useBoot();
   const name = (aid: string) => accounts.find((a) => a.id === aid)?.name ?? aid;
@@ -358,7 +358,7 @@ function ExpenseDetailPane() {
                 </Detail>
               )}
               {e.customerId && (
-                <Detail label="Customer">
+                <Detail label="Client">
                   <Link className="link" to={`/sales/customers/${e.customerId}`}>
                     {e.customerName}
                   </Link>

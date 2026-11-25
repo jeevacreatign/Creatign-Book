@@ -5,7 +5,7 @@ import request from 'supertest';
 import type { Express } from 'express';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 
 let app: Express;
 const api = () => request(app);
@@ -21,7 +21,7 @@ beforeAll(async () => {
 const balance = async (id: string) => ((await api().get(`/api/accounts/${id}`)).body as { balance: number }).balance;
 
 describe('chart of accounts', () => {
-  it('creates accounts with Zoho types, codes and sub-accounts', async () => {
+  it('creates accounts with standard types, codes and sub-accounts', async () => {
     const bad = await api().post('/api/accounts').send({ name: 'Goodwill' });
     expect(bad.body.error).toMatch(/Account Type/);
     const parent = await api().post('/api/accounts').send({ name: 'Vehicles', subType: 'fixed_asset', code: '1510' });

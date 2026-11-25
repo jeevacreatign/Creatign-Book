@@ -1,4 +1,4 @@
-// Indian GST as Zoho Books (India edition) models it on purchases:
+// Indian GST as the law applies it on purchases:
 //  - every line carries a tax (GST0 ... GST28, Exempt, Non-GST, Out of Scope)
 //  - intra-state supply (source of supply = destination of supply) splits the rate into CGST + SGST,
 //    inter-state supply charges IGST
@@ -67,7 +67,7 @@ export const GST_TREATMENTS: { value: GstTreatment; label: string; hint: string;
   { value: 'registered_business', label: 'Registered Business - Regular', hint: 'Business that is registered under GST', gstin: true },
   { value: 'registered_composition', label: 'Registered Business - Composition', hint: 'Business that is registered under the Composition Scheme in GST', gstin: true },
   { value: 'unregistered_business', label: 'Unregistered Business', hint: 'Business that has not been registered under GST', gstin: false },
-  { value: 'consumer', label: 'Consumer', hint: 'A customer who is a regular consumer', gstin: false },
+  { value: 'consumer', label: 'Consumer', hint: 'A client who is a regular consumer', gstin: false },
   { value: 'overseas', label: 'Overseas', hint: 'Persons with whom you do import or export of supplies outside India', gstin: false },
   { value: 'special_economic_zone', label: 'Special Economic Zone', hint: 'Business (unit) that is located in a Special Economic Zone (SEZ) of India or a SEZ Developer', gstin: true },
   { value: 'deemed_export', label: 'Deemed Export', hint: 'Supply of goods to an Export Oriented Unit or against Advanced Authorization/Export Promotion Capital Goods', gstin: true },
@@ -150,7 +150,7 @@ export interface TaxResult {
 
 /**
  * Tax on a set of lines.
- * - discountPercent: document-level discount, applied before tax (Zoho's default)
+ * - discountPercent: document-level discount, applied before tax
  * - inclusive: line amounts already contain the tax
  */
 export function computeTax(lines: TaxableLine[], opts: { intra: boolean; inclusive?: boolean; discountPercent?: number }): TaxResult {

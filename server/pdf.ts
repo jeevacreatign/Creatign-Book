@@ -68,7 +68,7 @@ function create(t: PdfTemplate, build: (c: Ctx) => void): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const size = pageSize(t);
     const margins = { top: t.margins.top * PT, bottom: t.margins.bottom * PT, left: t.margins.left * PT, right: t.margins.right * PT };
-    const doc = new PDFDocument({ size: [size.w, size.h], margins, bufferPages: true, info: { Title: t.name, Producer: 'Creatign Books' } });
+    const doc = new PDFDocument({ size: [size.w, size.h], margins, bufferPages: true, info: { Title: t.name, Producer: 'Creatign Ledger' } });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -596,7 +596,7 @@ export function renderPaymentPdf(p: PaymentReceived | PaymentMade, made = false)
   const contact = db.contacts.find((x) => x.id === p.contactId);
   return create(t, (c) => {
     const { doc, x, w } = c;
-    header(c, { title: made ? 'Payment Made' : 'Payment Receipt', number: p.number, numberLabel: t.details.numberLabel, org });
+    header(c, { title: made ? 'Supplier Payment' : 'Payment Receipt', number: p.number, numberLabel: t.details.numberLabel, org });
     const y = doc.y;
     const facts: [string, string][] = [
       ['Payment Date', fmtDate(p.date)],

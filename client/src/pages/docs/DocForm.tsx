@@ -158,7 +158,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
       </PageHeader>
       <div className="flex-1 space-y-4 px-5 py-5">
         <div className="max-w-4xl space-y-4 rounded-md bg-slate-50/70 p-4">
-          <Field label={sales ? 'Customer Name' : 'Vendor Name'} required>
+          <Field label={sales ? 'Client Name' : 'Supplier Name'} required>
             <ContactPicker kind={sales ? 'customer' : 'vendor'} value={d.contactId} onChange={pickContact} disabled={editing && kind !== 'recurring_invoice' && kind !== 'recurring_bill' && (d.amountPaid ?? 0) > 0} autoFocus={!editing} />
           </Field>
           {!sales && d.contactId && (
@@ -181,7 +181,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
         <div className="max-w-4xl space-y-3">
           {has('deliveryAddress') && (
             <Field label="Delivery Address" required>
-              <Radio name="delivery" value={d.deliveryAddressType || 'organization'} onChange={(v) => set({ deliveryAddressType: v })} options={[{ value: 'organization', label: 'Organization' }, { value: 'customer', label: 'Customer' }]} />
+              <Radio name="delivery" value={d.deliveryAddressType || 'organization'} onChange={(v) => set({ deliveryAddressType: v })} options={[{ value: 'organization', label: 'Organization' }, { value: 'customer', label: 'Client' }]} />
               {d.deliveryAddressType === 'customer' && (
                 <div className="mt-2 max-w-sm">
                   <ContactPicker kind="customer" value={d.deliveryCustomerId} onChange={(cid) => set({ deliveryCustomerId: cid })} />
@@ -201,7 +201,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
           ) : (
             <Field label={meta.numberLabel} required>
               <div className="flex max-w-sm items-center gap-2">
-                <input className="input" value={d.number || ''} onChange={(e) => set({ number: e.target.value })} placeholder={kind === 'bill' ? "Vendor's bill number" : undefined} />
+                <input className="input" value={d.number || ''} onChange={(e) => set({ number: e.target.value })} placeholder={kind === 'bill' ? "Supplier's bill number" : undefined} />
                 {kind !== 'bill' && <Settings2 size={15} className="shrink-0 text-brand-600" aria-label="Auto-generated" />}
               </div>
             </Field>
@@ -351,7 +351,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
                   <th className="w-32 px-2 py-2 text-right font-semibold">Rate</th>
                   {ui.lineDiscount && <th className="w-24 px-2 py-2 text-right font-semibold">Discount</th>}
                   {!sales && <th className="w-40 px-2 py-2 text-left font-semibold">Tax</th>}
-                  {ui.lineCustomer && <th className="w-44 px-2 py-2 text-left font-semibold">Customer Details</th>}
+                  {ui.lineCustomer && <th className="w-44 px-2 py-2 text-left font-semibold">Client Details</th>}
                   <th className="w-32 px-3 py-2 text-right font-semibold">Amount</th>
                   <th className="w-8" />
                 </tr>
@@ -399,7 +399,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
                     )}
                     {ui.lineCustomer && (
                       <td className="px-2 py-2">
-                        <Select value={l.customerId || ''} onChange={(e) => setLine(i, { customerId: e.target.value || undefined })} placeholder="Select Customer" options={customers.map((c) => ({ value: c.id, label: c.displayName }))} />
+                        <Select value={l.customerId || ''} onChange={(e) => setLine(i, { customerId: e.target.value || undefined })} placeholder="Select Client" options={customers.map((c) => ({ value: c.id, label: c.displayName }))} />
                       </td>
                     )}
                     <td className="px-3 py-3 text-right font-medium tabular-nums">{num(lineAmount(l))}</td>
@@ -459,7 +459,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
                 <span className="tabular-nums">{num(totals.total)}</span>
               </div>
               {d.reverseCharge && totals.taxAmount > 0 && <div className="mt-2 text-xxs text-amber-700">Tax of {num(totals.taxAmount)} is payable by you under reverse charge and is not part of the amount owed to the vendor.</div>}
-              {!sales && d.gstTreatment && !treatmentChargesTax(d.gstTreatment) && !d.reverseCharge && totals.taxAmount > 0 && <div className="mt-2 text-xxs text-amber-700">Vendors with this GST treatment do not usually charge GST. Check the tax on each line.</div>}
+              {!sales && d.gstTreatment && !treatmentChargesTax(d.gstTreatment) && !d.reverseCharge && totals.taxAmount > 0 && <div className="mt-2 text-xxs text-amber-700">Suppliers with this GST treatment do not usually charge GST. Check the tax on each line.</div>}
             </div>
           </div>
         </div>
@@ -551,7 +551,7 @@ function ProjectField({ value, name, onChange, customerId, label }: { value?: st
   const opts = data.filter((p) => p.id === value || (p.status === 'active' && (!customerId || p.customerId === customerId))).map((p) => ({ value: p.id, label: p.name, sub: p.customerName }));
   return (
     <Field label={label}>
-      <Combo className="max-w-sm" value={value} onChange={(id) => onChange(id || null, data.find((p) => p.id === id)?.name)} allowFree={!value} freeValue={value ? undefined : name} onFree={(text) => onChange(null, text)} placeholder={opts.length ? 'Select a project' : customerId ? 'No projects for this customer' : 'Select a project'} options={opts} />
+      <Combo className="max-w-sm" value={value} onChange={(id) => onChange(id || null, data.find((p) => p.id === id)?.name)} allowFree={!value} freeValue={value ? undefined : name} onFree={(text) => onChange(null, text)} placeholder={opts.length ? 'Select a project' : customerId ? 'No projects for this client' : 'Select a project'} options={opts} />
     </Field>
   );
 }

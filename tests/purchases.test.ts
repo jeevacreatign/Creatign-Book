@@ -1,11 +1,11 @@
-// Purchases module (Zoho parity): expense detail data, Make Recurring, profile "Create Expense",
-// bulk delete rules, and vendor refunds on Payments Made.
+// Purchases module: expense detail data, Make Recurring, profile "Create Expense",
+// bulk delete rules, and vendor refunds on Supplier Payments.
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 
 let app: Express;
 const api = () => request(app);
@@ -26,7 +26,7 @@ async function trialBalance() {
 describe('expenses', () => {
   let expenseId = '';
 
-  it('returns the names the detail page shows (account tag, Paid Through, Paid To, Customer)', async () => {
+  it('returns the names the detail page shows (account tag, Paid Through, Paid To, Client)', async () => {
     const e = await api().post('/api/expenses').send({ date: '2026-11-24', accountId: 'acc_printing', amount: 122222, paidThroughAccountId: 'acc_petty_cash', vendorId: 'ven_murugan', customerId: 'cus_test', reportingTags: { Region: 'South' } });
     expect(e.status).toBe(200);
     expenseId = e.body.id;
@@ -81,8 +81,8 @@ describe('expenses', () => {
   });
 });
 
-describe('payments made refunds', () => {
-  it('refunds an unused vendor advance and keeps the books balanced', async () => {
+describe('supplier payments refunds', () => {
+  it('refunds an unused supplier advance and keeps the books balanced', async () => {
     const pm = await api().post('/api/payments-made').send({ type: 'vendor_advance', contactId: 'ven_cloudhost', amount: 10000, date: '2026-11-20', mode: 'Bank Transfer', paidThroughAccountId: 'acc_petty_cash' });
     expect(pm.status).toBe(200);
     const tooMuch = await api().post(`/api/payments-made/${pm.body.id}/refunds`).send({ amount: 20000, date: '2026-11-24', accountId: 'acc_petty_cash' });

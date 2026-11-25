@@ -1,4 +1,4 @@
-// Reports Center: Zoho Books' report catalogue, each report returning one tabular shape the client
+// Report Library: the report catalogue, each report returning one tabular shape the client
 // renders, customizes and exports (CSV / XLS / PDF).
 import { ACCOUNT_TYPES, accountTypeLabel } from '../shared/accountant';
 import { isUnposted } from '../shared/approval';
@@ -55,7 +55,7 @@ export interface ReportDef {
   run: (ctx: Ctx) => { columns: Col[]; rows: Row[]; notes?: string[]; subtitle?: string };
 }
 
-export const CATEGORIES = ['Business Overview', 'Sales', 'Receivables', 'Payments Received', 'Recurring Invoices', 'Payables', 'Purchases and Expenses', 'Taxes', 'Banking', 'Projects and Timesheet', 'Accountant', 'Budgets', 'Currency', 'Activity'];
+export const CATEGORIES = ['Financial Statements', 'Revenue', 'Receivables', 'Collections', 'Invoice Schedules', 'Payables', 'Spend Analysis', 'GST & Statutory', 'Cash & Bank', 'Projects & Time', 'General Ledger', 'Budgeting', 'Foreign Exchange', 'Audit Trail'];
 
 // ------------------------------------------------------------------ helpers
 
@@ -468,7 +468,7 @@ function salesByCustomer(c: Ctx) {
   }
   const rows: Row[] = [...m.entries()].map(([id, v]) => ({ c: { name: name(c.db, id), count: v.n, sales: round2(v.sales), withTax: round2(v.withTax) }, link: `/sales/customers/${id}` })).sort((a, b) => Number(b.c.sales) - Number(a.c.sales));
   rows.push(total({ name: 'Total', count: sum(rows.map((r) => Number(r.c.count))), sales: sum(rows.map((r) => Number(r.c.sales))), withTax: sum(rows.map((r) => Number(r.c.withTax))) }));
-  return { columns: [{ key: 'name', label: 'Customer Name' }, { key: 'count', label: 'Invoice Count', type: 'number' as ColType }, { key: 'sales', label: 'Sales', type: 'money' as ColType }, { key: 'withTax', label: 'Sales With Tax', type: 'money' as ColType }], rows, notes: ['Sales are net of discounts and credit notes, excluding GST.'] };
+  return { columns: [{ key: 'name', label: 'Client Name' }, { key: 'count', label: 'Invoice Count', type: 'number' as ColType }, { key: 'sales', label: 'Sales', type: 'money' as ColType }, { key: 'withTax', label: 'Sales With Tax', type: 'money' as ColType }], rows, notes: ['Sales are net of discounts and credit notes, excluding GST.'] };
 }
 
 function itemTotals(c: Ctx, kinds: TxnDoc['kind'][], minus: TxnDoc['kind'][] = []) {
@@ -563,7 +563,7 @@ function agingSummary(c: Ctx, kind: 'invoice' | 'bill') {
   const tot: Record<string, number | string> = { name: 'Total' };
   for (const k of [...BUCKETS.map((b) => b.key), 'total']) tot[k] = sum(rows.map((r) => Number(r.c[k]) || 0));
   rows.push(total(tot));
-  return { columns: [{ key: 'name', label: kind === 'invoice' ? 'Customer Name' : 'Vendor Name' }, ...BUCKETS.map((b) => ({ key: b.key, label: b.label, type: 'money' as ColType })), { key: 'total', label: 'Total', type: 'money' as ColType }], rows, subtitle: `As of ${fmt(c.to)}` };
+  return { columns: [{ key: 'name', label: kind === 'invoice' ? 'Client Name' : 'Supplier Name' }, ...BUCKETS.map((b) => ({ key: b.key, label: b.label, type: 'money' as ColType })), { key: 'total', label: 'Total', type: 'money' as ColType }], rows, subtitle: `As of ${fmt(c.to)}` };
 }
 
 function agingDetails(c: Ctx, kind: 'invoice' | 'bill') {
@@ -577,10 +577,10 @@ function agingDetails(c: Ctx, kind: 'invoice' | 'bill') {
     rows.push(total({ date: `Total for ${b.label}`, amount: sum(xs.map((x) => x.d.total)), balance: sum(xs.map((x) => x.d.balance)) }, 'sub'));
   }
   rows.push(total({ date: 'Total', amount: sum(docs.map((x) => x.d.total)), balance: sum(docs.map((x) => x.d.balance)) }, 'grand'));
-  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: kind === 'invoice' ? 'Invoice#' : 'Bill#' }, { key: 'contact', label: kind === 'invoice' ? 'Customer Name' : 'Vendor Name' }, { key: 'status', label: 'Status' }, { key: 'dueDate', label: 'Due Date', type: 'date' as ColType, hidden: true }, { key: 'age', label: 'Age (Days)', type: 'number' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'balance', label: 'Balance Due', type: 'money' as ColType }], rows, subtitle: `As of ${fmt(c.to)}` };
+  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: kind === 'invoice' ? 'Invoice#' : 'Bill#' }, { key: 'contact', label: kind === 'invoice' ? 'Client Name' : 'Supplier Name' }, { key: 'status', label: 'Status' }, { key: 'dueDate', label: 'Due Date', type: 'date' as ColType, hidden: true }, { key: 'age', label: 'Age (Days)', type: 'number' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'balance', label: 'Balance Due', type: 'money' as ColType }], rows, subtitle: `As of ${fmt(c.to)}` };
 }
 
-function docDetails(c: Ctx, kind: TxnDoc['kind'], opts: { contact: string; number: string; balance?: string; extra?: Col[]; extraOf?: (d: TxnDoc) => Record<string, string | number | undefined> } = { contact: 'Customer Name', number: 'Number' }) {
+function docDetails(c: Ctx, kind: TxnDoc['kind'], opts: { contact: string; number: string; balance?: string; extra?: Col[]; extraOf?: (d: TxnDoc) => Record<string, string | number | undefined> } = { contact: 'Client Name', number: 'Number' }) {
   const docs = anyDocs(c, kind).sort((a, b) => a.date.localeCompare(b.date));
   const rows: Row[] = docs.map((d) => ({ c: { date: d.date, number: d.number, reference: d.referenceNumber || d.orderNumber, contact: name(c.db, d.contactId), status: label(d.status), dueDate: d.dueDate, salesperson: d.salesperson, subTotal: taxableValue(d), tax: d.taxAmount || 0, amount: d.total, balance: d.balance, ...(opts.extraOf?.(d) ?? {}) }, link: docLink(d) }));
   rows.push(total({ date: 'Total', subTotal: sum(docs.map(taxableValue)), tax: sum(docs.map((d) => d.taxAmount || 0)), amount: sum(docs.map((d) => d.total)), balance: opts.balance ? sum(docs.map((d) => d.balance)) : undefined } as never));
@@ -601,7 +601,7 @@ function docDetails(c: Ctx, kind: TxnDoc['kind'], opts: { contact: string; numbe
   return { columns: cols, rows };
 }
 
-/** Customer / vendor balance from AR / AP postings up to the end date. */
+/** Client / vendor balance from AR / AP postings up to the end date. */
 function contactBalanceSummary(c: Ctx, kind: 'customer' | 'vendor') {
   const isAR = (id: string) => c.db.accounts.find((a) => a.id === id)?.subType === (kind === 'customer' ? 'accounts_receivable' : 'accounts_payable');
   const filter = kind === 'customer' ? c.p.customer : c.p.vendor;
@@ -628,7 +628,7 @@ function contactBalanceSummary(c: Ctx, kind: 'customer' | 'vendor') {
     .map(([id, v]) => ({ c: { name: name(c.db, id), billed: round2(v.billed), paid: round2(v.paid), balance: round2(v.balance) }, link: `${kind === 'customer' ? '/sales/customers' : '/purchases/vendors'}/${id}` }))
     .sort((a, b) => String(a.c.name).localeCompare(String(b.c.name)));
   rows.push(total({ name: 'Total', billed: sum(rows.map((r) => Number(r.c.billed))), paid: sum(rows.map((r) => Number(r.c.paid))), balance: sum(rows.map((r) => Number(r.c.balance))) }));
-  return { columns: [{ key: 'name', label: kind === 'customer' ? 'Customer Name' : 'Vendor Name' }, { key: 'billed', label: kind === 'customer' ? 'Invoiced Amount' : 'Billed Amount', type: 'money' as ColType }, { key: 'paid', label: kind === 'customer' ? 'Amount Received' : 'Amount Paid', type: 'money' as ColType }, { key: 'balance', label: 'Closing Balance', type: 'money' as ColType }], rows, notes: ['Amounts received / paid include credit notes, vendor credits and write-offs. The closing balance is as of the end date.'] };
+  return { columns: [{ key: 'name', label: kind === 'customer' ? 'Client Name' : 'Supplier Name' }, { key: 'billed', label: kind === 'customer' ? 'Invoiced Amount' : 'Billed Amount', type: 'money' as ColType }, { key: 'paid', label: kind === 'customer' ? 'Amount Received' : 'Amount Paid', type: 'money' as ColType }, { key: 'balance', label: 'Closing Balance', type: 'money' as ColType }], rows, notes: ['Amounts received / paid include credit notes, debit notes and write-offs. The closing balance is as of the end date.'] };
 }
 
 function receivableSummary(c: Ctx, kind: 'sales' | 'purchases') {
@@ -639,7 +639,7 @@ function receivableSummary(c: Ctx, kind: 'sales' | 'purchases') {
     return { c: { contact: name(c.db, d.contactId), date: d.date, number: d.number, reference: d.referenceNumber, status: label(d.status), type: label(d.kind), total: sign * d.total, balance: sign * d.balance }, link: docLink(d) };
   });
   rows.push(total({ contact: 'Total', total: sum(rows.map((r) => Number(r.c.total))), balance: sum(rows.map((r) => Number(r.c.balance))) }));
-  return { columns: [{ key: 'contact', label: kind === 'sales' ? 'Customer Name' : 'Vendor Name' }, { key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Transaction#' }, { key: 'reference', label: 'Reference#', hidden: true }, { key: 'status', label: 'Status' }, { key: 'type', label: 'Transaction Type' }, { key: 'total', label: 'Total', type: 'money' as ColType }, { key: 'balance', label: 'Balance', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'contact', label: kind === 'sales' ? 'Client Name' : 'Supplier Name' }, { key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Transaction#' }, { key: 'reference', label: 'Reference#', hidden: true }, { key: 'status', label: 'Status' }, { key: 'type', label: 'Transaction Type' }, { key: 'total', label: 'Total', type: 'money' as ColType }, { key: 'balance', label: 'Balance', type: 'money' as ColType }], rows };
 }
 
 function receivableDetails(c: Ctx, kind: 'sales' | 'purchases') {
@@ -650,21 +650,21 @@ function receivableDetails(c: Ctx, kind: 'sales' | 'purchases') {
     return d.lineItems.map((l) => ({ c: { contact: name(c.db, d.contactId), date: d.date, number: d.number, type: label(d.kind), status: label(d.status), item: l.name, qty: sign * l.quantity, rate: l.rate, amount: sign * netLine(d, l) }, link: docLink(d) }));
   });
   rows.push(total({ contact: 'Total', amount: sum(rows.map((r) => Number(r.c.amount))) }));
-  return { columns: [{ key: 'contact', label: kind === 'sales' ? 'Customer Name' : 'Vendor Name' }, { key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Transaction#' }, { key: 'type', label: 'Transaction Type' }, { key: 'status', label: 'Status', hidden: true }, { key: 'item', label: 'Item Name' }, { key: 'qty', label: 'Quantity', type: 'number' as ColType }, { key: 'rate', label: 'Item Price', type: 'money' as ColType }, { key: 'amount', label: 'Total', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'contact', label: kind === 'sales' ? 'Client Name' : 'Supplier Name' }, { key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Transaction#' }, { key: 'type', label: 'Transaction Type' }, { key: 'status', label: 'Status', hidden: true }, { key: 'item', label: 'Item Name' }, { key: 'qty', label: 'Quantity', type: 'number' as ColType }, { key: 'rate', label: 'Item Price', type: 'money' as ColType }, { key: 'amount', label: 'Total', type: 'money' as ColType }], rows };
 }
 
 function badDebts(c: Ctx) {
   const docs = c.db.docs.filter((d) => d.kind === 'invoice' && d.writeOff && inR(d.writeOff.date, c) && (!c.p.customer || d.contactId === c.p.customer));
   const rows: Row[] = docs.map((d) => ({ c: { date: d.writeOff!.date, number: d.number, contact: name(c.db, d.contactId), reason: d.writeOff!.reason, amount: d.writeOff!.amount }, link: docLink(d) }));
   rows.push(total({ date: 'Total', amount: sum(docs.map((d) => d.writeOff!.amount)) }));
-  return { columns: [{ key: 'date', label: 'Written Off On', type: 'date' as ColType }, { key: 'number', label: 'Invoice#' }, { key: 'contact', label: 'Customer Name' }, { key: 'reason', label: 'Reason' }, { key: 'amount', label: 'Amount Written Off', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'date', label: 'Written Off On', type: 'date' as ColType }, { key: 'number', label: 'Invoice#' }, { key: 'contact', label: 'Client Name' }, { key: 'reason', label: 'Reason' }, { key: 'amount', label: 'Amount Written Off', type: 'money' as ColType }], rows };
 }
 
 function bankCharges(c: Ctx) {
   const ps = c.db.paymentsReceived.filter((p) => p.status !== 'void' && p.bankCharges > 0 && inR(p.date, c) && (!c.p.customer || p.contactId === c.p.customer));
   const rows: Row[] = ps.map((p) => ({ c: { date: p.date, number: p.number, contact: name(c.db, p.contactId), account: accName(c.db, p.depositToAccountId), amount: p.bankCharges }, link: `/sales/payments-received/${p.id}` }));
   rows.push(total({ date: 'Total', amount: sum(ps.map((p) => p.bankCharges)) }));
-  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Payment#' }, { key: 'contact', label: 'Customer Name' }, { key: 'account', label: 'Deposit To' }, { key: 'amount', label: 'Bank Charges', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Payment#' }, { key: 'contact', label: 'Client Name' }, { key: 'account', label: 'Deposit To' }, { key: 'amount', label: 'Bank Charges', type: 'money' as ColType }], rows };
 }
 
 // ------------------------------------------------------------------ payments
@@ -673,14 +673,14 @@ function paymentsReceived(c: Ctx) {
   const ps = c.db.paymentsReceived.filter((p) => p.status !== 'draft' && inR(p.date, c) && (!c.p.customer || p.contactId === c.p.customer)).sort((a, b) => a.date.localeCompare(b.date));
   const rows: Row[] = ps.map((p) => ({ c: { number: p.number, date: p.date, reference: p.referenceNumber, contact: name(c.db, p.contactId), mode: p.mode, account: accName(c.db, p.depositToAccountId), invoices: p.allocations.map((a) => c.db.docs.find((d) => d.id === a.docId)?.number).filter(Boolean).join(', '), status: label(p.status), amount: p.status === 'void' ? 0 : p.amount, unused: p.unusedAmount }, link: `/sales/payments-received/${p.id}` }));
   rows.push(total({ number: 'Total', amount: sum(rows.map((r) => Number(r.c.amount))), unused: sum(rows.map((r) => Number(r.c.unused))) }));
-  return { columns: [{ key: 'number', label: 'Payment#' }, { key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'reference', label: 'Reference#' }, { key: 'contact', label: 'Customer Name' }, { key: 'mode', label: 'Payment Mode' }, { key: 'account', label: 'Deposit To', hidden: true }, { key: 'invoices', label: 'Invoice#', hidden: true }, { key: 'status', label: 'Status', hidden: true }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'unused', label: 'Unused Amount', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'number', label: 'Payment#' }, { key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'reference', label: 'Reference#' }, { key: 'contact', label: 'Client Name' }, { key: 'mode', label: 'Payment Mode' }, { key: 'account', label: 'Deposit To', hidden: true }, { key: 'invoices', label: 'Invoice#', hidden: true }, { key: 'status', label: 'Status', hidden: true }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'unused', label: 'Unused Amount', type: 'money' as ColType }], rows };
 }
 
 function paymentsMade(c: Ctx) {
   const ps = c.db.paymentsMade.filter((p) => p.status !== 'draft' && inR(p.date, c) && (!c.p.vendor || p.contactId === c.p.vendor)).sort((a, b) => a.date.localeCompare(b.date));
   const rows: Row[] = ps.map((p) => ({ c: { number: p.number, date: p.date, reference: p.referenceNumber, contact: name(c.db, p.contactId), mode: p.mode, account: accName(c.db, p.paidThroughAccountId), bills: p.allocations.map((a) => c.db.docs.find((d) => d.id === a.docId)?.number).filter(Boolean).join(', '), status: label(p.status), amount: p.status === 'void' ? 0 : p.amount, unused: p.unusedAmount }, link: `/purchases/payments-made/${p.id}` }));
   rows.push(total({ number: 'Total', amount: sum(rows.map((r) => Number(r.c.amount))), unused: sum(rows.map((r) => Number(r.c.unused))) }));
-  return { columns: [{ key: 'number', label: 'Payment#' }, { key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'reference', label: 'Reference#' }, { key: 'contact', label: 'Vendor Name' }, { key: 'mode', label: 'Payment Mode' }, { key: 'account', label: 'Paid Through', hidden: true }, { key: 'bills', label: 'Bill#', hidden: true }, { key: 'status', label: 'Status', hidden: true }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'unused', label: 'Unused Amount', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'number', label: 'Payment#' }, { key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'reference', label: 'Reference#' }, { key: 'contact', label: 'Supplier Name' }, { key: 'mode', label: 'Payment Mode' }, { key: 'account', label: 'Paid Through', hidden: true }, { key: 'bills', label: 'Bill#', hidden: true }, { key: 'status', label: 'Status', hidden: true }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'unused', label: 'Unused Amount', type: 'money' as ColType }], rows };
 }
 
 /** When each invoice became fully paid: the date of the last payment / credit applied to it. */
@@ -709,7 +709,7 @@ function timeToGetPaid(c: Ctx) {
     const pct = (k: number) => round2((v.b[k] / n) * 100);
     return { c: { name: name(c.db, id), b1: pct(0), b2: pct(1), b3: pct(2), b4: pct(3), avg: Math.round(v.days.reduce((a, b) => a + b, 0) / n), count: n } };
   });
-  return { columns: [{ key: 'name', label: 'Customer Name' }, { key: 'b1', label: '0 - 15 Days', type: 'percent' as ColType }, { key: 'b2', label: '16 - 30 Days', type: 'percent' as ColType }, { key: 'b3', label: '31 - 45 Days', type: 'percent' as ColType }, { key: 'b4', label: '> 45 Days', type: 'percent' as ColType }, { key: 'avg', label: 'Average Days', type: 'number' as ColType }, { key: 'count', label: 'Paid Invoices', type: 'number' as ColType, hidden: true }], rows, notes: ['Share of fully paid invoices, by days from the invoice date to the last payment.'] };
+  return { columns: [{ key: 'name', label: 'Client Name' }, { key: 'b1', label: '0 - 15 Days', type: 'percent' as ColType }, { key: 'b2', label: '16 - 30 Days', type: 'percent' as ColType }, { key: 'b3', label: '31 - 45 Days', type: 'percent' as ColType }, { key: 'b4', label: '> 45 Days', type: 'percent' as ColType }, { key: 'avg', label: 'Average Days', type: 'number' as ColType }, { key: 'count', label: 'Paid Invoices', type: 'number' as ColType, hidden: true }], rows, notes: ['Share of fully paid invoices, by days from the invoice date to the last payment.'] };
 }
 
 function refundHistory(c: Ctx, side: 'customer' | 'vendor') {
@@ -718,30 +718,30 @@ function refundHistory(c: Ctx, side: 'customer' | 'vendor') {
     for (const d of c.db.docs.filter((x) => x.kind === 'credit_note' && (!c.p.customer || x.contactId === c.p.customer)))
       for (const r of d.refunds) if (inR(r.date, c)) rows.push({ c: { date: r.date, number: d.number, type: 'Credit Note', contact: name(c.db, d.contactId), mode: r.mode, reference: r.referenceNumber, account: accName(c.db, r.accountId), amount: r.amount }, link: docLink(d) });
     for (const p of c.db.paymentsReceived.filter((x) => !c.p.customer || x.contactId === c.p.customer))
-      for (const r of p.refunds) if (inR(r.date, c)) rows.push({ c: { date: r.date, number: p.number, type: 'Payment Received', contact: name(c.db, p.contactId), mode: r.mode, reference: r.referenceNumber, account: accName(c.db, r.accountId), amount: r.amount }, link: `/sales/payments-received/${p.id}` });
+      for (const r of p.refunds) if (inR(r.date, c)) rows.push({ c: { date: r.date, number: p.number, type: 'Client Payment', contact: name(c.db, p.contactId), mode: r.mode, reference: r.referenceNumber, account: accName(c.db, r.accountId), amount: r.amount }, link: `/sales/payments-received/${p.id}` });
   } else {
     for (const d of c.db.docs.filter((x) => x.kind === 'vendor_credit' && (!c.p.vendor || x.contactId === c.p.vendor)))
-      for (const r of d.refunds) if (inR(r.date, c)) rows.push({ c: { date: r.date, number: d.number, type: 'Vendor Credit', contact: name(c.db, d.contactId), mode: r.mode, reference: r.referenceNumber, account: accName(c.db, r.accountId), amount: r.amount }, link: docLink(d) });
+      for (const r of d.refunds) if (inR(r.date, c)) rows.push({ c: { date: r.date, number: d.number, type: 'Debit Note', contact: name(c.db, d.contactId), mode: r.mode, reference: r.referenceNumber, account: accName(c.db, r.accountId), amount: r.amount }, link: docLink(d) });
     for (const p of c.db.paymentsMade.filter((x) => !c.p.vendor || x.contactId === c.p.vendor))
-      for (const r of p.refunds ?? []) if (inR(r.date, c)) rows.push({ c: { date: r.date, number: p.number, type: 'Payment Made', contact: name(c.db, p.contactId), mode: r.mode, reference: r.referenceNumber, account: accName(c.db, r.accountId), amount: r.amount }, link: `/purchases/payments-made/${p.id}` });
+      for (const r of p.refunds ?? []) if (inR(r.date, c)) rows.push({ c: { date: r.date, number: p.number, type: 'Supplier Payment', contact: name(c.db, p.contactId), mode: r.mode, reference: r.referenceNumber, account: accName(c.db, r.accountId), amount: r.amount }, link: `/purchases/payments-made/${p.id}` });
   }
   rows.sort((a, b) => String(a.c.date).localeCompare(String(b.c.date)));
   rows.push(total({ date: 'Total', amount: sum(rows.map((r) => Number(r.c.amount))) }));
-  return { columns: [{ key: 'date', label: 'Refund Date', type: 'date' as ColType }, { key: 'number', label: 'Transaction#' }, { key: 'type', label: 'Type' }, { key: 'contact', label: side === 'customer' ? 'Customer Name' : 'Vendor Name' }, { key: 'mode', label: 'Payment Mode' }, { key: 'reference', label: 'Reference#', hidden: true }, { key: 'account', label: side === 'customer' ? 'From Account' : 'Deposit To' }, { key: 'amount', label: 'Amount', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'date', label: 'Refund Date', type: 'date' as ColType }, { key: 'number', label: 'Transaction#' }, { key: 'type', label: 'Type' }, { key: 'contact', label: side === 'customer' ? 'Client Name' : 'Supplier Name' }, { key: 'mode', label: 'Payment Mode' }, { key: 'reference', label: 'Reference#', hidden: true }, { key: 'account', label: side === 'customer' ? 'From Account' : 'Deposit To' }, { key: 'amount', label: 'Amount', type: 'money' as ColType }], rows };
 }
 
 function tdsReceivable(c: Ctx, detail: boolean) {
   const items: { contactId: string; date: string; number: string; type: string; amount: number; link: string }[] = [];
   for (const d of docsOf(c, 'invoice')) if (d.tdsAmount) items.push({ contactId: d.contactId, date: d.date, number: d.number, type: 'Invoice', amount: d.tdsAmount, link: docLink(d) });
-  for (const p of c.db.paymentsReceived) if (p.status === 'paid' && p.tdsDeducted && p.tdsAmount && inR(p.date, c) && (!c.p.customer || p.contactId === c.p.customer)) items.push({ contactId: p.contactId, date: p.date, number: p.number, type: 'Payment Received', amount: p.tdsAmount, link: `/sales/payments-received/${p.id}` });
-  return contactTaxRows(c, items, detail, 'Customer Name', 'TDS Deducted');
+  for (const p of c.db.paymentsReceived) if (p.status === 'paid' && p.tdsDeducted && p.tdsAmount && inR(p.date, c) && (!c.p.customer || p.contactId === c.p.customer)) items.push({ contactId: p.contactId, date: p.date, number: p.number, type: 'Client Payment', amount: p.tdsAmount, link: `/sales/payments-received/${p.id}` });
+  return contactTaxRows(c, items, detail, 'Client Name', 'TDS Deducted');
 }
 
 function tdsPayable(c: Ctx, detail: boolean) {
   const items: { contactId: string; date: string; number: string; type: string; amount: number; link: string }[] = [];
   for (const d of docsOf(c, 'bill')) if (d.tdsAmount) items.push({ contactId: d.contactId, date: d.date, number: d.number, type: 'Bill', amount: d.tdsAmount, link: docLink(d) });
-  for (const d of docsOf(c, 'vendor_credit')) if (d.tdsAmount) items.push({ contactId: d.contactId, date: d.date, number: d.number, type: 'Vendor Credit', amount: -d.tdsAmount, link: docLink(d) });
-  return contactTaxRows(c, items, detail, 'Vendor Name', 'TDS Deducted');
+  for (const d of docsOf(c, 'vendor_credit')) if (d.tdsAmount) items.push({ contactId: d.contactId, date: d.date, number: d.number, type: 'Debit Note', amount: -d.tdsAmount, link: docLink(d) });
+  return contactTaxRows(c, items, detail, 'Supplier Name', 'TDS Deducted');
 }
 
 function contactTaxRows(c: Ctx, items: { contactId: string; date: string; number: string; type: string; amount: number; link: string }[], detail: boolean, who: string, what: string) {
@@ -765,7 +765,7 @@ function contactTaxRows(c: Ctx, items: { contactId: string; date: string; number
 function recurringInvoiceDetails(c: Ctx) {
   const ps = c.db.docs.filter((d) => d.kind === 'recurring_invoice' && (!c.p.customer || d.contactId === c.p.customer) && (!c.p.status || c.p.status === 'all' || d.status === c.p.status));
   const rows: Row[] = ps.map((d) => ({ c: { profile: d.profileName, contact: name(c.db, d.contactId), frequency: d.repeatEvery ? frequencyLabel(d.repeatEvery) : '', start: d.startOn, last: d.lastGeneratedDate, next: d.status === 'active' ? d.nextDate : undefined, end: d.neverExpires ? 'Never Expires' : d.endsOn, status: label(d.status), count: c.db.docs.filter((x) => x.recurringProfileId === d.id).length, amount: d.total }, link: docLink(d) }));
-  return { columns: [{ key: 'profile', label: 'Profile Name' }, { key: 'contact', label: 'Customer Name' }, { key: 'frequency', label: 'Frequency' }, { key: 'start', label: 'Start Date', type: 'date' as ColType, hidden: true }, { key: 'last', label: 'Last Invoice Date', type: 'date' as ColType }, { key: 'next', label: 'Next Invoice Date', type: 'date' as ColType }, { key: 'end', label: 'Ends On', hidden: true }, { key: 'status', label: 'Status' }, { key: 'count', label: 'Invoices Created', type: 'number' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'profile', label: 'Profile Name' }, { key: 'contact', label: 'Client Name' }, { key: 'frequency', label: 'Frequency' }, { key: 'start', label: 'Start Date', type: 'date' as ColType, hidden: true }, { key: 'last', label: 'Last Invoice Date', type: 'date' as ColType }, { key: 'next', label: 'Next Invoice Date', type: 'date' as ColType }, { key: 'end', label: 'Ends On', hidden: true }, { key: 'status', label: 'Status' }, { key: 'count', label: 'Invoices Created', type: 'number' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }], rows };
 }
 
 // ------------------------------------------------------------------ purchases and expenses
@@ -787,7 +787,7 @@ function purchasesByVendor(c: Ctx) {
   }
   const rows: Row[] = [...m.entries()].map(([id, v]) => ({ c: { name: name(c.db, id), bills: v.bills, billAmt: round2(v.billAmt), exp: v.exp, expAmt: round2(v.expAmt), total: round2(v.billAmt + v.expAmt) }, link: `/purchases/vendors/${id}` })).sort((a, b) => Number(b.c.total) - Number(a.c.total));
   rows.push(total({ name: 'Total', bills: sum(rows.map((r) => Number(r.c.bills))), billAmt: sum(rows.map((r) => Number(r.c.billAmt))), exp: sum(rows.map((r) => Number(r.c.exp))), expAmt: sum(rows.map((r) => Number(r.c.expAmt))), total: sum(rows.map((r) => Number(r.c.total))) }));
-  return { columns: [{ key: 'name', label: 'Vendor Name' }, { key: 'bills', label: 'Bill Count', type: 'number' as ColType }, { key: 'billAmt', label: 'Bill Amount', type: 'money' as ColType }, { key: 'exp', label: 'Expense Count', type: 'number' as ColType, hidden: true }, { key: 'expAmt', label: 'Expense Amount', type: 'money' as ColType }, { key: 'total', label: 'Total Purchases', type: 'money' as ColType }], rows, notes: ['Amounts exclude GST.'] };
+  return { columns: [{ key: 'name', label: 'Supplier Name' }, { key: 'bills', label: 'Bill Count', type: 'number' as ColType }, { key: 'billAmt', label: 'Bill Amount', type: 'money' as ColType }, { key: 'exp', label: 'Expense Count', type: 'number' as ColType, hidden: true }, { key: 'expAmt', label: 'Expense Amount', type: 'money' as ColType }, { key: 'total', label: 'Total Purchases', type: 'money' as ColType }], rows, notes: ['Amounts exclude GST.'] };
 }
 
 function purchasesByItem(c: Ctx) {
@@ -809,7 +809,7 @@ function purchaseOrdersByVendor(c: Ctx) {
   }
   const rows: Row[] = [...m.entries()].map(([id, v]) => ({ c: { name: name(c.db, id), count: v.n, amount: round2(v.amount), billed: round2(v.billed) } }));
   rows.push(total({ name: 'Total', count: sum(rows.map((r) => Number(r.c.count))), amount: sum(rows.map((r) => Number(r.c.amount))), billed: sum(rows.map((r) => Number(r.c.billed))) }));
-  return { columns: [{ key: 'name', label: 'Vendor Name' }, { key: 'count', label: 'Purchase Order Count', type: 'number' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'billed', label: 'Billed Amount', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'name', label: 'Supplier Name' }, { key: 'count', label: 'Purchase Order Count', type: 'number' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'billed', label: 'Billed Amount', type: 'money' as ColType }], rows };
 }
 
 function purchaseOrdersByItem(c: Ctx) {
@@ -839,9 +839,9 @@ const EXPENSE_COLS: Col[] = [
   { key: 'date', label: 'Date', type: 'date' },
   { key: 'account', label: 'Expense Account' },
   { key: 'reference', label: 'Reference#' },
-  { key: 'vendor', label: 'Vendor Name' },
+  { key: 'vendor', label: 'Supplier Name' },
   { key: 'paidThrough', label: 'Paid Through' },
-  { key: 'customer', label: 'Customer Name' },
+  { key: 'customer', label: 'Client Name' },
   { key: 'project', label: 'Project', hidden: true },
   { key: 'status', label: 'Status' },
   { key: 'amount', label: 'Amount', type: 'money' },
@@ -883,14 +883,14 @@ function expensesGrouped(c: Ctx, by: 'customer' | 'project') {
   }
   const rows: Row[] = [...m.entries()].map(([k, v]) => ({ c: { name: by === 'customer' ? name(c.db, k) : c.db.projects.find((p) => p.id === k)?.name, count: v.n, billable: round2(v.billable), amount: round2(v.amount) } }));
   rows.push(total({ name: 'Total', count: sum(rows.map((r) => Number(r.c.count))), billable: sum(rows.map((r) => Number(r.c.billable))), amount: sum(rows.map((r) => Number(r.c.amount))) }));
-  return { columns: [{ key: 'name', label: by === 'customer' ? 'Customer Name' : 'Project Name' }, { key: 'count', label: 'Expense Count', type: 'number' as ColType }, { key: 'billable', label: 'Billable Amount', type: 'money' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'name', label: by === 'customer' ? 'Client Name' : 'Project Name' }, { key: 'count', label: 'Expense Count', type: 'number' as ColType }, { key: 'billable', label: 'Billable Amount', type: 'money' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }], rows };
 }
 
 function mileage(c: Ctx) {
   const es = expensesIn(c).filter((e) => e.isMileage);
   const rows: Row[] = es.map((e) => ({ c: { date: e.date, account: accName(c.db, e.accountId), customer: name(c.db, e.customerId), distance: e.distance, rate: e.ratePerKm, amount: e.amount, notes: e.notes }, link: `/purchases/expenses/${e.id}` }));
   rows.push(total({ date: 'Total', distance: sum(es.map((e) => e.distance || 0)), amount: sum(es.map((e) => e.amount)) }));
-  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'account', label: 'Expense Account' }, { key: 'customer', label: 'Customer Name' }, { key: 'distance', label: 'Distance (km)', type: 'number' as ColType }, { key: 'rate', label: 'Rate per km', type: 'money' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'notes', label: 'Notes', hidden: true }], rows };
+  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'account', label: 'Expense Account' }, { key: 'customer', label: 'Client Name' }, { key: 'distance', label: 'Distance (km)', type: 'number' as ColType }, { key: 'rate', label: 'Rate per km', type: 'money' as ColType }, { key: 'amount', label: 'Amount', type: 'money' as ColType }, { key: 'notes', label: 'Notes', hidden: true }], rows };
 }
 
 // ------------------------------------------------------------------ GST
@@ -1034,7 +1034,7 @@ function hsnSummary(c: Ctx) {
   const hs = purchases ? hsnRows(c, docsOf(c, 'bill'), docsOf(c, 'vendor_credit')) : hsnRows(c, docsOf(c, 'invoice'), docsOf(c, 'credit_note'));
   const rows: Row[] = hs.map((h) => ({ c: { hsn: h.hsn, description: h.description, uqc: h.uqc, qty: h.qty, rate: h.rate, total: round2(h.taxable + h.igst + h.cgst + h.sgst), taxable: h.taxable, igst: h.igst, cgst: h.cgst, sgst: h.sgst } }));
   rows.push(total({ hsn: 'Total', qty: sum(hs.map((h) => h.qty)), total: sum(rows.map((r) => Number(r.c.total))), taxable: sum(hs.map((h) => h.taxable)), igst: sum(hs.map((h) => h.igst)), cgst: sum(hs.map((h) => h.cgst)), sgst: sum(hs.map((h) => h.sgst)) }));
-  return { columns: [{ key: 'hsn', label: 'HSN/SAC' }, { key: 'description', label: 'Description' }, { key: 'uqc', label: 'UQC' }, { key: 'qty', label: 'Total Quantity', type: 'number' as ColType }, { key: 'rate', label: 'Rate (%)', type: 'number' as ColType }, { key: 'total', label: 'Total Value', type: 'money' as ColType }, { key: 'taxable', label: 'Taxable Value', type: 'money' as ColType }, { key: 'igst', label: 'IGST', type: 'money' as ColType }, { key: 'cgst', label: 'CGST', type: 'money' as ColType }, { key: 'sgst', label: 'SGST', type: 'money' as ColType }], rows, notes: ['Choose Outward or Inward supplies with the Supplies filter. Credit notes and vendor credits are netted off.'] };
+  return { columns: [{ key: 'hsn', label: 'HSN/SAC' }, { key: 'description', label: 'Description' }, { key: 'uqc', label: 'UQC' }, { key: 'qty', label: 'Total Quantity', type: 'number' as ColType }, { key: 'rate', label: 'Rate (%)', type: 'number' as ColType }, { key: 'total', label: 'Total Value', type: 'money' as ColType }, { key: 'taxable', label: 'Taxable Value', type: 'money' as ColType }, { key: 'igst', label: 'IGST', type: 'money' as ColType }, { key: 'cgst', label: 'CGST', type: 'money' as ColType }, { key: 'sgst', label: 'SGST', type: 'money' as ColType }], rows, notes: ['Choose Outward or Inward supplies with the Supplies filter. Credit notes and debit notes are netted off.'] };
 }
 
 /** Input tax on bills and expenses (net of vendor credits), split by reverse charge. */
@@ -1062,7 +1062,7 @@ function inwardSupplies(c: Ctx) {
   const xs = inwardDocs(c).filter((x) => x.taxable || x.igst || x.cgst || x.sgst);
   const rows: Row[] = xs.map((x) => ({ c: { date: x.date, number: x.number, type: x.type, contact: name(c.db, x.contactId), gstin: x.gstin, taxable: x.taxable, igst: x.igst, cgst: x.cgst, sgst: x.sgst, tax: round2(x.igst + x.cgst + x.sgst), rcm: x.rcm ? 'Yes' : 'No' }, link: x.link }));
   rows.push(total({ date: 'Total', taxable: sum(xs.map((x) => x.taxable)), igst: sum(xs.map((x) => x.igst)), cgst: sum(xs.map((x) => x.cgst)), sgst: sum(xs.map((x) => x.sgst)), tax: sum(xs.map((x) => x.igst + x.cgst + x.sgst)) }));
-  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Bill#' }, { key: 'type', label: 'Type' }, { key: 'contact', label: 'Vendor Name' }, { key: 'gstin', label: 'GSTIN' }, { key: 'taxable', label: 'Taxable Value', type: 'money' as ColType }, { key: 'igst', label: 'IGST', type: 'money' as ColType }, { key: 'cgst', label: 'CGST', type: 'money' as ColType }, { key: 'sgst', label: 'SGST', type: 'money' as ColType }, { key: 'tax', label: 'Total Tax', type: 'money' as ColType }, { key: 'rcm', label: 'Reverse Charge' }], rows };
+  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Bill#' }, { key: 'type', label: 'Type' }, { key: 'contact', label: 'Supplier Name' }, { key: 'gstin', label: 'GSTIN' }, { key: 'taxable', label: 'Taxable Value', type: 'money' as ColType }, { key: 'igst', label: 'IGST', type: 'money' as ColType }, { key: 'cgst', label: 'CGST', type: 'money' as ColType }, { key: 'sgst', label: 'SGST', type: 'money' as ColType }, { key: 'tax', label: 'Total Tax', type: 'money' as ColType }, { key: 'rcm', label: 'Reverse Charge' }], rows };
 }
 
 function gstr3b(c: Ctx) {
@@ -1140,7 +1140,7 @@ function gstr3b(c: Ctx) {
   ];
   const payable = { igst: a.igst + b.igst + rc.igst - (rc.igst + itc.igst), cgst: a.cgst + b.cgst + rc.cgst - (rc.cgst + itc.cgst), sgst: a.sgst + b.sgst + rc.sgst - (rc.sgst + itc.sgst) };
   rows.push(total({ section: '6.1 Tax payable after ITC (before set-off rules and cash ledger)', igst: round2(payable.igst), cgst: round2(payable.cgst), sgst: round2(payable.sgst), tax: round2(payable.igst + payable.cgst + payable.sgst) }, 'grand'));
-  return { columns: GST_COLS.filter((x) => x.key !== 'count').map((x) => (x.key === 'section' ? { ...x, label: 'Nature of Supplies' } : x)), rows, notes: ['Credit notes reduce outward supplies and vendor credits reduce ITC in the same period. Negative tax payable means excess ITC carried forward.'] };
+  return { columns: GST_COLS.filter((x) => x.key !== 'count').map((x) => (x.key === 'section' ? { ...x, label: 'Nature of Supplies' } : x)), rows, notes: ['Credit notes reduce outward supplies and debit notes reduce ITC in the same period. Negative tax payable means excess ITC carried forward.'] };
 }
 
 function gstByRate(c: Ctx) {
@@ -1182,7 +1182,7 @@ function reverseCharge(c: Ctx) {
   const xs = inwardDocs(c).filter((x) => x.rcm);
   const rows: Row[] = xs.map((x) => ({ c: { date: x.date, number: x.number, type: x.type, contact: name(c.db, x.contactId), gstin: x.gstin, taxable: x.taxable, igst: x.igst, cgst: x.cgst, sgst: x.sgst, tax: round2(x.igst + x.cgst + x.sgst) }, link: x.link }));
   rows.push(total({ date: 'Total', taxable: sum(xs.map((x) => x.taxable)), igst: sum(xs.map((x) => x.igst)), cgst: sum(xs.map((x) => x.cgst)), sgst: sum(xs.map((x) => x.sgst)), tax: sum(xs.map((x) => x.igst + x.cgst + x.sgst)) }));
-  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Transaction#' }, { key: 'type', label: 'Type' }, { key: 'contact', label: 'Vendor Name' }, { key: 'gstin', label: 'GSTIN', hidden: true }, { key: 'taxable', label: 'Taxable Value', type: 'money' as ColType }, { key: 'igst', label: 'IGST', type: 'money' as ColType }, { key: 'cgst', label: 'CGST', type: 'money' as ColType }, { key: 'sgst', label: 'SGST', type: 'money' as ColType }, { key: 'tax', label: 'Tax Payable (RCM)', type: 'money' as ColType }], rows };
+  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'number', label: 'Transaction#' }, { key: 'type', label: 'Type' }, { key: 'contact', label: 'Supplier Name' }, { key: 'gstin', label: 'GSTIN', hidden: true }, { key: 'taxable', label: 'Taxable Value', type: 'money' as ColType }, { key: 'igst', label: 'IGST', type: 'money' as ColType }, { key: 'cgst', label: 'CGST', type: 'money' as ColType }, { key: 'sgst', label: 'SGST', type: 'money' as ColType }, { key: 'tax', label: 'Tax Payable (RCM)', type: 'money' as ColType }], rows };
 }
 
 function tcsSummary(c: Ctx) {
@@ -1225,7 +1225,7 @@ function timesheetDetails(c: Ctx) {
     return { c: { date: t.date, project: p?.name, customer: name(c.db, p?.customerId), task: p?.tasks.find((k) => k.id === t.taskId)?.name ?? t.task, user: c.db.users.find((u) => u.id === t.userId)?.name, notes: t.notes, billable: t.billable ? 'Yes' : 'No', status: t.invoiced ? 'Invoiced' : t.billable ? 'Unbilled' : 'Non-billable', hours: t.hours }, link: `/time-tracking/projects/${t.projectId}` };
   });
   rows.push(total({ date: 'Total', hours: sum(es.map((t) => t.hours)) }));
-  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'project', label: 'Project Name' }, { key: 'customer', label: 'Customer Name' }, { key: 'task', label: 'Task Name' }, { key: 'user', label: 'Staff' }, { key: 'notes', label: 'Notes', hidden: true }, { key: 'billable', label: 'Billable', hidden: true }, { key: 'status', label: 'Status' }, { key: 'hours', label: 'Logged Hours', type: 'hours' as ColType }], rows };
+  return { columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'project', label: 'Project Name' }, { key: 'customer', label: 'Client Name' }, { key: 'task', label: 'Task Name' }, { key: 'user', label: 'Staff' }, { key: 'notes', label: 'Notes', hidden: true }, { key: 'billable', label: 'Billable', hidden: true }, { key: 'status', label: 'Status' }, { key: 'hours', label: 'Logged Hours', type: 'hours' as ColType }], rows };
 }
 
 function projectSummary(c: Ctx) {
@@ -1235,7 +1235,7 @@ function projectSummary(c: Ctx) {
     const expenses = sum(c.db.expenses.filter((e) => e.projectId === p.id).map((e) => e.amount));
     return { c: { project: p.name, customer: name(c.db, p.customerId), method: label(p.billingMethod), status: label(p.status), logged: s.loggedHours, billable: s.billableHours, billed: s.billedHours, unbilled: s.unbilledHours, billedAmount: s.billedAmount, unbilledAmount: s.unbilledAmount, expenses, profit: round2(s.billedAmount - expenses) }, link: `/time-tracking/projects/${p.id}` };
   });
-  return { columns: [{ key: 'project', label: 'Project Name' }, { key: 'customer', label: 'Customer Name' }, { key: 'method', label: 'Billing Method', hidden: true }, { key: 'status', label: 'Status', hidden: true }, { key: 'logged', label: 'Logged Hours', type: 'hours' as ColType }, { key: 'billable', label: 'Billable Hours', type: 'hours' as ColType }, { key: 'billed', label: 'Billed Hours', type: 'hours' as ColType }, { key: 'unbilled', label: 'Unbilled Hours', type: 'hours' as ColType }, { key: 'billedAmount', label: 'Billed Amount', type: 'money' as ColType }, { key: 'unbilledAmount', label: 'Unbilled Amount', type: 'money' as ColType }, { key: 'expenses', label: 'Expenses', type: 'money' as ColType, hidden: true }, { key: 'profit', label: 'Profit', type: 'money' as ColType, hidden: true }], rows, notes: ['Totals are for the whole life of each project.'] };
+  return { columns: [{ key: 'project', label: 'Project Name' }, { key: 'customer', label: 'Client Name' }, { key: 'method', label: 'Billing Method', hidden: true }, { key: 'status', label: 'Status', hidden: true }, { key: 'logged', label: 'Logged Hours', type: 'hours' as ColType }, { key: 'billable', label: 'Billable Hours', type: 'hours' as ColType }, { key: 'billed', label: 'Billed Hours', type: 'hours' as ColType }, { key: 'unbilled', label: 'Unbilled Hours', type: 'hours' as ColType }, { key: 'billedAmount', label: 'Billed Amount', type: 'money' as ColType }, { key: 'unbilledAmount', label: 'Unbilled Amount', type: 'money' as ColType }, { key: 'expenses', label: 'Expenses', type: 'money' as ColType, hidden: true }, { key: 'profit', label: 'Profit', type: 'money' as ColType, hidden: true }], rows, notes: ['Totals are for the whole life of each project.'] };
 }
 
 function projectDetails(c: Ctx) {
@@ -1484,7 +1484,7 @@ function currencyGainLoss(realized: boolean) {
   return () => ({
     columns: [{ key: 'date', label: 'Date', type: 'date' as ColType }, { key: 'transaction', label: 'Transaction' }, { key: 'contact', label: 'Contact' }, { key: 'currency', label: 'Currency' }, { key: 'amount', label: realized ? 'Realized Gain / Loss' : 'Unrealized Gain / Loss', type: 'money' as ColType }],
     rows: [total({ date: 'Total', amount: 0 })],
-    notes: ['Creatign Books records every transaction in INR, so there are no foreign currency balances to revalue. Exchange rates are kept in Accountant > Currency Adjustments.'],
+    notes: ['Creatign Ledger records every transaction in INR, so there are no foreign currency balances to revalue. Exchange rates are kept in Accountant > FX Revaluations.'],
   });
 }
 
@@ -1500,7 +1500,7 @@ function activityLogs(c: Ctx, portal = false) {
   if (portal)
     for (const s of c.db.shareLinks.filter((x) => x.lastViewedAt && inR(x.lastViewedAt.slice(0, 10), c))) {
       const d = c.db.docs.find((x) => x.id === s.entityId);
-      rows.push({ c: { time: (s.lastViewedAt as string).replace('T', ' ').slice(0, 16), author: 'Customer', entity: label(s.entityType), contact: name(c.db, d?.contactId), message: `Viewed ${d?.number ?? 'shared link'} (${s.views ?? 1} view${(s.views ?? 1) === 1 ? '' : 's'})` } });
+      rows.push({ c: { time: (s.lastViewedAt as string).replace('T', ' ').slice(0, 16), author: 'Client', entity: label(s.entityType), contact: name(c.db, d?.contactId), message: `Viewed ${d?.number ?? 'shared link'} (${s.views ?? 1} view${(s.views ?? 1) === 1 ? '' : 's'})` } });
     }
   return { columns: [{ key: 'time', label: 'Date and Time' }, { key: 'author', label: 'User' }, { key: 'entity', label: 'Module' }, { key: 'contact', label: 'Contact', hidden: true }, { key: 'message', label: 'Activity' }, { key: 'detail', label: 'Details' }], rows };
 }
@@ -1512,96 +1512,96 @@ const PB: FilterKey[] = ['period', 'basis'];
 
 export const REPORTS: ReportDef[] = [
   // Business Overview
-  { key: 'profit-and-loss', name: 'Profit and Loss', category: 'Business Overview', description: 'Income, expenses and net profit for a period.', filters: PB, run: profitAndLoss },
-  { key: 'profit-and-loss-schedule-iii', name: 'Profit and Loss (Schedule III)', category: 'Business Overview', description: 'Statement of profit and loss in the Companies Act Schedule III format.', filters: PB, run: profitAndLossScheduleIII },
-  { key: 'horizontal-profit-and-loss', name: 'Horizontal Profit and Loss', category: 'Business Overview', description: 'Expenses and income side by side.', filters: PB, run: horizontalPnl },
-  { key: 'cash-flow-statement', name: 'Cash Flow Statement', category: 'Business Overview', description: 'Cash from operating, investing and financing activities.', filters: PB, run: cashFlow },
-  { key: 'balance-sheet', name: 'Balance Sheet', category: 'Business Overview', description: 'Assets, liabilities and equity as of a date.', filters: ['asOf', 'basis'], run: balanceSheet },
-  { key: 'horizontal-balance-sheet', name: 'Horizontal Balance Sheet', category: 'Business Overview', description: 'Liabilities and equity beside assets.', filters: ['asOf', 'basis'], run: horizontalBalanceSheet },
-  { key: 'balance-sheet-schedule-iii', name: 'Balance Sheet (Schedule III)', category: 'Business Overview', description: 'Balance sheet in the Companies Act Schedule III format.', filters: ['asOf', 'basis'], run: balanceSheetScheduleIII },
-  { key: 'business-performance-ratios', name: 'Business Performance Ratios', category: 'Business Overview', description: 'Liquidity, solvency, profitability and efficiency ratios.', filters: PB, run: ratios },
-  { key: 'movement-of-equity', name: 'Movement of Equity', category: 'Business Overview', description: 'Opening, additions, deductions and closing of equity accounts.', filters: PB, run: movementOfEquity },
+  { key: 'profit-and-loss', name: 'Profit and Loss', category: 'Financial Statements', description: 'Income, expenses and net profit for a period.', filters: PB, run: profitAndLoss },
+  { key: 'profit-and-loss-schedule-iii', name: 'Profit and Loss (Schedule III)', category: 'Financial Statements', description: 'Statement of profit and loss in the Companies Act Schedule III format.', filters: PB, run: profitAndLossScheduleIII },
+  { key: 'horizontal-profit-and-loss', name: 'Horizontal Profit and Loss', category: 'Financial Statements', description: 'Expenses and income side by side.', filters: PB, run: horizontalPnl },
+  { key: 'cash-flow-statement', name: 'Cash Flow Statement', category: 'Financial Statements', description: 'Cash from operating, investing and financing activities.', filters: PB, run: cashFlow },
+  { key: 'balance-sheet', name: 'Balance Sheet', category: 'Financial Statements', description: 'Assets, liabilities and equity as of a date.', filters: ['asOf', 'basis'], run: balanceSheet },
+  { key: 'horizontal-balance-sheet', name: 'Horizontal Balance Sheet', category: 'Financial Statements', description: 'Liabilities and equity beside assets.', filters: ['asOf', 'basis'], run: horizontalBalanceSheet },
+  { key: 'balance-sheet-schedule-iii', name: 'Balance Sheet (Schedule III)', category: 'Financial Statements', description: 'Balance sheet in the Companies Act Schedule III format.', filters: ['asOf', 'basis'], run: balanceSheetScheduleIII },
+  { key: 'business-performance-ratios', name: 'Business Performance Ratios', category: 'Financial Statements', description: 'Liquidity, solvency, profitability and efficiency ratios.', filters: PB, run: ratios },
+  { key: 'movement-of-equity', name: 'Movement of Equity', category: 'Financial Statements', description: 'Opening, additions, deductions and closing of equity accounts.', filters: PB, run: movementOfEquity },
   // Sales
-  { key: 'sales-by-customer', name: 'Sales by Customer', category: 'Sales', description: 'Invoice count and sales for each customer.', filters: ['period', 'customer'], run: salesByCustomer },
-  { key: 'sales-by-item', name: 'Sales by Item', category: 'Sales', description: 'Quantity sold and sales for each item.', filters: ['period', 'item'], run: salesByItem },
-  { key: 'sales-by-salesperson', name: 'Sales by Sales Person', category: 'Sales', description: 'Sales brought in by each sales person.', filters: P, run: salesBySalesperson },
-  { key: 'sales-summary', name: 'Sales Summary', category: 'Sales', description: 'Sales month by month.', filters: P, run: salesSummary },
+  { key: 'sales-by-customer', name: 'Sales by Client', category: 'Revenue', description: 'Invoice count and sales for each client.', filters: ['period', 'customer'], run: salesByCustomer },
+  { key: 'sales-by-item', name: 'Sales by Item', category: 'Revenue', description: 'Quantity sold and sales for each item.', filters: ['period', 'item'], run: salesByItem },
+  { key: 'sales-by-salesperson', name: 'Sales by Sales Person', category: 'Revenue', description: 'Sales brought in by each sales person.', filters: P, run: salesBySalesperson },
+  { key: 'sales-summary', name: 'Sales Summary', category: 'Revenue', description: 'Sales month by month.', filters: P, run: salesSummary },
   // Receivables
-  { key: 'ar-aging-summary', name: 'AR Aging Summary', category: 'Receivables', description: 'Unpaid invoices by customer and age.', filters: ['asOf', 'customer'], run: (c) => agingSummary(c, 'invoice') },
+  { key: 'ar-aging-summary', name: 'AR Aging Summary', category: 'Receivables', description: 'Unpaid invoices by client and age.', filters: ['asOf', 'customer'], run: (c) => agingSummary(c, 'invoice') },
   { key: 'ar-aging-details', name: 'AR Aging Details', category: 'Receivables', description: 'Each unpaid invoice grouped by age.', filters: ['asOf', 'customer'], run: (c) => agingDetails(c, 'invoice') },
-  { key: 'invoice-details', name: 'Invoice Details', category: 'Receivables', description: 'Every invoice with its status and balance.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'invoice', { contact: 'Customer Name', number: 'Invoice#', balance: 'Balance Due' }) },
-  { key: 'sales-order-details', name: 'Sales Order Details', category: 'Receivables', description: 'Sales orders and their invoicing status.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'sales_order', { contact: 'Customer Name', number: 'Sales Order#', extra: [{ key: 'invoiced', label: 'Invoiced Status' }, { key: 'shipment', label: 'Shipment', hidden: true }], extraOf: (d) => ({ invoiced: label(d.invoiceStatus), shipment: label(d.shipmentStatus) }) }) },
-  { key: 'delivery-challan-details', name: 'Delivery Challan Details', category: 'Receivables', description: 'Delivery challans by type and status.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'delivery_challan', { contact: 'Customer Name', number: 'Delivery Challan#', extra: [{ key: 'challanType', label: 'Challan Type' }], extraOf: (d) => ({ challanType: label(d.challanType) }) }) },
-  { key: 'quote-details', name: 'Quote Details', category: 'Receivables', description: 'Quotes with expiry and status.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'quote', { contact: 'Customer Name', number: 'Quote#', extra: [{ key: 'expiry', label: 'Expiry Date', type: 'date' }], extraOf: (d) => ({ expiry: d.expiryDate }) }) },
-  { key: 'customer-balance-summary', name: 'Customer Balance Summary', category: 'Receivables', description: 'Invoiced, received and closing balance per customer.', filters: ['period', 'customer'], run: (c) => contactBalanceSummary(c, 'customer') },
+  { key: 'invoice-details', name: 'Invoice Details', category: 'Receivables', description: 'Every invoice with its status and balance.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'invoice', { contact: 'Client Name', number: 'Invoice#', balance: 'Balance Due' }) },
+  { key: 'sales-order-details', name: 'Sales Order Details', category: 'Receivables', description: 'Sales orders and their invoicing status.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'sales_order', { contact: 'Client Name', number: 'Sales Order#', extra: [{ key: 'invoiced', label: 'Invoiced Status' }, { key: 'shipment', label: 'Shipment', hidden: true }], extraOf: (d) => ({ invoiced: label(d.invoiceStatus), shipment: label(d.shipmentStatus) }) }) },
+  { key: 'delivery-challan-details', name: 'Delivery Challan Details', category: 'Receivables', description: 'Delivery challans by type and status.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'delivery_challan', { contact: 'Client Name', number: 'Delivery Challan#', extra: [{ key: 'challanType', label: 'Challan Type' }], extraOf: (d) => ({ challanType: label(d.challanType) }) }) },
+  { key: 'quote-details', name: 'Estimate Details', category: 'Receivables', description: 'Estimates with expiry and status.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'quote', { contact: 'Client Name', number: 'Estimate#', extra: [{ key: 'expiry', label: 'Expiry Date', type: 'date' }], extraOf: (d) => ({ expiry: d.expiryDate }) }) },
+  { key: 'customer-balance-summary', name: 'Client Balance Summary', category: 'Receivables', description: 'Invoiced, received and closing balance per client.', filters: ['period', 'customer'], run: (c) => contactBalanceSummary(c, 'customer') },
   { key: 'receivable-summary', name: 'Receivable Summary', category: 'Receivables', description: 'Invoices and credit notes with balances.', filters: ['period', 'customer', 'status'], run: (c) => receivableSummary(c, 'sales') },
   { key: 'receivable-details', name: 'Receivable Details', category: 'Receivables', description: 'Item level detail of invoices and credit notes.', filters: ['period', 'customer', 'status'], run: (c) => receivableDetails(c, 'sales') },
   { key: 'bad-debts', name: 'Bad Debts', category: 'Receivables', description: 'Invoices written off.', filters: ['period', 'customer'], run: badDebts },
-  { key: 'bank-charges', name: 'Bank Charges', category: 'Receivables', description: 'Bank charges deducted from customer payments.', filters: ['period', 'customer'], run: bankCharges },
-  // Payments Received
-  { key: 'payments-received', name: 'Payments Received', category: 'Payments Received', description: 'Customer payments with mode and unused amount.', filters: ['period', 'customer'], run: paymentsReceived },
-  { key: 'time-to-get-paid', name: 'Time to Get Paid', category: 'Payments Received', description: 'How quickly each customer pays.', filters: ['period', 'customer'], run: timeToGetPaid },
-  { key: 'credit-note-details', name: 'Credit Note Details', category: 'Payments Received', description: 'Credit notes and remaining credits.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'credit_note', { contact: 'Customer Name', number: 'Credit Note#', balance: 'Balance', extra: [{ key: 'invoice', label: 'Invoice#' }], extraOf: (d) => ({ invoice: c.db.docs.find((x) => x.id === d.invoiceId)?.number }) }) },
-  { key: 'refund-history', name: 'Refund History', category: 'Payments Received', description: 'Refunds of credit notes and excess payments.', filters: ['period', 'customer'], run: (c) => refundHistory(c, 'customer') },
-  { key: 'withholding-tax', name: 'Withholding Tax', category: 'Payments Received', description: 'TDS deducted by customers on invoices and payments.', filters: ['period', 'customer'], run: (c) => tdsReceivable(c, true) },
+  { key: 'bank-charges', name: 'Bank Charges', category: 'Receivables', description: 'Bank charges deducted from client payments.', filters: ['period', 'customer'], run: bankCharges },
+  // Client Payments
+  { key: 'payments-received', name: 'Client Payments', category: 'Collections', description: 'Client payments with mode and unused amount.', filters: ['period', 'customer'], run: paymentsReceived },
+  { key: 'time-to-get-paid', name: 'Time to Get Paid', category: 'Collections', description: 'How quickly each client pays.', filters: ['period', 'customer'], run: timeToGetPaid },
+  { key: 'credit-note-details', name: 'Credit Note Details', category: 'Collections', description: 'Credit notes and remaining credits.', filters: ['period', 'customer', 'status'], run: (c) => docDetails(c, 'credit_note', { contact: 'Client Name', number: 'Credit Note#', balance: 'Balance', extra: [{ key: 'invoice', label: 'Invoice#' }], extraOf: (d) => ({ invoice: c.db.docs.find((x) => x.id === d.invoiceId)?.number }) }) },
+  { key: 'refund-history', name: 'Refund History', category: 'Collections', description: 'Refunds of credit notes and excess payments.', filters: ['period', 'customer'], run: (c) => refundHistory(c, 'customer') },
+  { key: 'withholding-tax', name: 'Withholding Tax', category: 'Collections', description: 'TDS deducted by clients on invoices and payments.', filters: ['period', 'customer'], run: (c) => tdsReceivable(c, true) },
   // Recurring
-  { key: 'recurring-invoice-details', name: 'Recurring Invoice Details', category: 'Recurring Invoices', description: 'Recurring profiles with their next run.', filters: ['customer', 'status'], run: recurringInvoiceDetails },
+  { key: 'recurring-invoice-details', name: 'Invoice Schedule Details', category: 'Invoice Schedules', description: 'Recurring profiles with their next run.', filters: ['customer', 'status'], run: recurringInvoiceDetails },
   // Payables
-  { key: 'vendor-balance-summary', name: 'Vendor Balance Summary', category: 'Payables', description: 'Billed, paid and closing balance per vendor.', filters: ['period', 'vendor'], run: (c) => contactBalanceSummary(c, 'vendor') },
-  { key: 'ap-aging-summary', name: 'AP Aging Summary', category: 'Payables', description: 'Unpaid bills by vendor and age.', filters: ['asOf', 'vendor'], run: (c) => agingSummary(c, 'bill') },
+  { key: 'vendor-balance-summary', name: 'Supplier Balance Summary', category: 'Payables', description: 'Billed, paid and closing balance per supplier.', filters: ['period', 'vendor'], run: (c) => contactBalanceSummary(c, 'vendor') },
+  { key: 'ap-aging-summary', name: 'AP Aging Summary', category: 'Payables', description: 'Unpaid bills by supplier and age.', filters: ['asOf', 'vendor'], run: (c) => agingSummary(c, 'bill') },
   { key: 'ap-aging-details', name: 'AP Aging Details', category: 'Payables', description: 'Each unpaid bill grouped by age.', filters: ['asOf', 'vendor'], run: (c) => agingDetails(c, 'bill') },
-  { key: 'bill-details', name: 'Bill Details', category: 'Payables', description: 'Every bill with its status and balance.', filters: ['period', 'vendor', 'status'], run: (c) => docDetails(c, 'bill', { contact: 'Vendor Name', number: 'Bill#', balance: 'Balance Due' }) },
-  { key: 'vendor-credit-details', name: 'Vendor Credit Details', category: 'Payables', description: 'Vendor credits and remaining credits.', filters: ['period', 'vendor', 'status'], run: (c) => docDetails(c, 'vendor_credit', { contact: 'Vendor Name', number: 'Vendor Credit#', balance: 'Balance' }) },
-  { key: 'payments-made', name: 'Payments Made', category: 'Payables', description: 'Vendor payments with mode and unused amount.', filters: ['period', 'vendor'], run: paymentsMade },
-  { key: 'vendor-refund-history', name: 'Refund History (Vendors)', category: 'Payables', description: 'Refunds received from vendors.', filters: ['period', 'vendor'], run: (c) => refundHistory(c, 'vendor') },
-  { key: 'purchase-order-details', name: 'Purchase Order Details', category: 'Payables', description: 'Purchase orders and their billing status.', filters: ['period', 'vendor', 'status'], run: (c) => docDetails(c, 'purchase_order', { contact: 'Vendor Name', number: 'Purchase Order#', extra: [{ key: 'billed', label: 'Billed Status' }], extraOf: (d) => ({ billed: label(d.billedStatus) }) }) },
-  { key: 'purchase-orders-by-vendor', name: 'Purchase Orders by Vendor', category: 'Payables', description: 'Purchase order count and value per vendor.', filters: ['period', 'vendor'], run: purchaseOrdersByVendor },
+  { key: 'bill-details', name: 'Bill Details', category: 'Payables', description: 'Every bill with its status and balance.', filters: ['period', 'vendor', 'status'], run: (c) => docDetails(c, 'bill', { contact: 'Supplier Name', number: 'Bill#', balance: 'Balance Due' }) },
+  { key: 'vendor-credit-details', name: 'Debit Note Details', category: 'Payables', description: 'Supplier credits and remaining credits.', filters: ['period', 'vendor', 'status'], run: (c) => docDetails(c, 'vendor_credit', { contact: 'Supplier Name', number: 'Debit Note#', balance: 'Balance' }) },
+  { key: 'payments-made', name: 'Supplier Payments', category: 'Payables', description: 'Supplier payments with mode and unused amount.', filters: ['period', 'vendor'], run: paymentsMade },
+  { key: 'vendor-refund-history', name: 'Refund History (Suppliers)', category: 'Payables', description: 'Refunds received from suppliers.', filters: ['period', 'vendor'], run: (c) => refundHistory(c, 'vendor') },
+  { key: 'purchase-order-details', name: 'Purchase Order Details', category: 'Payables', description: 'Purchase orders and their billing status.', filters: ['period', 'vendor', 'status'], run: (c) => docDetails(c, 'purchase_order', { contact: 'Supplier Name', number: 'Purchase Order#', extra: [{ key: 'billed', label: 'Billed Status' }], extraOf: (d) => ({ billed: label(d.billedStatus) }) }) },
+  { key: 'purchase-orders-by-vendor', name: 'Purchase Orders by Supplier', category: 'Payables', description: 'Purchase order count and value per supplier.', filters: ['period', 'vendor'], run: purchaseOrdersByVendor },
   { key: 'purchase-orders-by-item', name: 'Purchase Order by Item', category: 'Payables', description: 'Quantity ordered per item.', filters: ['period', 'item'], run: purchaseOrdersByItem },
-  { key: 'payable-summary', name: 'Payable Summary', category: 'Payables', description: 'Bills and vendor credits with balances.', filters: ['period', 'vendor', 'status'], run: (c) => receivableSummary(c, 'purchases') },
-  { key: 'payable-details', name: 'Payable Details', category: 'Payables', description: 'Item level detail of bills and vendor credits.', filters: ['period', 'vendor', 'status'], run: (c) => receivableDetails(c, 'purchases') },
+  { key: 'payable-summary', name: 'Payable Summary', category: 'Payables', description: 'Bills and debit notes with balances.', filters: ['period', 'vendor', 'status'], run: (c) => receivableSummary(c, 'purchases') },
+  { key: 'payable-details', name: 'Payable Details', category: 'Payables', description: 'Item level detail of bills and debit notes.', filters: ['period', 'vendor', 'status'], run: (c) => receivableDetails(c, 'purchases') },
   // Purchases and Expenses
-  { key: 'purchases-by-vendor', name: 'Purchases by Vendor', category: 'Purchases and Expenses', description: 'Bills and expenses per vendor.', filters: ['period', 'vendor'], run: purchasesByVendor },
-  { key: 'purchases-by-item', name: 'Purchases by Item', category: 'Purchases and Expenses', description: 'Quantity purchased per item.', filters: ['period', 'item'], run: purchasesByItem },
-  { key: 'expense-details', name: 'Expense Details', category: 'Purchases and Expenses', description: 'Every expense recorded.', filters: ['period', 'vendor', 'customer', 'account'], run: (c) => expenseDetails(c) },
-  { key: 'expenses-by-category', name: 'Expenses by Category', category: 'Purchases and Expenses', description: 'Spending per expense account.', filters: PB, run: expensesByCategory },
-  { key: 'expenses-by-customer', name: 'Expenses by Customer', category: 'Purchases and Expenses', description: 'Expenses linked to each customer.', filters: ['period', 'customer'], run: (c) => expensesGrouped(c, 'customer') },
-  { key: 'expenses-by-project', name: 'Expenses by Project', category: 'Purchases and Expenses', description: 'Expenses linked to each project.', filters: ['period', 'project'], run: (c) => expensesGrouped(c, 'project') },
-  { key: 'billable-expense-details', name: 'Billable Expense Details', category: 'Purchases and Expenses', description: 'Billable expenses and whether they were invoiced.', filters: ['period', 'customer'], run: (c) => expenseDetails(c, (e) => e.billable) },
-  { key: 'mileage-expenses', name: 'Mileage Expenses', category: 'Purchases and Expenses', description: 'Mileage claims by distance and rate.', filters: ['period', 'customer'], run: mileage },
+  { key: 'purchases-by-vendor', name: 'Purchases by Supplier', category: 'Spend Analysis', description: 'Bills and expenses per supplier.', filters: ['period', 'vendor'], run: purchasesByVendor },
+  { key: 'purchases-by-item', name: 'Purchases by Item', category: 'Spend Analysis', description: 'Quantity purchased per item.', filters: ['period', 'item'], run: purchasesByItem },
+  { key: 'expense-details', name: 'Expense Details', category: 'Spend Analysis', description: 'Every expense recorded.', filters: ['period', 'vendor', 'customer', 'account'], run: (c) => expenseDetails(c) },
+  { key: 'expenses-by-category', name: 'Expenses by Category', category: 'Spend Analysis', description: 'Spending per expense account.', filters: PB, run: expensesByCategory },
+  { key: 'expenses-by-customer', name: 'Expenses by Client', category: 'Spend Analysis', description: 'Expenses linked to each client.', filters: ['period', 'customer'], run: (c) => expensesGrouped(c, 'customer') },
+  { key: 'expenses-by-project', name: 'Expenses by Project', category: 'Spend Analysis', description: 'Expenses linked to each project.', filters: ['period', 'project'], run: (c) => expensesGrouped(c, 'project') },
+  { key: 'billable-expense-details', name: 'Billable Expense Details', category: 'Spend Analysis', description: 'Billable expenses and whether they were invoiced.', filters: ['period', 'customer'], run: (c) => expenseDetails(c, (e) => e.billable) },
+  { key: 'mileage-expenses', name: 'Mileage Expenses', category: 'Spend Analysis', description: 'Mileage claims by distance and rate.', filters: ['period', 'customer'], run: mileage },
   // Taxes
-  { key: 'gstr-1-summary', name: 'GSTR-1 Summary', category: 'Taxes', description: 'Outward supplies by GSTR-1 table, HSN summary and documents issued.', filters: ['period', 'customer'], period: 'previous_month', run: gstr1 },
-  { key: 'gstr-3b-summary', name: 'GSTR-3B Summary', category: 'Taxes', description: 'Tables 3.1, 3.2, 4 and 5 of GSTR-3B with tax payable.', filters: P, period: 'previous_month', run: gstr3b },
-  { key: 'inward-supplies', name: 'Inward Supplies (GSTR-2B check)', category: 'Taxes', description: 'Bills and expenses with input tax, to compare with GSTR-2B.', filters: ['period', 'vendor'], period: 'previous_month', run: inwardSupplies },
-  { key: 'hsn-summary', name: 'HSN/SAC Summary', category: 'Taxes', description: 'Supplies by HSN/SAC code and rate.', filters: ['period', 'status'], period: 'previous_month', run: hsnSummary },
-  { key: 'gst-summary', name: 'GST Summary by Rate', category: 'Taxes', description: 'Taxable value and GST by tax rate.', filters: P, period: 'previous_month', run: gstByRate },
-  { key: 'reverse-charge-summary', name: 'Reverse Charge Summary', category: 'Taxes', description: 'Purchases where you pay the GST.', filters: ['period', 'vendor'], period: 'previous_month', run: reverseCharge },
-  { key: 'tds-receivable-summary', name: 'TDS Receivable Summary', category: 'Taxes', description: 'TDS deducted by customers, per customer.', filters: ['period', 'customer'], run: (c) => tdsReceivable(c, false) },
-  { key: 'tds-payable-summary', name: 'TDS Payable Summary', category: 'Taxes', description: 'TDS you deducted from vendors, per vendor.', filters: ['period', 'vendor'], run: (c) => tdsPayable(c, false) },
-  { key: 'tcs-summary', name: 'TCS Summary', category: 'Taxes', description: 'TCS collected on sales and paid on purchases.', filters: P, run: tcsSummary },
+  { key: 'gstr-1-summary', name: 'GSTR-1 Summary', category: 'GST & Statutory', description: 'Outward supplies by GSTR-1 table, HSN summary and documents issued.', filters: ['period', 'customer'], period: 'previous_month', run: gstr1 },
+  { key: 'gstr-3b-summary', name: 'GSTR-3B Summary', category: 'GST & Statutory', description: 'Tables 3.1, 3.2, 4 and 5 of GSTR-3B with tax payable.', filters: P, period: 'previous_month', run: gstr3b },
+  { key: 'inward-supplies', name: 'Inward Supplies (GSTR-2B check)', category: 'GST & Statutory', description: 'Bills and expenses with input tax, to compare with GSTR-2B.', filters: ['period', 'vendor'], period: 'previous_month', run: inwardSupplies },
+  { key: 'hsn-summary', name: 'HSN/SAC Summary', category: 'GST & Statutory', description: 'Supplies by HSN/SAC code and rate.', filters: ['period', 'status'], period: 'previous_month', run: hsnSummary },
+  { key: 'gst-summary', name: 'GST Summary by Rate', category: 'GST & Statutory', description: 'Taxable value and GST by tax rate.', filters: P, period: 'previous_month', run: gstByRate },
+  { key: 'reverse-charge-summary', name: 'Reverse Charge Summary', category: 'GST & Statutory', description: 'Purchases where you pay the GST.', filters: ['period', 'vendor'], period: 'previous_month', run: reverseCharge },
+  { key: 'tds-receivable-summary', name: 'TDS Receivable Summary', category: 'GST & Statutory', description: 'TDS deducted by clients, per client.', filters: ['period', 'customer'], run: (c) => tdsReceivable(c, false) },
+  { key: 'tds-payable-summary', name: 'TDS Payable Summary', category: 'GST & Statutory', description: 'TDS you deducted from suppliers, per supplier.', filters: ['period', 'vendor'], run: (c) => tdsPayable(c, false) },
+  { key: 'tcs-summary', name: 'TCS Summary', category: 'GST & Statutory', description: 'TCS collected on sales and paid on purchases.', filters: P, run: tcsSummary },
   // Banking
-  { key: 'reconciliation-status', name: 'Reconciliation Status', category: 'Banking', description: 'Last reconciliation and uncleared items per account.', filters: ['asOf'], run: reconciliationStatus },
-  { key: 'bank-statement-lines', name: 'Bank Statement Lines', category: 'Banking', description: 'Imported statement lines with their status.', filters: ['period', 'account', 'status'], run: statementLines },
+  { key: 'reconciliation-status', name: 'Reconciliation Status', category: 'Cash & Bank', description: 'Last reconciliation and uncleared items per account.', filters: ['asOf'], run: reconciliationStatus },
+  { key: 'bank-statement-lines', name: 'Bank Statement Lines', category: 'Cash & Bank', description: 'Imported statement lines with their status.', filters: ['period', 'account', 'status'], run: statementLines },
   // Projects
-  { key: 'timesheet-details', name: 'Timesheet Details', category: 'Projects and Timesheet', description: 'Every time entry logged.', filters: ['period', 'project'], run: timesheetDetails },
-  { key: 'project-summary', name: 'Project Summary', category: 'Projects and Timesheet', description: 'Hours and billing per project.', filters: ['project'], run: projectSummary },
-  { key: 'project-details', name: 'Project Details', category: 'Projects and Timesheet', description: 'Hours per task and staff for each project.', filters: ['period', 'project'], run: projectDetails },
+  { key: 'timesheet-details', name: 'Timesheet Details', category: 'Projects & Time', description: 'Every time entry logged.', filters: ['period', 'project'], run: timesheetDetails },
+  { key: 'project-summary', name: 'Project Summary', category: 'Projects & Time', description: 'Hours and billing per project.', filters: ['project'], run: projectSummary },
+  { key: 'project-details', name: 'Project Details', category: 'Projects & Time', description: 'Hours per task and staff for each project.', filters: ['period', 'project'], run: projectDetails },
   // Accountant
-  { key: 'account-transactions', name: 'Account Transactions', category: 'Accountant', description: 'Every posting, or the postings of one account with a running balance.', filters: ['period', 'basis', 'account'], run: accountTransactions },
-  { key: 'account-type-summary', name: 'Account Type Summary', category: 'Accountant', description: 'Debits and credits by account type.', filters: PB, run: accountTypeSummary },
-  { key: 'account-type-transactions', name: 'Account Type Transactions', category: 'Accountant', description: 'Postings grouped by account type.', filters: PB, run: accountTypeTransactions },
-  { key: 'general-ledger', name: 'General Ledger', category: 'Accountant', description: 'Opening, debits, credits and closing per account.', filters: ['period', 'basis', 'account'], run: generalLedger },
-  { key: 'detailed-general-ledger', name: 'Detailed General Ledger', category: 'Accountant', description: 'Every posting per account with running balances.', filters: ['period', 'basis', 'account'], run: detailedGeneralLedger },
-  { key: 'journal-report', name: 'Journal Report', category: 'Accountant', description: 'Every journal with its debit and credit lines.', filters: PB, run: journalReport },
-  { key: 'trial-balance', name: 'Trial Balance', category: 'Accountant', description: 'Net debit or credit of every account.', filters: ['asOf', 'basis'], run: trialBalance },
+  { key: 'account-transactions', name: 'Account Transactions', category: 'General Ledger', description: 'Every posting, or the postings of one account with a running balance.', filters: ['period', 'basis', 'account'], run: accountTransactions },
+  { key: 'account-type-summary', name: 'Account Type Summary', category: 'General Ledger', description: 'Debits and credits by account type.', filters: PB, run: accountTypeSummary },
+  { key: 'account-type-transactions', name: 'Account Type Transactions', category: 'General Ledger', description: 'Postings grouped by account type.', filters: PB, run: accountTypeTransactions },
+  { key: 'general-ledger', name: 'General Ledger', category: 'General Ledger', description: 'Opening, debits, credits and closing per account.', filters: ['period', 'basis', 'account'], run: generalLedger },
+  { key: 'detailed-general-ledger', name: 'Detailed General Ledger', category: 'General Ledger', description: 'Every posting per account with running balances.', filters: ['period', 'basis', 'account'], run: detailedGeneralLedger },
+  { key: 'journal-report', name: 'Journal Report', category: 'General Ledger', description: 'Every journal with its debit and credit lines.', filters: PB, run: journalReport },
+  { key: 'trial-balance', name: 'Trial Balance', category: 'General Ledger', description: 'Net debit or credit of every account.', filters: ['asOf', 'basis'], run: trialBalance },
   // Budgets
-  { key: 'budget-vs-actuals', name: 'Budget vs Actuals', category: 'Budgets', description: 'Budgeted and actual amounts per account.', filters: ['budget'], run: budgetVsActuals },
+  { key: 'budget-vs-actuals', name: 'Budget vs Actuals', category: 'Budgeting', description: 'Budgeted and actual amounts per account.', filters: ['budget'], run: budgetVsActuals },
   // Currency
-  { key: 'realized-gain-loss', name: 'Realized Gain or Loss', category: 'Currency', description: 'Exchange gains or losses on settled foreign currency transactions.', filters: P, run: currencyGainLoss(true) },
-  { key: 'unrealized-gain-loss', name: 'Unrealized Gain or Loss', category: 'Currency', description: 'Exchange gains or losses on open foreign currency balances.', filters: ['asOf'], run: currencyGainLoss(false) },
+  { key: 'realized-gain-loss', name: 'Realized Gain or Loss', category: 'Foreign Exchange', description: 'Exchange gains or losses on settled foreign currency transactions.', filters: P, run: currencyGainLoss(true) },
+  { key: 'unrealized-gain-loss', name: 'Unrealized Gain or Loss', category: 'Foreign Exchange', description: 'Exchange gains or losses on open foreign currency balances.', filters: ['asOf'], run: currencyGainLoss(false) },
   // Activity
-  { key: 'system-mails', name: 'System Mails', category: 'Activity', description: 'Emails sent from Creatign Books.', filters: P, run: systemMails },
-  { key: 'activity-logs', name: 'Activity Logs', category: 'Activity', description: 'Who changed what, and when.', filters: P, run: (c) => activityLogs(c) },
-  { key: 'portal-activities', name: 'Portal Activities', category: 'Activity', description: 'What customers did in the portal and on shared links.', filters: P, run: (c) => activityLogs(c, true) },
+  { key: 'system-mails', name: 'System Mails', category: 'Audit Trail', description: 'Emails sent from Creatign Ledger.', filters: P, run: systemMails },
+  { key: 'activity-logs', name: 'Activity Logs', category: 'Audit Trail', description: 'Who changed what, and when.', filters: P, run: (c) => activityLogs(c) },
+  { key: 'portal-activities', name: 'Portal Activities', category: 'Audit Trail', description: 'What clients did in the portal and on shared links.', filters: P, run: (c) => activityLogs(c, true) },
 ];
 
 // ------------------------------------------------------------------ runner

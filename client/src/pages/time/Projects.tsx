@@ -1,4 +1,4 @@
-// Zoho-style Projects: All Projects list (list or split view), the project form and the project page.
+// Projects: All Projects list (list or split view), the project form and the project page.
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Clock, Columns2, Download, List, MoreHorizontal, Plus, Search, Trash2, X } from 'lucide-react';
@@ -41,7 +41,7 @@ const rateText = (p: ProjectRow) => (p.billingMethod === 'fixed' || p.billingMet
 
 function exportCsv(rows: ProjectRow[]) {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['Project Name', 'Project Code', 'Customer Name', 'Billing Method', 'Rate', 'Status', 'Logged Hours', 'Unbilled Hours', 'Unbilled Amount', 'Billed Amount'];
+  const head = ['Project Name', 'Project Code', 'Client Name', 'Billing Method', 'Rate', 'Status', 'Logged Hours', 'Unbilled Hours', 'Unbilled Amount', 'Billed Amount'];
   const body = rows.map((p) => [p.name, p.code, p.customerName, p.billingMethodLabel, p.rate, p.status, fmtHours(p.loggedHours), fmtHours(p.unbilledHours), p.unbilledAmount, p.billedAmount].map(esc).join(','));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' }));
@@ -174,8 +174,8 @@ function ProjectList() {
         <Spinner />
       ) : !data.length && view === 'all' && !q ? (
         <Lifecycle
-          title="Track time. Bill your customers."
-          subtitle="Create projects for your customers, log the hours your team spends on them and turn unbilled time into invoices."
+          title="Track time. Bill your clients."
+          subtitle="Create projects for your clients, log the hours your team spends on them and turn unbilled time into invoices."
           steps={['CREATE PROJECT', 'LOG TIME', 'INVOICE UNBILLED HOURS']}
           actions={
             <button className="btn-primary" onClick={() => navigate('/time-tracking/projects/new')}>
@@ -190,7 +190,7 @@ function ProjectList() {
               <th className="w-10 pl-6">
                 <input type="checkbox" className="h-3.5 w-3.5 accent-brand-600" checked={all} onChange={() => setSelected(all ? [] : data.map((p) => p.id))} aria-label="Select all" />
               </th>
-              <th>Customer Name</th>
+              <th>Client Name</th>
               <th>Project Name</th>
               <th>Billing Method</th>
               <th className="text-right">Rate</th>
@@ -373,9 +373,9 @@ function ProjectForm() {
           <Field label="Project Code">
             <input className="input max-w-[220px]" value={f.code ?? ''} maxLength={30} onChange={(e) => set({ code: e.target.value })} />
           </Field>
-          <Field label="Customer Name" required>
+          <Field label="Client Name" required>
             <div className="max-w-md">
-              <ContactPicker kind="customer" value={f.customerId} onChange={(customerId) => set({ customerId })} placeholder="Select customer" />
+              <ContactPicker kind="customer" value={f.customerId} onChange={(customerId) => set({ customerId })} placeholder="Select client" />
             </div>
           </Field>
           <Field label="Billing Method" required>

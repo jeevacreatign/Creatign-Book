@@ -1,8 +1,8 @@
 {
-  "name": "creatign-books",
+  "name": "creatign-ledger",
   "version": "0.1.0",
   "private": true,
-  "description": "Creatign Books: accounting and billing for Creatign (INR, April-March fiscal year)",
+  "description": "Creatign Ledger: accounting and billing for Creatign (INR, April-March fiscal year)",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:server\" \"npm:dev:client\"",

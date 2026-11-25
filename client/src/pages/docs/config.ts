@@ -77,7 +77,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     fields: ['reference', 'expiryDate', 'salesperson', 'project', 'subject', 'addresses'],
     attachments: { max: 5, mb: 10 },
     saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
-    notesLabel: 'Customer Notes',
+    notesLabel: 'Client Notes',
   },
   sales_order: {
     kind: 'sales_order',
@@ -86,7 +86,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     fields: ['reference', 'expectedShipment', 'terms', 'deliveryMethod', 'salesperson', 'project', 'subject', 'addresses'],
     attachments: { max: 10, mb: 5 },
     saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
-    notesLabel: 'Customer Notes',
+    notesLabel: 'Client Notes',
   },
   invoice: {
     kind: 'invoice',
@@ -95,7 +95,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     fields: ['orderNumber', 'terms', 'dueDate', 'account', 'salesperson', 'project', 'subject', 'addresses', 'makeRecurring'],
     attachments: { max: 10, mb: 10 },
     saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
-    notesLabel: 'Customer Notes',
+    notesLabel: 'Client Notes',
   },
   recurring_invoice: {
     kind: 'recurring_invoice',
@@ -105,7 +105,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     roundOff: true,
     attachments: { max: 5, mb: 10 },
     saveLabels: { open: 'Save' },
-    notesLabel: 'Customer Notes',
+    notesLabel: 'Client Notes',
   },
   delivery_challan: {
     kind: 'delivery_challan',
@@ -114,7 +114,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     fields: ['reference', 'challanType', 'addresses'],
     attachments: { max: 5, mb: 10 },
     saveLabels: { draft: 'Save as Draft', open: 'Save as Open', send: 'Save and Send' },
-    notesLabel: 'Customer Notes',
+    notesLabel: 'Client Notes',
   },
   credit_note: {
     kind: 'credit_note',
@@ -124,7 +124,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     lineAccount: true,
     attachments: { max: 5, mb: 10 },
     saveLabels: { draft: 'Save as Draft', open: 'Save as Open', send: 'Save and Send' },
-    notesLabel: 'Customer Notes',
+    notesLabel: 'Client Notes',
   },
   purchase_order: {
     kind: 'purchase_order',
@@ -135,7 +135,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     attachments: { max: 10, mb: 5 },
     saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
     notesLabel: 'Notes',
-    lifecycle: { title: 'Start Managing Your Purchase Activities!', subtitle: 'Create, customize and send professional Purchase Orders to your vendors.', steps: ['RAISE PURCHASE ORDER', 'RECEIVE GOODS', 'CONVERT TO BILL', 'RECORD PAYMENT'], cta: 'CREATE NEW PURCHASE ORDER' },
+    lifecycle: { title: 'Plan purchases before you buy', subtitle: 'Send purchase orders to suppliers, then turn them into bills when the goods arrive.', steps: ['ISSUE ORDER', 'GOODS RECEIVED', 'BILL CREATED', 'SUPPLIER PAID'], cta: 'NEW PURCHASE ORDER' },
   },
   bill: {
     kind: 'bill',
@@ -148,7 +148,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     attachments: { max: 5, mb: 10 },
     saveLabels: { draft: 'Save as Draft', open: 'Save as Open' },
     notesLabel: 'Notes',
-    lifecycle: { title: 'Owe money? It\'s good to pay bills on time!', subtitle: 'Create bills and record payments.', steps: ['PURCHASE ITEMS', 'RECORD BILL', ['RECORD PARTIAL PAYMENT', 'RECORD PAYMENT']], cta: 'CREATE A BILL' },
+    lifecycle: { title: 'Keep track of what you owe', subtitle: 'Record supplier bills as they arrive and settle them in full or in parts.', steps: ['GOODS OR SERVICES', 'BILL RECORDED', ['PART PAYMENT', 'FULL PAYMENT']], cta: 'NEW BILL' },
   },
   recurring_bill: {
     kind: 'recurring_bill',
@@ -160,7 +160,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     attachments: { max: 5, mb: 10 },
     saveLabels: { open: 'Save' },
     notesLabel: 'Notes',
-    lifecycle: { title: 'Create. Set. Repeat.', subtitle: 'Do you pay for items or services periodically? Create a recurring bill profile and bills will be generated automatically.', steps: ['ROUTINE PURCHASE', 'CREATE RECURRING PROFILE', 'GENERATED BILL', 'RECORD PAYMENT'], cta: 'CREATE RECURRING BILL' },
+    lifecycle: { title: 'Automate regular bills', subtitle: 'Rent, subscriptions and retainers: set up a schedule once and each bill is raised on its due date.', steps: ['REGULAR SUPPLY', 'SCHEDULE SET', 'BILL RAISED', 'SUPPLIER PAID'], cta: 'NEW BILL SCHEDULE' },
   },
   vendor_credit: {
     kind: 'vendor_credit',
@@ -171,7 +171,7 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     attachments: { max: 5, mb: 10 },
     saveLabels: { draft: 'Save as Draft', open: 'Save as Open' },
     notesLabel: 'Notes',
-    lifecycle: { title: 'You deserve some credit too.', subtitle: 'Create vendor credits and apply them to multiple bills when buying stuff from your vendor.', steps: ['RETURN ITEMS', 'RECORD VENDOR CREDIT', ['APPLY TO BILLS', 'RECORD REFUND']], cta: 'CREATE VENDOR CREDITS' },
+    lifecycle: { title: 'Handle returns and supplier adjustments', subtitle: 'Issue a debit note for returned or short-supplied goods and set it off against open bills or take a refund.', steps: ['GOODS RETURNED', 'DEBIT NOTE ISSUED', ['SET OFF AGAINST BILLS', 'REFUND RECEIVED']], cta: 'NEW DEBIT NOTE' },
   },
 };
 

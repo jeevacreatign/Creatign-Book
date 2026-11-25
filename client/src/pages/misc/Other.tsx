@@ -90,10 +90,10 @@ function Preferences() {
       <Field label="Default Invoice Terms">
         <textarea className="input" rows={2} value={f.invoiceTerms} onChange={(e) => setF({ ...f, invoiceTerms: e.target.value })} />
       </Field>
-      <Field label="Default Customer Notes">
+      <Field label="Default Client Notes">
         <textarea className="input" rows={2} value={f.customerNotes} onChange={(e) => setF({ ...f, customerNotes: e.target.value })} />
       </Field>
-      <Field label="Default Quote Notes">
+      <Field label="Default Estimate Notes">
         <textarea className="input" rows={2} value={f.quoteNotes} onChange={(e) => setF({ ...f, quoteNotes: e.target.value })} />
       </Field>
       <Field label="Mileage Rate (₹/km)">
@@ -144,7 +144,7 @@ function Approvals() {
 }
 
 function Features() {
-  const features = ['Quotes', 'Sales Orders', 'Delivery Challans', 'Recurring Invoices', 'Purchase Orders', 'Recurring Bills', 'Vendor Credits', 'Time Tracking', 'Projects', 'Customer Portal', 'Vendor Portal'];
+  const features = ['Estimates', 'Sales Orders', 'Delivery Challans', 'Invoice Schedules', 'Purchase Orders', 'Bill Schedules', 'Debit Notes', 'Projects & Time', 'Projects', 'Client Portal', 'Supplier Portal'];
   return (
     <div className="max-w-2xl">
       <div className="mb-3 text-slate-600">All modules are enabled for Creatign. Turning a module off hides it from the sidebar in a future release; the data stays intact.</div>
@@ -188,7 +188,7 @@ function ImportData() {
     <div className="max-w-2xl space-y-4">
       <div className="text-slate-600">Import a CSV file. The first row must contain column headers.</div>
       <Field label="Import">
-        <Select className="max-w-xs" value={kind} onChange={(e) => setKind(e.target.value as 'items')} options={[{ value: 'items', label: 'Items' }, { value: 'customer', label: 'Customers' }, { value: 'vendor', label: 'Vendors' }]} />
+        <Select className="max-w-xs" value={kind} onChange={(e) => setKind(e.target.value as 'items')} options={[{ value: 'items', label: 'Items' }, { value: 'customer', label: 'Clients' }, { value: 'vendor', label: 'Suppliers' }]} />
       </Field>
       <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">Columns: {kind === 'items' ? 'Name, Type, Unit, Rate, Purchase Rate, Description, Purchase Description' : 'Display Name, Company Name, Email, Phone'}</div>
       <label className="btn-primary cursor-pointer">
@@ -223,7 +223,7 @@ export function Settings() {
     { to: '/settings/approvals', label: 'Approvals' },
     { to: '/settings/templates', label: 'PDF Templates' },
     { to: '/settings/emails', label: 'Emails' },
-    { to: '/settings/portal', label: 'Customer Portal' },
+    { to: '/settings/portal', label: 'Client Portal' },
     { to: '/settings/features', label: 'Configure Features' },
     { to: '/settings/import', label: 'Import Data' },
     { to: '/settings/data', label: 'Data & Backup' },
@@ -263,7 +263,7 @@ export function AppPlaceholder({ app }: { app: 'payroll' | 'payments' }) {
     <div className="flex flex-col items-center gap-3 px-6 py-24 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-brand-50 text-brand-600">{payroll ? <Wallet size={26} /> : <CreditCard size={26} />}</div>
       <div className="text-lg font-semibold">{payroll ? 'Payroll' : 'Payment Gateway'}</div>
-      <div className="max-w-md text-slate-500">{payroll ? 'Run payroll, compute PF, ESI and TDS on salaries, and post salary journals to Creatign Books.' : 'Collect invoice payments online by card, UPI and net banking, and reconcile them automatically.'} This integration is a placeholder and is not connected yet.</div>
+      <div className="max-w-md text-slate-500">{payroll ? 'Run payroll, compute PF, ESI and TDS on salaries, and post salary journals to Creatign Ledger.' : 'Collect invoice payments online by card, UPI and net banking, and reconcile them automatically.'} This integration is a placeholder and is not connected yet.</div>
       <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Coming soon</span>
     </div>
   );
@@ -312,7 +312,7 @@ export function PrintPayment({ made }: { made?: boolean }) {
   return <PrintShell ready={!!data}>{data ? <ReceiptPreview payment={data} org={organization} contact={data.contact} kind={made ? 'made' : 'received'} rows={rows} template={template} /> : <Spinner />}</PrintShell>;
 }
 
-/** Printable expense voucher (Zoho's expense PDF/Print). */
+/** Printable expense voucher. */
 export function PrintExpense() {
   const { id } = useParams();
   const { organization: org, accounts } = useBoot();
@@ -346,7 +346,7 @@ export function PrintExpense() {
               <div className="font-medium">{e.paidThroughName}</div>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wide text-slate-400">Customer</div>
+              <div className="text-xs uppercase tracking-wide text-slate-400">Client</div>
               <div className="font-medium">{e.customerName || '-'}</div>
               <div className="mt-3 text-xs uppercase tracking-wide text-slate-400">Status</div>
               <div className="font-medium">{e.billable ? 'Billable' : 'Non-Billable'}</div>
