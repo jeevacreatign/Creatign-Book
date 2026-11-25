@@ -1,9 +1,11 @@
-import { resetDb } from './db';
+// npm run reset-data [-- --empty]: replace everything in the MySQL database with fresh sample books.
+import 'dotenv/config';
+import { closeDb, initDb, persist, resetDb } from './db';
 import { recompute } from './engine';
-import { persist } from './db';
 
 const samples = !process.argv.includes('--empty');
-const db = resetDb(samples);
-recompute(db);
+await initDb();
+recompute(resetDb(samples));
 persist();
-console.log(`Data reset${samples ? ' with sample items, customers and vendors' : ' (empty)'}.`);
+await closeDb();
+console.log(`Data reset${samples ? ' with sample items, clients and suppliers' : ' (empty)'}.`);

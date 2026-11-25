@@ -10,7 +10,7 @@ import { fmtDate, money, round2, today } from '../shared/format';
 import { resolveTemplate } from '../shared/pdfTemplate';
 import { DEFAULT_PORTAL_SETTINGS, PORTAL_KINDS, portalSettings, upiLink, visibleToCustomer, type PaymentNotice, type PortalSettings, type PortalUser } from '../shared/portal';
 import { PAYMENT_MODES, type Contact, type Database, type ShareLink, type TxnDoc } from '../shared/types';
-import { getDb, newId, now } from './db';
+import { getDb, newId, now, flushDb } from './db';
 import { createShareLink, isEmail, notifyOrganization, personName, publicOrigin, sendSystemEmail, shareUrl } from './email';
 import { logActivity } from './engine';
 import { renderDocPdf, renderPaymentPdf, renderStatementPdf } from './pdf';
@@ -30,6 +30,7 @@ type Handler = (req: Request, res: Response) => unknown;
 const h = (fn: Handler) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     const out = await fn(req, res);
+    await flushDb(); // answer only once the change is saved
     if (!res.headersSent) res.json(out ?? { ok: true });
   } catch (e) {
     next(e);

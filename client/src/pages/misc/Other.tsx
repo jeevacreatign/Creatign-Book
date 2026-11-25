@@ -1,7 +1,7 @@
 // Time tracking, documents, settings, app placeholders, print pages and the public share page.
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
-import { Wallet, CreditCard, FileText, Upload } from 'lucide-react';
+import { Wallet, CreditCard, Download, FileText, Upload } from 'lucide-react';
 import { APPROVAL_KINDS } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
 import { fmtDate, fmtDateTime, money } from '@shared/format';
@@ -207,12 +207,17 @@ function DataAdmin() {
   const reset = useAction((samples: boolean) => api('/admin/reset', { body: { samples } }), 'Data reset');
   return (
     <div className="max-w-2xl space-y-3">
-      <div className="text-slate-600">Data is stored in <code className="rounded bg-slate-100 px-1">server/data/db.json</code>. Back it up by copying that file.</div>
+      <div className="text-slate-600">
+        Your books are stored in the MySQL database set in <code className="rounded bg-slate-100 px-1">DATABASE_URL</code>. Schedule regular backups with <code className="rounded bg-slate-100 px-1">mysqldump</code> or your hosting provider's backups. You can also download a copy of everything as JSON (sign-in passwords and sessions are left out).
+      </div>
+      <a className="btn-secondary" href="/api/admin/backup" download>
+        <Download size={14} /> Download Backup (JSON)
+      </a>
       <button className="btn-danger" onClick={() => setConfirm(true)}>
         Reset all data
       </button>
       <Modal open={confirm} onClose={() => setConfirm(false)} title="Reset all data?" footer={<><button className="btn-danger" onClick={() => { reset.mutate(true); setConfirm(false); }}>Reset with sample data</button><button className="btn-secondary" onClick={() => { reset.mutate(false); setConfirm(false); }}>Reset empty</button></>}>
-        Every transaction, contact and item will be erased. This cannot be undone.
+        Every transaction, contact and item will be erased. Users and their sign-ins are kept. This cannot be undone.
       </Modal>
     </div>
   );
@@ -231,7 +236,7 @@ export function Settings() {
     { to: '/settings/portal', label: 'Client Portal' },
     { to: '/settings/features', label: 'Feature Settings' },
     { to: '/settings/import', label: 'Import Data' },
-    { to: '/settings/data', label: 'Data & Backup' },
+    ...(me.user.role === 'Admin' ? [{ to: '/settings/data', label: 'Data & Backup' }] : []),
   ];
   return (
     <div className="flex h-full">
