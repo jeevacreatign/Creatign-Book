@@ -1,4 +1,3 @@
-import { TaxSelect } from '../../components/gst';
 import { taxLabel } from '@shared/gst';
 import { useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
@@ -119,58 +118,52 @@ function ItemForm() {
           <X size={18} />
         </button>
       </PageHeader>
-      <div className="flex-1 space-y-4 px-5 py-5">
-        <div className="max-w-3xl space-y-4">
-          <Field label="Type">
-            <Radio name="type" value={f.type || 'goods'} onChange={(v) => set({ type: v })} options={[{ value: 'goods', label: 'Goods' }, { value: 'service', label: 'Service' }]} />
-          </Field>
+      <div className="flex-1 space-y-5 px-5 py-5">
+        <div className="max-w-5xl rounded-md border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs text-slate-600">
+          Inventory quantities are not tracked yet. Items can still be used in sales and purchase transactions.
+        </div>
+        <div className="max-w-5xl space-y-4 rounded-md bg-slate-50 p-4">
           <Field label="Name" required>
             <input className="input max-w-md" value={f.name || ''} onChange={(e) => set({ name: e.target.value })} autoFocus />
           </Field>
-          <Field label="SKU">
-            <input className="input max-w-md" value={f.sku || ''} onChange={(e) => set({ sku: e.target.value })} />
+          <Field label="Type">
+            <Radio name="type" value={f.type || 'goods'} onChange={(v) => set({ type: v })} options={[{ value: 'goods', label: 'Goods' }, { value: 'service', label: 'Service' }]} />
           </Field>
-          <Field label={f.type === 'service' ? 'SAC' : 'HSN Code'}>
-            <input className="input max-w-md" value={f.hsnSac || ''} onChange={(e) => set({ hsnSac: e.target.value })} />
-          </Field>
-          <Field label="Tax Preference" required>
-            <Radio name="taxPref" value={f.taxPreference || 'taxable'} onChange={(v) => set({ taxPreference: v, taxId: v === 'taxable' ? f.taxId : v })} options={[{ value: 'taxable', label: 'Taxable' }, { value: 'exempt', label: 'Exempt' }, { value: 'non_gst', label: 'Non-GST Supply' }, { value: 'out_of_scope', label: 'Out of Scope' }]} />
-          </Field>
-          {(f.taxPreference || 'taxable') === 'taxable' && (
-            <Field label="Default Tax Rate">
-              <TaxSelect className="max-w-md" intra value={f.taxId} onChange={(v) => set({ taxId: v })} />
-              <div className="mt-1 text-xxs text-slate-500">Applied to sales and purchase lines. Intra-state supply splits into CGST and SGST, inter-state uses IGST.</div>
-            </Field>
-          )}
           <Field label="Unit">
             <Combo className="max-w-md" allowFree freeValue={f.unit} onFree={(v) => set({ unit: v })} value={f.unit} onChange={(v) => set({ unit: v })} placeholder="Select or type to add" options={UNITS.map((u) => ({ value: u, label: u }))} />
           </Field>
         </div>
-        <div className="grid max-w-5xl gap-8 border-t border-slate-200 pt-5 lg:grid-cols-2">
-          <div className="space-y-3">
+        <div className="max-w-5xl border-t border-slate-200 pt-5">
+          <div className="mb-4">
             <Checkbox checked={!!f.sellable} onChange={(v) => set({ sellable: v })} label={<span className="font-semibold">Sales Information</span>} />
-            <Field label="Selling Price" required={f.sellable} inline={false}>
+          </div>
+          <div className="grid max-w-5xl gap-x-8 gap-y-3 md:grid-cols-2">
+            <Field label="Selling Price" required={f.sellable}>
               <MoneyInput value={f.sellingPrice} onChange={(v) => set({ sellingPrice: v as unknown as number })} disabled={!f.sellable} />
             </Field>
-            <Field label="Account" required={f.sellable} inline={false}>
+            <Field label="Account" required={f.sellable}>
               <AccountSelect accounts={accounts} value={f.salesAccountId} onChange={(v) => set({ salesAccountId: v })} filter={(a) => a.type === 'income'} disabled={!f.sellable} />
             </Field>
-            <Field label="Description" inline={false}>
+            <Field label="Description">
               <textarea className="input" rows={3} value={f.salesDescription || ''} onChange={(e) => set({ salesDescription: e.target.value })} disabled={!f.sellable} />
             </Field>
           </div>
-          <div className="space-y-3">
+        </div>
+        <div className="max-w-5xl border-t border-slate-200 pt-5">
+          <div className="mb-4">
             <Checkbox checked={!!f.purchasable} onChange={(v) => set({ purchasable: v })} label={<span className="font-semibold">Purchase Information</span>} />
-            <Field label="Cost Price" required={f.purchasable} inline={false}>
+          </div>
+          <div className="grid max-w-5xl gap-x-8 gap-y-3 md:grid-cols-2">
+            <Field label="Cost Price" required={f.purchasable}>
               <MoneyInput value={f.costPrice} onChange={(v) => set({ costPrice: v as unknown as number })} disabled={!f.purchasable} />
             </Field>
-            <Field label="Account" required={f.purchasable} inline={false}>
+            <Field label="Account" required={f.purchasable}>
               <AccountSelect accounts={accounts} value={f.purchaseAccountId} onChange={(v) => set({ purchaseAccountId: v })} filter={(a) => a.type === 'expense' || a.subType === 'fixed_asset'} disabled={!f.purchasable} />
             </Field>
-            <Field label="Description" inline={false}>
+            <Field label="Description">
               <textarea className="input" rows={3} value={f.purchaseDescription || ''} onChange={(e) => set({ purchaseDescription: e.target.value })} disabled={!f.purchasable} />
             </Field>
-            <Field label="Preferred Supplier" inline={false}>
+            <Field label="Preferred Vendor">
               <Select value={f.preferredVendorId || ''} onChange={(e) => set({ preferredVendorId: e.target.value || undefined })} placeholder="" options={vendors.map((v) => ({ value: v.id, label: v.displayName }))} disabled={!f.purchasable} />
             </Field>
           </div>
