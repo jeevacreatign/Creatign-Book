@@ -1,4 +1,4 @@
-// One report: filters kept in the URL, Zoho-style statement layout, customize columns, save as a
+// One report: filters kept in the URL, statement layout, customize columns, save as a
 // custom report and export to PDF (print), CSV and XLS.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -76,7 +76,7 @@ export default function ReportView() {
   if (!meta)
     return (
       <div className="p-10 text-slate-500">
-        This report does not exist. <Link className="link" to="/reports">Back to Reports Center</Link>
+        This report does not exist. <Link className="link" to="/reports">Back to Report Library</Link>
       </div>
     );
 
@@ -88,7 +88,7 @@ export default function ReportView() {
     <div className="flex min-h-full flex-col">
       <div className="no-print flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <button className="btn-ghost w-8 px-0" onClick={() => navigate('/reports')} aria-label="Back to Reports Center">
+          <button className="btn-ghost w-8 px-0" onClick={() => navigate('/reports')} aria-label="Back to Report Library">
             <ArrowLeft size={17} />
           </button>
           <div className="min-w-0">
@@ -175,17 +175,17 @@ export default function ReportView() {
         )}
         {f.has('customer') && (
           <label className="w-56 text-xs text-slate-500">
-            Customer
+            Client
             <div className="mt-1">
-              <ContactPicker kind="customer" value={params.customer || params.customerId} onChange={(v) => set({ customer: v, customerId: undefined })} placeholder="All customers" />
+              <ContactPicker kind="customer" value={params.customer || params.customerId} onChange={(v) => set({ customer: v, customerId: undefined })} placeholder="All clients" />
             </div>
           </label>
         )}
         {f.has('vendor') && (
           <label className="w-56 text-xs text-slate-500">
-            Vendor
+            Supplier
             <div className="mt-1">
-              <ContactPicker kind="vendor" value={params.vendor || params.vendorId} onChange={(v) => set({ vendor: v, vendorId: undefined })} placeholder="All vendors" />
+              <ContactPicker kind="vendor" value={params.vendor || params.vendorId} onChange={(v) => set({ vendor: v, vendorId: undefined })} placeholder="All suppliers" />
             </div>
           </label>
         )}
@@ -370,7 +370,7 @@ function SaveReport({ report, params, hidden, defaultName, onClose }: { report: 
       <Field label="Report Name" required>
         <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <p className="mt-3 text-xs text-slate-500">The current filters and column choices are saved. It appears under Custom Reports in the Reports Center for everyone in this organization.</p>
+      <p className="mt-3 text-xs text-slate-500">The current filters and column choices are saved. It appears under Custom Reports in the Report Library for everyone in this organization.</p>
     </Modal>
   );
 }

@@ -1,4 +1,4 @@
-// Time tracking: projects with the four Zoho billing methods, timesheet entries, the timer,
+// Time tracking: projects with the four billing methods, timesheet entries, the timer,
 // invoicing unbilled time, the project transaction tabs and budgets.
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -6,7 +6,7 @@ import type { Express } from 'express';
 import { fmtHours, hoursBetween, parseHours, timePeriodRange } from '../shared/projects';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 
 let app: Express;
 const api = () => request(app);
@@ -46,10 +46,10 @@ describe('projects', () => {
   let cus = '';
   let hourly = '';
   let staffId = '';
-  it('requires a name, a customer and the rate for the billing method', async () => {
+  it('requires a name, a client and the rate for the billing method', async () => {
     cus = await customer();
     expect((await api().post('/api/projects').send({ customerId: cus })).body.error).toMatch(/Project Name/);
-    expect((await api().post('/api/projects').send({ name: 'Site' })).body.error).toMatch(/Customer Name/);
+    expect((await api().post('/api/projects').send({ name: 'Site' })).body.error).toMatch(/Client Name/);
     expect((await api().post('/api/projects').send({ name: 'Site', customerId: cus, billingMethod: 'fixed' })).body.error).toMatch(/Total Project Cost/);
     expect((await api().post('/api/projects').send({ name: 'Site', customerId: cus, billingMethod: 'task_hours' })).body.error).toMatch(/task/);
   });
@@ -100,7 +100,7 @@ describe('projects', () => {
       expect(nb.body.billingStatus).toBe('non_billable');
     });
 
-    it('filters by status, user, period and customer and summarises', async () => {
+    it('filters by status, user, period and client and summarises', async () => {
       expect((await api().get('/api/time-entries').query({ status: 'unbilled', projectId: hourly })).body).toHaveLength(2);
       expect((await api().get('/api/time-entries').query({ userId: staffId })).body).toHaveLength(1);
       expect((await api().get('/api/time-entries').query({ period: 'custom', from: '2026-11-03', to: '2026-11-03' })).body).toHaveLength(2);

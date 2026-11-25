@@ -54,7 +54,7 @@ export default function Overview() {
   const last = data.series[data.series.length - 1]?.balance ?? 0;
   return (
     <div>
-      <ListHeader title={<h1 className="text-[19px]">Banking Overview</h1>}>
+      <ListHeader title={<h1 className="text-[19px]">Cash &amp; Bank</h1>}>
         <button className="btn-secondary" onClick={() => navigate('/banking/import')}>
           <Upload size={14} /> Import Statement
         </button>
@@ -63,7 +63,7 @@ export default function Overview() {
         </button>
         <MoreMenu>
           <MenuItem onClick={() => navigate('/banking/rules')}>Manage Rules</MenuItem>
-          <MenuItem onClick={() => navigate('/accountant/transaction-locking')}>Transaction Locking</MenuItem>
+          <MenuItem onClick={() => navigate('/accountant/transaction-locking')}>Period Close</MenuItem>
         </MoreMenu>
       </ListHeader>
 
@@ -89,7 +89,7 @@ export default function Overview() {
                   ))}
               </Dropdown>
               <div className="mt-0.5 text-xl font-semibold tabular-nums">{money(last)}</div>
-              <div className="text-xxs text-slate-400">{chartAcc ? 'Balance in Creatign Books' : 'Net balance of the accounts below (cards reduce it)'}</div>
+              <div className="text-xxs text-slate-400">{chartAcc ? 'Balance in Creatign Ledger' : 'Net balance of the accounts below (cards reduce it)'}</div>
             </div>
             <select className="input w-auto" value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Period">
               {PERIODS.map((p) => (
@@ -134,7 +134,7 @@ export default function Overview() {
               <th className="pl-4">Account Details</th>
               <th>Uncategorized</th>
               <th className="text-right">Amount in Bank</th>
-              <th className="text-right">Amount in Creatign Books</th>
+              <th className="text-right">Amount in Creatign Ledger</th>
               <th className="w-10" />
             </tr>
           </thead>

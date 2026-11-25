@@ -1,4 +1,4 @@
-// Time Tracking module routes: /time-tracking/projects/* and /time-tracking/timesheet.
+// Projects & Time module routes: /time-tracking/projects/* and /time-tracking/timesheet.
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ProjectForm, ProjectList, ProjectRoute } from './Projects';
 import Timesheet from './Timesheet';

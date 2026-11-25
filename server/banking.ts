@@ -79,8 +79,8 @@ function txnTypeLabel(db: Database, j: Journal, inflow: boolean) {
     const t = db.bankTransactions.find((x) => x.id === j.sourceId);
     return BANK_TXN_TYPES.find((x) => x.value === t?.type)?.label ?? 'Bank Transaction';
   }
-  if (j.sourceType === 'payment_received') return 'Customer Payment';
-  if (j.sourceType === 'payment_made') return inflow ? 'Vendor Refund' : 'Vendor Payment';
+  if (j.sourceType === 'payment_received') return 'Client Payment';
+  if (j.sourceType === 'payment_made') return inflow ? 'Supplier Refund' : 'Supplier Payment';
   return sourceLabel(j.sourceType);
 }
 
@@ -305,12 +305,12 @@ export function categorizeLine(db: Database, l: StatementLine, b: CategorizeBody
   const reference = str(b.referenceNumber) ?? l.reference;
   const description = str(b.description) ?? l.description;
   if (b.as === 'customer_payment') {
-    if (!inflow) throw bad('Customer payments can only be recorded for deposits');
+    if (!inflow) throw bad('Client payments can only be recorded for deposits');
     assertUnlocked(db, 'sales', l.date);
     const pmt = S.savePaymentReceived({ contactId: b.contactId, amount, date: l.date, mode: 'Bank Transfer', depositToAccountId: l.accountId, referenceNumber: reference, allocations: b.allocations ?? [], bankCharges: num(b.bankCharges), notes: description });
     l.match = { type: 'payment_received', id: pmt.id };
   } else if (b.as === 'vendor_payment') {
-    if (inflow) throw bad('Vendor payments can only be recorded for withdrawals');
+    if (inflow) throw bad('Supplier payments can only be recorded for withdrawals');
     assertUnlocked(db, 'purchases', l.date);
     const pmt = S.savePaymentMade({ type: (b.allocations ?? []).length ? 'bill_payment' : 'vendor_advance', contactId: b.contactId, amount, date: l.date, mode: 'Bank Transfer', paidThroughAccountId: l.accountId, referenceNumber: reference, allocations: b.allocations ?? [], notes: description });
     l.match = { type: 'payment_made', id: pmt.id };

@@ -44,7 +44,7 @@ function Keyed({ kind }: { kind: DocKind }) {
   return <DocModule key={`${kind}${search.includes('from=') ? search : ''}`} kind={kind} />;
 }
 
-/** Customer-facing pages (shared links, customer portal) never load the staff app. */
+/** Client-facing pages (shared links, customer portal) never load the staff app. */
 function Root() {
   return (
     <Routes>

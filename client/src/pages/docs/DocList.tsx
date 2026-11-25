@@ -18,7 +18,7 @@ const HEAD: Record<Column, string> = {
   number: '#',
   reference: 'Reference Number',
   orderNumber: 'Order Number',
-  contact: 'Customer Name',
+  contact: 'Client Name',
   status: 'Status',
   dueDate: 'Due Date',
   amount: 'Amount',
@@ -95,7 +95,7 @@ export function useDocList(kind: DocKind, status: string, q: string) {
 function headerFor(kind: DocKind, c: Column) {
   const meta = DOC_META[kind];
   if (c === 'number') return meta.numberLabel;
-  if (c === 'contact') return meta.side === 'sales' ? 'Customer Name' : 'Vendor Name';
+  if (c === 'contact') return meta.side === 'sales' ? 'Client Name' : 'Supplier Name';
   if (c === 'lastDate') return kind === 'recurring_bill' ? 'Last Bill Date' : 'Last Invoice Date';
   if (c === 'nextDate') return kind === 'recurring_bill' ? 'Next Bill Date' : 'Next Invoice Date';
   if (c === 'date' && kind === 'purchase_order') return 'Date';

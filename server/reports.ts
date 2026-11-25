@@ -138,7 +138,7 @@ export function dashboard(params: { cashPeriod?: PeriodKey; incomePeriod?: Perio
     .filter((a) => CASH_TYPES.has(a.subType) || a.subType === 'credit_card')
     .map((a) => ({ id: a.id, name: a.name, subType: a.subType, balance: accountBalance(db, a.id) }));
 
-  // dashboard watchlist (Zoho: "Add to dashboard watchlist" on the project)
+  // dashboard watchlist
   const projects = db.projects
     .filter((p) => p.watchlist && p.status === 'active')
     .map((p) => {
@@ -246,7 +246,7 @@ export function statement(c: Contact, from: string, to: string, filter: 'all' | 
     if (isCus && d.kind === 'invoice') add(d.date, 'Invoice', d.number, `Due on ${d.dueDate ?? d.date}`, d.total, 0, d.id);
     if (isCus && d.kind === 'credit_note') add(d.date, 'Credit Note', d.number, '', 0, d.total, d.id);
     if (!isCus && d.kind === 'bill') add(d.date, 'Bill', d.number, `Due on ${d.dueDate ?? d.date}`, d.total, 0, d.id);
-    if (!isCus && d.kind === 'vendor_credit') add(d.date, 'Vendor Credit', d.number, '', 0, d.total, d.id);
+    if (!isCus && d.kind === 'vendor_credit') add(d.date, 'Debit Note', d.number, '', 0, d.total, d.id);
     for (const r of d.refunds) add(r.date, 'Refund', d.number, `Refund of credit ${d.number}`, r.amount, 0, d.id);
     if (d.writeOff) add(d.writeOff.date, 'Write Off', d.number, 'Invoice written off', 0, d.writeOff.amount, d.id);
   }
@@ -254,10 +254,10 @@ export function statement(c: Contact, from: string, to: string, filter: 'all' | 
     if (isCus)
       for (const p of db.paymentsReceived) {
         if (p.contactId !== c.id || p.status !== 'paid') continue;
-        add(p.date, 'Payment Received', p.number, `${p.mode}${p.referenceNumber ? ` (${p.referenceNumber})` : ''}`, 0, p.amount + (p.tdsDeducted ? p.tdsAmount : 0), p.id);
+        add(p.date, 'Client Payment', p.number, `${p.mode}${p.referenceNumber ? ` (${p.referenceNumber})` : ''}`, 0, p.amount + (p.tdsDeducted ? p.tdsAmount : 0), p.id);
         for (const r of p.refunds) add(r.date, 'Payment Refund', p.number, 'Refund', r.amount, 0, p.id);
       }
-    else for (const p of db.paymentsMade) if (p.contactId === c.id && p.status === 'paid') add(p.date, 'Payment Made', p.number, p.mode, 0, p.amount, p.id);
+    else for (const p of db.paymentsMade) if (p.contactId === c.id && p.status === 'paid') add(p.date, 'Supplier Payment', p.number, p.mode, 0, p.amount, p.id);
   }
   rows.sort((a, b) => a.date.localeCompare(b.date));
   let bal = round2(opening);

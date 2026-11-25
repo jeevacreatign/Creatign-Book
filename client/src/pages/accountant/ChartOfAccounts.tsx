@@ -1,4 +1,4 @@
-// Accountant > Chart of Accounts: Zoho list with views, lock icon on system accounts, sub-accounts,
+// Accountant > Chart of Accounts: list with views, lock icon on system accounts, sub-accounts,
 // bulk actions, Create Account modal with the full type list, and the account split view.
 import { useMemo, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';

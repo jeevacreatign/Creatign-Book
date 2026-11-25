@@ -1,4 +1,4 @@
-// GST inputs used across purchase forms (Zoho Books India): GST treatment, GSTIN,
+// GST inputs used across purchase forms: GST treatment, GSTIN,
 // source/destination of supply, reverse charge, tax-inclusive switch and the tax picker.
 import { GST_TREATMENTS, INDIAN_STATES, taxOptions, treatmentNeedsGstin, type TaxBreakdownRow } from '@shared/gst';
 import { num } from '@shared/format';

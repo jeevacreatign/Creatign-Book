@@ -1,4 +1,4 @@
-// Add / edit a bank or credit card account (Zoho's "Add Bank or Credit Card").
+// Add / edit a bank or credit card account.
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreditCard, Landmark, X } from 'lucide-react';

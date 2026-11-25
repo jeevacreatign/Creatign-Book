@@ -1,4 +1,4 @@
-// Building blocks shared by Expenses and Recurring Expenses: the Zoho-style repeat picker,
+// Building blocks shared by Expenses and Expense Schedules: the repeat picker,
 // the reporting-tag editor, the receipt drop zone and the "Make Recurring" side drawer.
 import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -29,7 +29,7 @@ export function ProjectPicker({ customerId, value, onChange }: { customerId?: st
   const list = data.filter((p) => p.status !== 'inactive' && (!p.customerId || p.customerId === customerId));
   return (
     <Field label="Project">
-      <Select className="max-w-sm" value={value || ''} onChange={(e) => onChange(e.target.value || undefined)} placeholder={list.length ? 'Select a project' : 'No projects for this customer'} options={list.map((p) => ({ value: p.id, label: p.name }))} />
+      <Select className="max-w-sm" value={value || ''} onChange={(e) => onChange(e.target.value || undefined)} placeholder={list.length ? 'Select a project' : 'No projects for this client'} options={list.map((p) => ({ value: p.id, label: p.name }))} />
     </Field>
   );
 }
@@ -50,7 +50,7 @@ export const REPEAT_PRESETS: { label: string; value: RepeatEvery }[] = [
 
 const presetIndex = (r?: RepeatEvery) => REPEAT_PRESETS.findIndex((p) => r && p.value.n === r.n && p.value.unit === r.unit);
 
-/** Zoho's "Repeat Every" select: common periods plus a Custom option (every N days/weeks/months/years). */
+/** the "Repeat Every" select: common periods plus a Custom option (every N days/weeks/months/years). */
 export function RepeatSelect({ value, onChange }: { value?: RepeatEvery; onChange: (r: RepeatEvery) => void }) {
   const idx = presetIndex(value);
   const [custom, setCustom] = useState(idx < 0 && !!value);
@@ -94,7 +94,7 @@ export function RepeatSelect({ value, onChange }: { value?: RepeatEvery; onChang
 
 // ------------------------------------------------------------ reporting tags
 
-/** "Associate Tags": a small key/value editor (Zoho reporting tags such as Region or Department). */
+/** "Associate Tags": a small key/value editor. */
 export function ReportingTags({ value, onChange }: { value: Record<string, string>; onChange: (v: Record<string, string>) => void }) {
   const entries = Object.entries(value || {});
   const [open, setOpen] = useState(entries.length > 0);
@@ -158,7 +158,7 @@ async function uploadFiles(files: File[], current: number, max: number, maxMB: n
 }
 
 /**
- * The dashed "Drag or Drop your Receipts" card from Zoho's expense screens.
+ * The dashed "Drag or Drop your Receipts" card from the expense screens.
  * Uploads straight away and hands the new list to onChange (the detail page saves it immediately).
  */
 export function ReceiptDrop({ value, onChange, max = 10, maxMB = 10, className }: { value: Attachment[]; onChange: (v: Attachment[]) => void | Promise<unknown>; max?: number; maxMB?: number; className?: string }) {

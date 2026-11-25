@@ -58,7 +58,7 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { accounts } = useBoot();
-  const label = kind === 'customer' ? 'Customer' : 'Vendor';
+  const label = kind === 'customer' ? 'Client' : 'Supplier';
   const base = kind === 'customer' ? '/sales/customers' : '/purchases/vendors';
   const { data: existing } = useApi<Contact>(id ? `/contacts/${id}` : null);
   const [f, setF] = useState<Partial<Contact> | null>(
@@ -106,7 +106,7 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
       <div className="flex-1 space-y-4 px-5 py-5">
         <div className="max-w-3xl space-y-3.5">
           {kind === 'customer' && (
-            <Field label="Customer Type">
+            <Field label="Client Type">
               <Radio name="ctype" value={f.customerType || 'business'} onChange={(v) => set({ customerType: v })} options={[{ value: 'business', label: 'Business' }, { value: 'individual', label: 'Individual' }]} />
             </Field>
           )}
@@ -171,7 +171,7 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
               </Field>
               {kind === 'vendor' && (
                 <Field label="MSME Registered?">
-                  <Checkbox checked={!!f.msmeRegistered} onChange={(v) => set({ msmeRegistered: v })} label="This vendor is MSME registered" />
+                  <Checkbox checked={!!f.msmeRegistered} onChange={(v) => set({ msmeRegistered: v })} label="This supplier is MSME registered" />
                 </Field>
               )}
               <Field label="Currency">
@@ -307,7 +307,7 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
               </button>
             </div>
           )}
-          {tab === 'custom' && <KeyValueEditor value={f.customFields || {}} onChange={(v) => set({ customFields: v })} hint="Add custom fields such as GST treatment, region or customer code." />}
+          {tab === 'custom' && <KeyValueEditor value={f.customFields || {}} onChange={(v) => set({ customFields: v })} hint="Add custom fields such as GST treatment, region or client code." />}
           {tab === 'tags' && <KeyValueEditor value={f.reportingTags || {}} onChange={(v) => set({ reportingTags: v })} hint="Reporting tags let you segment reports, e.g. Region = South." />}
           {tab === 'remarks' && (
             <Field label="Remarks" inline={false} className="max-w-3xl">

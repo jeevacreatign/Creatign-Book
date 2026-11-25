@@ -64,7 +64,7 @@ export function InvoiceNotices({ invoiceId }: { invoiceId: string }) {
               {n.submittedBy} reported a payment of {money(n.amount)}
             </div>
             <div className="text-xs text-slate-600">
-              Paid {fmtDate(n.date)} via {n.mode} · Ref {n.reference} · reported {fmtDateTime(n.createdAt)} via the {n.via === 'portal' ? 'customer portal' : 'shared link'}
+              Paid {fmtDate(n.date)} via {n.mode} · Ref {n.reference} · reported {fmtDateTime(n.createdAt)} via the {n.via === 'portal' ? 'client portal' : 'shared link'}
               {n.note && <> · “{n.note}”</>}
             </div>
           </div>
@@ -100,7 +100,7 @@ export function CustomerActivity({ response, viewedAt }: { response?: CustomerRe
           {response.email && <span className="font-normal text-slate-500"> ({response.email})</span>}
         </div>
         <div className="text-xs text-slate-600">
-          {fmtDateTime(response.at)} via the {response.via === 'portal' ? 'customer portal' : 'shared link'}
+          {fmtDateTime(response.at)} via the {response.via === 'portal' ? 'client portal' : 'shared link'}
         </div>
         {response.comment && (
           <div className="mt-1.5 flex items-start gap-1.5 text-slate-700">
@@ -142,7 +142,7 @@ export function PortalAccessModal({ contactId, name, onClose }: { contactId: str
     setLinks(manual);
     const sent = r.filter((x) => x.mailStatus === 'sent').length;
     if (sent) toast.success(`Invitation sent to ${sent} contact${sent === 1 ? '' : 's'}`);
-    else if (manual.length) toast.success('Invitation created. Share the link below with your customer.');
+    else if (manual.length) toast.success('Invitation created. Share the link below with your client.');
   };
   const invite = useAction((emails: string[]) => api<InviteResult>(`/contacts/${contactId}/portal/invite`, { body: { emails } }));
   const resend = useAction((id: string) => api<InviteResult[number]>(`/portal-users/${id}/resend`, { body: {} }));
@@ -154,7 +154,7 @@ export function PortalAccessModal({ contactId, name, onClose }: { contactId: str
     <Modal
       open
       onClose={onClose}
-      title={`Customer Portal Access: ${name}`}
+      title={`Client Portal Access: ${name}`}
       width="max-w-2xl"
       footer={
         <>
@@ -176,7 +176,7 @@ export function PortalAccessModal({ contactId, name, onClose }: { contactId: str
         <Spinner />
       ) : (
         <div className="space-y-4">
-          {!data.portalEnabled && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-800">The customer portal is turned off in Settings &gt; Customer Portal. Invitations can be sent, but nobody can sign in until it is on.</div>}
+          {!data.portalEnabled && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-800">The client portal is turned off in Settings &gt; Client Portal. Invitations can be sent, but nobody can sign in until it is on.</div>}
           {data.users.length > 0 && !data.enabled && (
             <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 p-3 text-[13px]">
               Portal access is turned off for {name}.
@@ -186,7 +186,7 @@ export function PortalAccessModal({ contactId, name, onClose }: { contactId: str
             </div>
           )}
           <div className="flex items-center gap-2 text-xs text-slate-500">
-            <Globe size={13} /> Customers sign in at <span className="font-mono text-slate-700">{data.portalUrl}</span>
+            <Globe size={13} /> Clients sign in at <span className="font-mono text-slate-700">{data.portalUrl}</span>
           </div>
           {data.candidates.length === 0 && <div className="rounded-md border border-dashed border-slate-300 p-6 text-center text-slate-500">Add an email address or a contact person with an email to {name} first.</div>}
           <div className="divide-y divide-slate-100 rounded-md border border-slate-200">

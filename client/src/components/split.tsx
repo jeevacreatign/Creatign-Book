@@ -1,9 +1,9 @@
-// Building blocks for the Zoho-style list / split-view pages used by Banking, Accountant and Documents.
+// Building blocks for the list / split-view pages used by Banking, Accountant and Documents.
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, Download, MoreHorizontal } from 'lucide-react';
 import { Dropdown, MenuItem, clsx } from './ui';
 
-/** "All Manual Journals ▾" view switcher used as a page title. */
+/** "All Journal Vouchers ▾" view switcher used as a page title. */
 export function ViewPicker<T extends string>({ value, onChange, options, compact }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[]; compact?: boolean }) {
   return (
     <Dropdown

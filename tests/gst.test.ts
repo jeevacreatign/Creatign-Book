@@ -1,4 +1,4 @@
-// GST on purchases (Zoho Books India): CGST/SGST vs IGST, tax inclusive amounts, reverse charge,
+// GST on purchases: CGST/SGST vs IGST, tax inclusive amounts, reverse charge,
 // input tax credit journals, expenses with tax, bulk bill payments and applying advances to bills.
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -6,7 +6,7 @@ import type { Express } from 'express';
 import { computeTax, isIntraState, stateFromGstin } from '../shared/gst';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 
 let app: Express;
 const api = () => request(app);
@@ -49,7 +49,7 @@ describe('gst helpers', () => {
 });
 
 describe('bills with GST', () => {
-  it('charges CGST + SGST for a vendor in the same state and books input tax credit', async () => {
+  it('charges CGST + SGST for a supplier in the same state and books input tax credit', async () => {
     const r = await bill({});
     expect(r.status).toBe(200);
     expect(r.body.gstTreatment).toBe('registered_business');
@@ -65,7 +65,7 @@ describe('bills with GST', () => {
     await balanced();
   });
 
-  it('charges IGST for an inter-state vendor', async () => {
+  it('charges IGST for an inter-state supplier', async () => {
     const r = await bill({ contactId: 'ven_cloudhost', number: 'CH-1' });
     expect(r.body.sourceOfSupply).toBe('Karnataka');
     expect(r.body.taxBreakdown).toEqual([{ key: 'IGST18', component: 'igst', rate: 18, amount: 1800 }]);
@@ -139,7 +139,7 @@ describe('expenses with GST', () => {
 });
 
 describe('paying bills', () => {
-  it('records one payment per vendor from a bulk payment', async () => {
+  it('records one payment per supplier from a bulk payment', async () => {
     const a = await bill({ number: 'BULK-1' });
     const b = await bill({ number: 'BULK-2', contactId: 'ven_cloudhost' });
     const r = await api().post('/api/payments-made/bulk').send({ payments: [
@@ -163,7 +163,7 @@ describe('paying bills', () => {
     expect((await api().get('/api/payments-made')).body.length).toBe(before);
   });
 
-  it('applies an unused vendor advance to a bill', async () => {
+  it('applies an unused supplier advance to a bill', async () => {
     const adv = await api().post('/api/payments-made').send({ type: 'vendor_advance', contactId: 'ven_murugan', amount: 5000, date: '2026-11-20', paidThroughAccountId: 'acc_bank_hdfc' });
     const b = await bill({ number: 'ADV-1' });
     const r = await api().post(`/api/payments-made/${adv.body.id}/apply`).send({ allocations: [{ docId: b.body.id, amount: 5000 }] });

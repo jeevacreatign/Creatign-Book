@@ -30,7 +30,7 @@ function List() {
       {!data.length && !q ? (
         <div className="flex flex-col items-center gap-3 py-20 text-center">
           <div className="text-lg font-semibold">No payments received yet</div>
-          <div className="text-slate-500">Record payments against invoices as your customers pay you.</div>
+          <div className="text-slate-500">Record payments against invoices as your clients pay you.</div>
           <button className="btn-primary" onClick={() => navigate('/sales/payments-received/new')}>
             Record Payment
           </button>
@@ -48,7 +48,7 @@ function List() {
                 <th>Date</th>
                 <th>Payment #</th>
                 <th>Reference Number</th>
-                <th>Customer Name</th>
+                <th>Client Name</th>
                 <th>Invoice#</th>
                 <th>Mode</th>
                 <th>Status</th>
@@ -163,7 +163,7 @@ export function PaymentForm() {
       </PageHeader>
       <div className="flex-1 space-y-4 px-5 py-5">
         <div className="max-w-3xl space-y-3.5">
-          <Field label="Customer Name" required>
+          <Field label="Client Name" required>
             <ContactPicker
               kind="customer"
               value={f.contactId}
@@ -279,14 +279,14 @@ export function PaymentForm() {
               <Line k="Amount used for Payments" v={used} />
               <Line k="Amount Refunded" v={refunded} />
               <Line k="Amount in Excess" v={excess} warn={excess < 0} />
-              {excess > 0 && <div className="pt-1 text-xxs text-slate-500">The excess amount stays as an unused credit for this customer.</div>}
+              {excess > 0 && <div className="pt-1 text-xxs text-slate-500">The excess amount stays as an unused credit for this client.</div>}
             </div>
           </div>
         </div>
 
         <div className="grid max-w-5xl gap-6 md:grid-cols-2">
           <div>
-            <div className="mb-1 text-[13px]">Notes (Internal use. Not visible to customer)</div>
+            <div className="mb-1 text-[13px]">Notes (Internal use. Not visible to client)</div>
             <textarea className="input" rows={3} value={f.notes || ''} onChange={(e) => set({ notes: e.target.value })} />
           </div>
           <Attachments value={f.attachments || []} onChange={(v) => set({ attachments: v })} max={5} maxMB={10} label="Attachments" />

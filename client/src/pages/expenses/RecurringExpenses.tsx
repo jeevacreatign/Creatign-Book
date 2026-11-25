@@ -1,4 +1,4 @@
-// Recurring Expenses: full list, Zoho-style split view (profiles on the left, profile on the right),
+// Expense Schedules: full list, split view (profiles on the left, profile on the right),
 // a toolbar with Edit | Stop/Resume | Create Expense | ... (Clone, Delete), and the profile form.
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -56,22 +56,22 @@ function RecurringList() {
             <Plus size={15} /> New
           </button>
           <Dropdown align="right" button={() => <button className="btn-icon" aria-label="More"><MoreHorizontal size={15} /></button>}>
-            <MenuItem onClick={() => navigate('/settings/import')}>Import Recurring Expenses</MenuItem>
+            <MenuItem onClick={() => navigate('/settings/import')}>Import Expense Schedules</MenuItem>
           </Dropdown>
         </div>
       </div>
       {empty ? (
         <Lifecycle
-          title="Create. Set. Repeat."
+          title="Automate regular expenses"
           subtitle="Do you have recurring expenses that you pay at regular intervals? Create a profile and the expenses are recorded for you."
-          steps={['CREATE RECURRING EXPENSE', ['BILLABLE', 'NON-BILLABLE']]}
+          steps={['SCHEDULE SET', ['RECHARGED TO CLIENT', 'KEPT AS COST']]}
           actions={
             <>
               <button className="btn-primary" onClick={() => navigate('/purchases/recurring-expenses/new')}>
                 NEW RECURRING EXPENSE
               </button>
               <button className="btn-secondary" onClick={() => navigate('/settings/import')}>
-                Import Recurring Expenses
+                Import Expense Schedules
               </button>
             </>
           }
@@ -82,7 +82,7 @@ function RecurringList() {
             <tr>
               <th>Profile Name</th>
               <th>Expense Account</th>
-              <th>Vendor Name</th>
+              <th>Supplier Name</th>
               <th>Frequency</th>
               <th>Last Expense Date</th>
               <th>Next Expense Date</th>
@@ -188,7 +188,7 @@ function RecurringDetailPane() {
     <div className="flex h-full min-w-0 flex-1 flex-col">
       <div className="no-print flex h-[57px] items-center justify-between border-b border-slate-200 px-5">
         <div className="min-w-0">
-          <div className="text-xs text-slate-500">Recurring Expense</div>
+          <div className="text-xs text-slate-500">Expense Schedule</div>
           <h1 className="truncate text-[17px] font-semibold">{r.profileName}</h1>
         </div>
         <button className="btn-ghost w-8 px-0 text-red-500" title="Close" onClick={() => navigate('/purchases/recurring-expenses')}>
@@ -253,7 +253,7 @@ function RecurringDetailPane() {
               <Detail label="Paid To">{r.vendorId ? <Link className="link" to={`/purchases/vendors/${r.vendorId}`}>{r.vendorName}</Link> : null}</Detail>
               {r.gstTreatment && <Detail label="GST Treatment">{treatmentLabel(r.gstTreatment)}</Detail>}
               {r.sourceOfSupply && <Detail label="Source of Supply">{r.sourceOfSupply}</Detail>}
-              <Detail label="Customer">{r.customerId ? <Link className="link" to={`/sales/customers/${r.customerId}`}>{r.customerName}</Link> : null}</Detail>
+              <Detail label="Client">{r.customerId ? <Link className="link" to={`/sales/customers/${r.customerId}`}>{r.customerName}</Link> : null}</Detail>
               {r.notes && <Detail label="Notes">{r.notes}</Detail>}
               {Object.keys(r.reportingTags || {}).length > 0 && (
                 <Detail label="Reporting Tags">
@@ -367,7 +367,7 @@ function RecurringForm() {
   }
   return (
     <div className="flex min-h-full flex-col">
-      <PageHeader title={id ? 'Edit Recurring Expense' : 'New Recurring Expense'}>
+      <PageHeader title={id ? 'Edit Expense Schedule' : 'New Expense Schedule'}>
         <button className="btn-ghost w-8 px-0" onClick={() => navigate(-1)} aria-label="Close">
           <X size={18} />
         </button>
@@ -413,7 +413,7 @@ function RecurringForm() {
         <Field label="Paid Through" required>
           <AccountSelect className="max-w-sm" accounts={accounts} value={f.paidThroughAccountId} onChange={(v) => set({ paidThroughAccountId: v })} filter={(a) => isCashLike(a) || a.subType === 'other_current_liability' || a.subType === 'equity' || a.subType === 'other_current_asset'} />
         </Field>
-        <Field label="Vendor">
+        <Field label="Supplier">
           <div className="max-w-sm">
             <ContactPicker kind="vendor" value={f.vendorId} onChange={(v, c) => set({ vendorId: v || undefined, ...(c ? { gstTreatment: c.gstTreatment || (c.gstin ? 'registered_business' : 'unregistered_business'), vendorGstin: c.gstin, sourceOfSupply: c.placeOfSupply || stateFromGstin(c.gstin) || organization.state } : {}) })} />
           </div>
@@ -428,7 +428,7 @@ function RecurringForm() {
         <Field label="Notes">
           <textarea className="input max-w-xl" rows={3} maxLength={500} placeholder="Max. 500 characters" value={f.notes || ''} onChange={(e) => set({ notes: e.target.value })} />
         </Field>
-        <Field label="Customer Name">
+        <Field label="Client Name">
           <div className="flex max-w-xl items-center gap-4">
             <div className="flex-1">
               <ContactPicker kind="customer" value={f.customerId} onChange={(v) => set({ customerId: v || undefined, billable: v ? f.billable : false })} />

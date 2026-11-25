@@ -28,7 +28,7 @@ export interface CustomerDocPayload {
   expiresOn?: string;
 }
 
-/** Customer-facing status: what it means for them, not our workflow names. */
+/** Client-facing status: what it means for them, not our workflow names. */
 export function customerStatus(d: Pick<TxnDoc, 'kind' | 'status' | 'balance' | 'dueDate' | 'expiryDate'>) {
   if (d.status === 'void') return { label: 'Void', tone: 'slate' as const };
   if (d.kind === 'invoice') {
@@ -103,7 +103,7 @@ export function CustomerDocument({ data, pdfUrl, onRespond, onNotify, signedInNa
     setBusy(true);
     try {
       await onRespond({ action: respond, name: name.trim() || undefined, comment: comment.trim() || undefined });
-      setDone(respond === 'accept' ? 'Thank you! The quote has been accepted and we have been notified.' : 'Thank you for letting us know. The quote has been declined.');
+      setDone(respond === 'accept' ? 'Thank you! The estimate has been accepted and we have been notified.' : 'Thank you for letting us know. The estimate has been declined.');
       setRespond(null);
     } catch (e) {
       toast.error((e as Error).message);
@@ -232,10 +232,10 @@ export function CustomerDocument({ data, pdfUrl, onRespond, onNotify, signedInNa
                   <span className="mb-1 block text-slate-600">{respond === 'decline' ? 'Reason for declining' : 'Comments (optional)'}</span>
                   <textarea className="input min-h-[80px]" value={comment} onChange={(e) => setComment(e.target.value)} placeholder={respond === 'decline' ? 'Let us know what we could change' : 'Anything we should know?'} />
                 </label>
-                {respond === 'accept' && <p className="text-xxs text-slate-500">By accepting, you agree to the items, prices and terms in this quote. Your name, the date and time are recorded.</p>}
+                {respond === 'accept' && <p className="text-xxs text-slate-500">By accepting, you agree to the items, prices and terms in this estimate. Your name, the date and time are recorded.</p>}
                 <div className="flex gap-2">
                   <button className={clsx('btn h-9 flex-1 text-white', respond === 'accept' ? 'border-emerald-600 bg-emerald-600 hover:bg-emerald-700' : 'border-red-600 bg-red-600 hover:bg-red-700')} disabled={busy || !name.trim()} onClick={submitResponse}>
-                    {busy ? 'Saving…' : respond === 'accept' ? 'Accept Quote' : 'Decline Quote'}
+                    {busy ? 'Saving…' : respond === 'accept' ? 'Accept Estimate' : 'Decline Estimate'}
                   </button>
                   <button className="btn-secondary h-9" onClick={() => setRespond(null)}>
                     Back

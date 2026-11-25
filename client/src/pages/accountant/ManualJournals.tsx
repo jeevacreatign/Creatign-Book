@@ -1,4 +1,4 @@
-// Accountant > Manual Journals, as in Zoho Books: list with period/status views, split view with
+// Accountant > Journal Vouchers: list with period/status views, split view with
 // Overview / Activity Logs, the New Journal form (reverse date, reporting method, contacts, drafts,
 // attachments) and journal templates.
 import { useEffect, useState } from 'react';
@@ -26,7 +26,7 @@ type JDetail = Omit<JRow, "lines"> & {
 
 const BASE = '/accountant/manual-journals';
 const VIEWS = [
-  { value: 'all', label: 'All Manual Journals' },
+  { value: 'all', label: 'All Journal Vouchers' },
   { value: 'draft', label: 'Draft' },
   { value: 'published', label: 'Published' },
 ];
@@ -88,7 +88,7 @@ function JournalList() {
         <NewButton />
         <MoreMenu>
           <MenuItem onClick={() => navigate(`${BASE}/templates`)}>Manage Templates</MenuItem>
-          <MenuItem onClick={() => navigate('/accountant/recurring-journals')}>Recurring Journals</MenuItem>
+          <MenuItem onClick={() => navigate('/accountant/recurring-journals')}>Voucher Schedules</MenuItem>
           <MenuItem onClick={() => exportJournals(data, accounts)}>Export Journals (CSV)</MenuItem>
         </MoreMenu>
       </ListHeader>
@@ -562,7 +562,7 @@ function Templates() {
               ‹
             </button>
             <div>
-              <div className="text-xs text-slate-500">Manual Journals</div>
+              <div className="text-xs text-slate-500">Journal Vouchers</div>
               <div className="text-[17px] font-semibold">{search.get('pick') ? 'Choose a Template' : 'Journal Templates'}</div>
             </div>
           </div>

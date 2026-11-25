@@ -17,16 +17,16 @@ export interface DocMeta {
 }
 
 export const DOC_META: Record<DocKind, DocMeta> = {
-  quote: { kind: 'quote', side: 'sales', label: 'Quote', plural: 'Quotes', prefix: 'QT-', numberLabel: 'Quote#', dateLabel: 'Quote Date', path: '/sales/quotes', title: 'QUOTE', initialStatus: 'draft' },
+  quote: { kind: 'quote', side: 'sales', label: 'Estimate', plural: 'Estimates', prefix: 'QT-', numberLabel: 'Estimate#', dateLabel: 'Estimate Date', path: '/sales/quotes', title: 'ESTIMATE', initialStatus: 'draft' },
   sales_order: { kind: 'sales_order', side: 'sales', label: 'Sales Order', plural: 'Sales Orders', prefix: 'SO-', numberLabel: 'Sales Order#', dateLabel: 'Sales Order Date', path: '/sales/sales-orders', title: 'SALES ORDER', initialStatus: 'draft' },
   invoice: { kind: 'invoice', side: 'sales', label: 'Invoice', plural: 'Invoices', prefix: 'INV-', numberLabel: 'Invoice#', dateLabel: 'Invoice Date', path: '/sales/invoices', title: 'TAX INVOICE', posts: true, initialStatus: 'draft' },
-  recurring_invoice: { kind: 'recurring_invoice', side: 'sales', label: 'Recurring Invoice', plural: 'Recurring Invoices', prefix: 'RI-', numberLabel: 'Profile Name', dateLabel: 'Start On', path: '/sales/recurring-invoices', title: 'RECURRING INVOICE', recurring: true, initialStatus: 'active' },
+  recurring_invoice: { kind: 'recurring_invoice', side: 'sales', label: 'Invoice Schedule', plural: 'Invoice Schedules', prefix: 'RI-', numberLabel: 'Profile Name', dateLabel: 'Start On', path: '/sales/recurring-invoices', title: 'INVOICE SCHEDULE', recurring: true, initialStatus: 'active' },
   delivery_challan: { kind: 'delivery_challan', side: 'sales', label: 'Delivery Challan', plural: 'Delivery Challans', prefix: 'DC-', numberLabel: 'Delivery Challan#', dateLabel: 'Delivery Challan Date', path: '/sales/delivery-challans', title: 'DELIVERY CHALLAN', initialStatus: 'draft' },
   credit_note: { kind: 'credit_note', side: 'sales', label: 'Credit Note', plural: 'Credit Notes', prefix: 'CN-', numberLabel: 'Credit Note#', dateLabel: 'Credit Note Date', path: '/sales/credit-notes', title: 'CREDIT NOTE', posts: true, initialStatus: 'draft' },
   purchase_order: { kind: 'purchase_order', side: 'purchase', label: 'Purchase Order', plural: 'Purchase Orders', prefix: 'PO-', numberLabel: 'Purchase Order#', dateLabel: 'Date', path: '/purchases/purchase-orders', title: 'PURCHASE ORDER', initialStatus: 'draft' },
   bill: { kind: 'bill', side: 'purchase', label: 'Bill', plural: 'Bills', prefix: 'BILL-', numberLabel: 'Bill#', dateLabel: 'Bill Date', path: '/purchases/bills', title: 'BILL', posts: true, initialStatus: 'open' },
-  recurring_bill: { kind: 'recurring_bill', side: 'purchase', label: 'Recurring Bill', plural: 'Recurring Bills', prefix: 'RB-', numberLabel: 'Profile Name', dateLabel: 'Start On', path: '/purchases/recurring-bills', title: 'RECURRING BILL', recurring: true, initialStatus: 'active' },
-  vendor_credit: { kind: 'vendor_credit', side: 'purchase', label: 'Vendor Credit', plural: 'Vendor Credits', prefix: 'VC-', numberLabel: 'Credit Note#', dateLabel: 'Vendor Credit Date', path: '/purchases/vendor-credits', title: 'VENDOR CREDIT', posts: true, initialStatus: 'draft' },
+  recurring_bill: { kind: 'recurring_bill', side: 'purchase', label: 'Bill Schedule', plural: 'Bill Schedules', prefix: 'RB-', numberLabel: 'Profile Name', dateLabel: 'Start On', path: '/purchases/recurring-bills', title: 'BILL SCHEDULE', recurring: true, initialStatus: 'active' },
+  vendor_credit: { kind: 'vendor_credit', side: 'purchase', label: 'Debit Note', plural: 'Debit Notes', prefix: 'VC-', numberLabel: 'Credit Note#', dateLabel: 'Debit Note Date', path: '/purchases/vendor-credits', title: 'DEBIT NOTE', posts: true, initialStatus: 'draft' },
 };
 
 export const ACCOUNT_IDS = {

@@ -6,7 +6,7 @@ import type { Express } from 'express';
 import { amountInWords, buildPdfModel, builtInTemplates, normalizeTemplate, resolveTemplate } from '../shared/pdfTemplate';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 
 let app: Express;
 const api = () => request(app);
@@ -120,8 +120,8 @@ describe('PDF template API', () => {
     const q = await api().post('/api/docs').send({ kind: 'quote', mode: 'draft', contactId: 'cus_test', lineItems: [line], terms: '' });
     const fromQuote = await api().get(`/api/docs/${q.body.id}/convert`).query({ to: 'invoice' });
     expect(fromQuote.body.terms).toBe('Pay within 15 days.');
-    const own = await api().post('/api/docs').send({ kind: 'quote', mode: 'draft', contactId: 'cus_test', lineItems: [line], terms: 'Quote terms' });
-    expect((await api().get(`/api/docs/${own.body.id}/convert`).query({ to: 'invoice' })).body.terms).toBe('Quote terms');
+    const own = await api().post('/api/docs').send({ kind: 'quote', mode: 'draft', contactId: 'cus_test', lineItems: [line], terms: 'Estimate terms' });
+    expect((await api().get(`/api/docs/${own.body.id}/convert`).query({ to: 'invoice' })).body.terms).toBe('Estimate terms');
   });
 
   it('deleting a template moves its documents back to the module default', async () => {

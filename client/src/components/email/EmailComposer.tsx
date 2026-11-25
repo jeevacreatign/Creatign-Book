@@ -1,4 +1,4 @@
-// Zoho-style "Email To" composer: template picker, To/Cc/Bcc recipient chips,
+// "Email To" composer: template picker, To/Cc/Bcc recipient chips,
 // placeholders, PDF + file attachments, an optional "View" link button and a live
 // preview of the branded email the customer receives.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
@@ -419,7 +419,7 @@ export function EmailModal(o: EmailOptions) {
                 </div>
               ))}
               {!c?.attachments.length && !files.length && <div className="text-xs text-slate-400">No attachments.</div>}
-              {totalKb > 15 * 1024 && <div className="text-xxs text-amber-700">Large attachments may be rejected by the customer’s mail server. Consider sending the link instead.</div>}
+              {totalKb > 15 * 1024 && <div className="text-xxs text-amber-700">Large attachments may be rejected by the client’s mail server. Consider sending the link instead.</div>}
             </div>
           </div>
         </div>

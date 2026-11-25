@@ -1,4 +1,4 @@
-// Customer portal at /portal: sign-in, invitations, password reset, and the signed-in
+// Client portal at /portal: sign-in, invitations, password reset, and the signed-in
 // area (dashboard, quotes, sales orders, invoices, credit notes, payments, statement, profile).
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -126,7 +126,7 @@ function Login() {
     }
   }
   return (
-    <AuthCard title="Sign in" sub="View your quotes, invoices, payments and statement.">
+    <AuthCard title="Sign in" sub="View your estimates, invoices, payments and statement.">
       <form className="space-y-4" onSubmit={submit}>
         <ErrorNote text={err} />
         <Input label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
@@ -382,15 +382,15 @@ function Dashboard({ me }: { me: Me }) {
         <Stat label="Outstanding" value={money(s.outstanding)} sub={`${s.unpaidCount} unpaid invoice${s.unpaidCount === 1 ? '' : 's'}`} />
         <Stat label="Overdue" value={money(s.overdue)} tone={s.overdue > 0 ? 'red' : undefined} sub={s.overdueCount ? `${s.overdueCount} past due` : 'Nothing overdue'} />
         <Stat label="Credits available" value={money(s.unusedCredits)} tone={s.unusedCredits > 0 ? 'green' : undefined} />
-        <Stat label="Quotes to review" value={String(s.openQuotes)} />
+        <Stat label="Estimates to review" value={String(s.openQuotes)} />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card title="Invoices to pay" link={{ to: '/portal/invoices', label: 'All invoices' }}>
           {!data ? <Loading /> : data.unpaid.length === 0 ? <EmptyLine icon={<CheckCircle2 size={16} className="text-emerald-500" />} text="You are all paid up. Thank you!" /> : <RowList rows={data.unpaid} />}
         </Card>
-        <Card title="Quotes awaiting your response" link={{ to: '/portal/quotes', label: 'All quotes' }}>
-          {!data ? <Loading /> : data.quotes.length === 0 ? <EmptyLine text="No quotes waiting for you." /> : <RowList rows={data.quotes} />}
+        <Card title="Estimates awaiting your response" link={{ to: '/portal/quotes', label: 'All estimates' }}>
+          {!data ? <Loading /> : data.quotes.length === 0 ? <EmptyLine text="No estimates waiting for you." /> : <RowList rows={data.quotes} />}
         </Card>
         <Card title="Recent payments" link={{ to: '/portal/payments', label: 'All payments' }}>
           {!data ? (

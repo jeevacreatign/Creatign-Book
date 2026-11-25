@@ -45,18 +45,18 @@ const TARGETS: { value: string; label: string }[] = [
   { value: 'invoice', label: 'Invoice' },
   { value: 'bill', label: 'Bill' },
   { value: 'expense', label: 'Expense' },
-  { value: 'payment_received', label: 'Payment Received' },
-  { value: 'payment_made', label: 'Payment Made' },
+  { value: 'payment_received', label: 'Client Payment' },
+  { value: 'payment_made', label: 'Supplier Payment' },
   { value: 'credit_note', label: 'Credit Note' },
-  { value: 'vendor_credit', label: 'Vendor Credit' },
-  { value: 'quote', label: 'Quote' },
+  { value: 'vendor_credit', label: 'Debit Note' },
+  { value: 'quote', label: 'Estimate' },
   { value: 'sales_order', label: 'Sales Order' },
   { value: 'purchase_order', label: 'Purchase Order' },
   { value: 'delivery_challan', label: 'Delivery Challan' },
-  { value: 'manual_journal', label: 'Manual Journal' },
+  { value: 'manual_journal', label: 'Journal Voucher' },
   { value: 'bank_transaction', label: 'Bank Transaction' },
-  { value: 'customer', label: 'Customer' },
-  { value: 'vendor', label: 'Vendor' },
+  { value: 'customer', label: 'Client' },
+  { value: 'vendor', label: 'Supplier' },
 ];
 
 const MAX_MB = 10;
@@ -133,7 +133,7 @@ export default function Documents() {
     }
   }
 
-  const title = view === 'all' ? 'All Documents' : view === 'files' ? 'Files' : view === 'bank_statements' ? 'Bank Statements' : view === 'trash' ? 'Trash' : (folder?.name ?? 'Folder');
+  const title = view === 'all' ? 'All Files' : view === 'files' ? 'Uploads' : view === 'bank_statements' ? 'Bank Statements' : view === 'trash' ? 'Trash' : (folder?.name ?? 'Folder');
   const canUpload = view !== 'trash' && view !== 'all';
 
   const RailItem = ({ v, fid, icon, label, count }: { v: ViewKey; fid?: string; icon: React.ReactNode; label: string; count?: number }) => (
@@ -147,10 +147,10 @@ export default function Documents() {
   return (
     <div className="flex h-full min-h-0">
       <aside className="no-print hidden w-60 shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-3 md:block">
-        <div className="mb-1 px-3 text-xxs font-semibold uppercase tracking-wide text-slate-400">Inboxes</div>
-        <RailItem v="files" icon={<Inbox size={14} />} label="Files" count={summary?.files} />
+        <div className="mb-1 px-3 text-xxs font-semibold uppercase tracking-wide text-slate-400">Inbox</div>
+        <RailItem v="files" icon={<Inbox size={14} />} label="Uploads" count={summary?.files} />
         <RailItem v="bank_statements" icon={<Landmark size={14} />} label="Bank Statements" count={summary?.bankStatements} />
-        <RailItem v="all" icon={<Paperclip size={14} />} label="All Documents" count={summary?.all} />
+        <RailItem v="all" icon={<Paperclip size={14} />} label="All Files" count={summary?.all} />
         <div className="mb-1 mt-4 flex items-center justify-between px-3">
           <span className="text-xxs font-semibold uppercase tracking-wide text-slate-400">Folders</span>
           <button className="text-slate-400 hover:text-brand-600" onClick={() => setFolderForm('new')} aria-label="New folder" title="New folder">
@@ -306,7 +306,7 @@ export default function Documents() {
                             <span className="inline-flex items-center gap-1">
                               <Folder size={12} className="text-amber-500" /> {d.folderName}
                             </span>
-                          ) : d.inbox === 'bank_statements' ? 'Bank Statements' : 'Files'}
+                          ) : d.inbox === 'bank_statements' ? 'Bank Statements' : 'Uploads'}
                         </td>
                       )}
                       <td className="hidden text-slate-500 md:table-cell">{d.uploadedBy || '—'}</td>
@@ -525,7 +525,7 @@ function PreviewDrawer({ d, onClose, onAttach, onDetach, onImport }: { d: DocRow
             {d.kind === 'inbox' && (
               <div>
                 <dt className="text-xs text-slate-500">Location</dt>
-                <dd>{d.folderName ?? (d.inbox === 'bank_statements' ? 'Bank Statements' : 'Files')}</dd>
+                <dd>{d.folderName ?? (d.inbox === 'bank_statements' ? 'Bank Statements' : 'Uploads')}</dd>
               </div>
             )}
           </dl>

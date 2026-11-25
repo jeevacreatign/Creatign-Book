@@ -1,4 +1,4 @@
-// Share a transaction with a secure public link (Zoho "Share" > link with expiry).
+// Share a transaction with a secure public link.
 import { useState } from 'react';
 import { Check, Copy, ExternalLink, Eye, Link2 } from 'lucide-react';
 import { addDays, fmtDate, fmtDateTime, today } from '@shared/format';

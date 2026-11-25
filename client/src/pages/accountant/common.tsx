@@ -9,7 +9,7 @@ import { AccountSelect, Combo, clsx } from '../../components/ui';
 
 export function AnyContactPicker({ value, onChange, placeholder = 'Select Contact', className }: { value?: string; onChange: (id: string) => void; placeholder?: string; className?: string }) {
   const { data = [] } = useApi<Contact[]>('/contacts?status=all');
-  return <Combo className={className} value={value} onChange={onChange} placeholder={placeholder} options={data.map((c) => ({ value: c.id, label: c.displayName, sub: c.kind === 'customer' ? 'Customer' : 'Vendor' }))} />;
+  return <Combo className={className} value={value} onChange={onChange} placeholder={placeholder} options={data.map((c) => ({ value: c.id, label: c.displayName, sub: c.kind === 'customer' ? 'Client' : 'Supplier' }))} />;
 }
 
 export function AccountTypeSelect({ value, onChange, disabled }: { value?: string; onChange: (v: Account['subType']) => void; disabled?: boolean }) {
@@ -40,7 +40,7 @@ export const lineTotals = (lines: DraftLine[]) => {
   return { dr, cr, diff: Math.round((dr - cr) * 100) / 100 };
 };
 
-/** Account | Description | Contact (INR) | Debits | Credits, with the Zoho totals box underneath. */
+/** Account | Description | Contact (INR) | Debits | Credits, with the totals box underneath. */
 export function JournalLinesEditor({ accounts, lines, onChange }: { accounts: Account[]; lines: DraftLine[]; onChange: (l: DraftLine[]) => void }) {
   const t = lineTotals(lines);
   const up = (i: number, p: Partial<DraftLine>) => onChange(lines.map((x, j) => (j === i ? { ...x, ...p } : x)));

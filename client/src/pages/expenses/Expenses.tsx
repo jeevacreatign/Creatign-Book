@@ -14,7 +14,7 @@ import { GstFields, TaxRows, TaxSelect } from '../../components/gst';
 import { stateFromGstin } from '@shared/gst';
 
 function exportCsv(rows: Row[]) {
-  const head = ['Date', 'Expense Account', 'Reference#', 'Vendor Name', 'Paid Through', 'Customer Name', 'Status', 'Amount'];
+  const head = ['Date', 'Expense Account', 'Reference#', 'Supplier Name', 'Paid Through', 'Client Name', 'Status', 'Amount'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const body = rows.map((e) => [e.date, e.isMileage ? 'Mileage' : e.accountName, e.invoiceNumber, e.vendorName, e.paidThroughName, e.customerName, e.status, e.amount].map(esc).join(','));
   const blob = new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' });
@@ -104,9 +104,9 @@ function ExpenseList() {
         <Spinner />
       ) : !data.length && view === 'all' && !q ? (
         <Lifecycle
-          title="Time To Manage Your Expenses!"
-          subtitle="Create and manage expenses that are part of your organization's operating costs."
-          steps={['BILLABLE', ['CONVERT TO INVOICE', 'GET REIMBURSED']]}
+          title="Record what the business spends"
+          subtitle="Log day-to-day spending with receipts, GST and the account it belongs to. Billable costs can be passed on to clients."
+          steps={['EXPENSE RECORDED', ['RECHARGED TO CLIENT', 'KEPT AS COST']]}
           actions={
             <>
               <button className="btn-primary" onClick={() => navigate('/purchases/expenses/new')}>
@@ -128,9 +128,9 @@ function ExpenseList() {
               <th>Date</th>
               <th>Expense Account</th>
               <th>Reference#</th>
-              <th>Vendor Name</th>
+              <th>Supplier Name</th>
               <th>Paid Through</th>
-              <th>Customer Name</th>
+              <th>Client Name</th>
               <th>Status</th>
               <th className="text-right">Amount</th>
               <th />
@@ -278,8 +278,8 @@ function ExpenseForm() {
                   <th>Expense Account*</th>
                   <th className="w-36">Amount*</th>
                   <th>Paid Through*</th>
-                  <th>Vendor</th>
-                  <th>Customer</th>
+                  <th>Supplier</th>
+                  <th>Client</th>
                   <th />
                 </tr>
               </thead>
@@ -301,10 +301,10 @@ function ExpenseForm() {
                         <AccountSelect accounts={accounts} value={b.paidThroughAccountId} onChange={(v) => up({ paidThroughAccountId: v })} filter={isCashLike} />
                       </td>
                       <td>
-                        <ContactPicker kind="vendor" value={b.vendorId} onChange={(v) => up({ vendorId: v || undefined })} placeholder="Vendor" />
+                        <ContactPicker kind="vendor" value={b.vendorId} onChange={(v) => up({ vendorId: v || undefined })} placeholder="Supplier" />
                       </td>
                       <td>
-                        <ContactPicker kind="customer" value={b.customerId} onChange={(v) => up({ customerId: v || undefined })} placeholder="Customer" />
+                        <ContactPicker kind="customer" value={b.customerId} onChange={(v) => up({ customerId: v || undefined })} placeholder="Client" />
                       </td>
                       <td>
                         <button className="mt-2 text-slate-400 hover:text-red-500" onClick={() => setBulk(bulk.filter((_, j) => j !== i))} aria-label="Remove row">
@@ -411,7 +411,7 @@ function ExpenseForm() {
                       <div className="flex justify-between py-1 text-[13px]"><span className="text-slate-600">Sub Total</span><span className="tabular-nums">{money(tax.subTotal)}</span></div>
                       <TaxRows rows={tax.breakdown} reverseCharge={f.reverseCharge} />
                       <div className="mt-1 flex justify-between border-t border-slate-200 pt-1.5 text-[13px] font-semibold"><span>Total</span><span className="tabular-nums">{money(tax.total)}</span></div>
-                      {f.reverseCharge && <div className="pt-1 text-xxs text-amber-700">The tax is payable by you under reverse charge and is not paid to the vendor.</div>}
+                      {f.reverseCharge && <div className="pt-1 text-xxs text-amber-700">The tax is payable by you under reverse charge and is not paid to the supplier.</div>}
                     </div>
                   )}
                   <Field label="Expense Type">
@@ -425,7 +425,7 @@ function ExpenseForm() {
               <Field label="Paid Through" required>
                 <AccountSelect className="max-w-sm" accounts={accounts} value={f.paidThroughAccountId} onChange={(v) => set({ paidThroughAccountId: v })} filter={(a) => isCashLike(a) || a.subType === 'other_current_liability' || a.subType === 'equity' || a.subType === 'other_current_asset'} />
               </Field>
-              <Field label="Vendor">
+              <Field label="Supplier">
                 <div className="max-w-sm">
                   <ContactPicker
                     kind="vendor"
@@ -446,7 +446,7 @@ function ExpenseForm() {
               <Field label="Notes">
                 <textarea className="input max-w-xl" rows={3} maxLength={500} placeholder="Max. 500 characters" value={f.notes || ''} onChange={(e) => set({ notes: e.target.value })} />
               </Field>
-              <Field label="Customer Name">
+              <Field label="Client Name">
                 <div className="flex max-w-xl items-center gap-4">
                   <div className="flex-1">
                     <ContactPicker kind="customer" value={f.customerId} onChange={(v) => set({ customerId: v || undefined, billable: v ? f.billable : false })} />

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const variableNames = ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_OAUTH_REDIRECT_URI', 'APP_ORIGIN', 'GOOGLE_OAUTH_TOKEN_FILE'] as const;
 const originalValues = new Map(variableNames.map((name) => [name, process.env[name]]));
-const tokenFile = path.join(tmpdir(), `creatign-books-google-mail-${process.pid}.json`);
+const tokenFile = path.join(tmpdir(), `creatign-ledger-google-mail-${process.pid}.json`);
 process.env.GOOGLE_OAUTH_TOKEN_FILE = tokenFile;
 
 afterEach(() => {

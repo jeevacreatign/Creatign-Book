@@ -237,7 +237,7 @@ export function rebuildJournals(db: Database = getDb()) {
   for (const p of db.paymentsMade) {
     if (p.status !== 'paid') continue;
     add('payment_made', p.id, p.date, [jl(A.ap, p.amount, 0, undefined, p.contactId), jl(p.paidThroughAccountId, 0, p.amount)], p.number, p.contactId);
-    for (const r of p.refunds ?? []) add('payment_refund', p.id, r.date, [jl(r.accountId, r.amount, 0), jl(A.ap, 0, r.amount, 'Vendor refund', p.contactId)], p.number, p.contactId, `_${r.id}`);
+    for (const r of p.refunds ?? []) add('payment_refund', p.id, r.date, [jl(r.accountId, r.amount, 0), jl(A.ap, 0, r.amount, 'Supplier refund', p.contactId)], p.number, p.contactId, `_${r.id}`);
   }
 
   for (const e of db.expenses) {

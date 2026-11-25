@@ -49,7 +49,7 @@ export default function SharePage() {
         )}
       </main>
       <footer className="mx-auto flex max-w-6xl items-center justify-center gap-1.5 px-4 pb-8 text-xxs text-slate-400">
-        <ShieldCheck size={12} /> Shared securely with Creatign Books
+        <ShieldCheck size={12} /> Shared securely with Creatign Ledger
       </footer>
     </div>
   );

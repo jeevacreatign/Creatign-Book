@@ -79,15 +79,15 @@ export function ProjectPage() {
             <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Sales</div>
             <MenuItem onClick={() => setInvoiceOpen(true)}>Invoice unbilled {p.billingMethod === 'fixed' ? 'project fee' : 'time'}</MenuItem>
             <MenuItem onClick={() => newTxn('/sales/invoices')}>Invoice</MenuItem>
-            <MenuItem onClick={() => newTxn('/sales/quotes')}>Quote</MenuItem>
+            <MenuItem onClick={() => newTxn('/sales/quotes')}>Estimate</MenuItem>
             <MenuItem onClick={() => newTxn('/sales/sales-orders')}>Sales Order</MenuItem>
             <MenuItem onClick={() => newTxn('/sales/credit-notes')}>Credit Note</MenuItem>
             <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Purchases</div>
             <MenuItem onClick={() => newTxn('/purchases/expenses')}>Expense</MenuItem>
             <MenuItem onClick={() => newTxn('/purchases/bills', false)}>Bill</MenuItem>
             <MenuItem onClick={() => newTxn('/purchases/purchase-orders', false)}>Purchase Order</MenuItem>
-            <MenuItem onClick={() => newTxn('/purchases/vendor-credits', false)}>Vendor Credit</MenuItem>
-            <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Accountant</div>
+            <MenuItem onClick={() => newTxn('/purchases/vendor-credits', false)}>Debit Note</MenuItem>
+            <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">General Ledger</div>
             <MenuItem onClick={() => navigate(`/accountant/manual-journals/new?projectId=${p.id}`)}>Journal</MenuItem>
           </Dropdown>
           <Attachments projectId={p.id} files={p.attachments} />
@@ -227,7 +227,7 @@ function Overview({ p, onInvoice, onWatch }: { p: ProjectDetail; onInvoice: () =
     <div className="space-y-8 p-5">
       <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="space-y-4 rounded-lg bg-slate-50 p-5">
-          <Detail label="Customer">
+          <Detail label="Client">
             <Link className="link" to={`/sales/customers/${p.customerId}`}>
               {p.customerName}
             </Link>
@@ -809,7 +809,7 @@ function Purchases({ p }: { p: ProjectDetail }) {
         <MenuItem onClick={() => navigate(`/purchases/expenses/new${qs({ projectId: p.id, customerId: p.customerId })}`)}>New Expense</MenuItem>
         <MenuItem onClick={() => navigate(`/purchases/bills/new${qs({ projectId: p.id })}`)}>New Bill</MenuItem>
         <MenuItem onClick={() => navigate(`/purchases/purchase-orders/new${qs({ projectId: p.id })}`)}>New Purchase Order</MenuItem>
-        <MenuItem onClick={() => navigate(`/purchases/vendor-credits/new${qs({ projectId: p.id })}`)}>New Vendor Credit</MenuItem>
+        <MenuItem onClick={() => navigate(`/purchases/supplier-credits/new${qs({ projectId: p.id })}`)}>New Debit Note</MenuItem>
         <div className="my-1 border-t border-slate-100" />
         <MenuItem onClick={() => navigate('/purchases/expenses')}>All Expenses</MenuItem>
         <MenuItem onClick={() => navigate('/purchases/bills')}>All Bills</MenuItem>
@@ -823,9 +823,9 @@ function Purchases({ p }: { p: ProjectDetail }) {
           { label: 'Date', render: (r) => fmtDate(r.date) },
           { label: 'Expense Account', render: (r) => <span className="link">{r.accountName}</span> },
           { label: 'Reference#', render: (r) => r.referenceNumber },
-          { label: 'Vendor Name', render: (r) => r.vendorName },
+          { label: 'Supplier Name', render: (r) => r.vendorName },
           { label: 'Paid Through', render: (r) => r.paidThroughName },
-          { label: 'Customer Name', render: (r) => r.customerName },
+          { label: 'Client Name', render: (r) => r.customerName },
           { label: 'Amount', render: (r) => money(r.amount), right: true },
           { label: 'Status', render: st },
         ]}
@@ -839,7 +839,7 @@ function Purchases({ p }: { p: ProjectDetail }) {
           { label: 'Date', render: (r) => fmtDate(r.date) },
           { label: 'Bill#', render: num },
           { label: 'Reference#', render: (r) => r.referenceNumber },
-          { label: 'Vendor Name', render: (r) => r.contactName },
+          { label: 'Supplier Name', render: (r) => r.contactName },
           { label: 'Project Cost', render: (r) => money(r.projectFee), right: true },
           { label: 'Amount', render: (r) => money(r.total), right: true },
           { label: 'Balance Due', render: (r) => money(r.balance), right: true },
@@ -855,7 +855,7 @@ function Purchases({ p }: { p: ProjectDetail }) {
           { label: 'Purchase Order#', render: num },
           { label: 'Reference#', render: (r) => r.referenceNumber },
           { label: 'Date', render: (r) => fmtDate(r.date) },
-          { label: 'Vendor Name', render: (r) => r.contactName },
+          { label: 'Supplier Name', render: (r) => r.contactName },
           { label: 'Delivery Date', render: (r) => fmtDate(r.deliveryDate) },
           { label: 'Project Cost', render: (r) => money(r.projectFee), right: true },
           { label: 'Amount', render: (r) => money(r.total), right: true },
@@ -863,7 +863,7 @@ function Purchases({ p }: { p: ProjectDetail }) {
         ]}
       />
       <TxnCard<DocRow>
-        title="Vendor Credits"
+        title="Debit Notes"
         rows={data.vendorCredits}
         empty="No data to display"
         open={(r) => navigate(docPath(r))}
@@ -871,7 +871,7 @@ function Purchases({ p }: { p: ProjectDetail }) {
           { label: 'Date', render: (r) => fmtDate(r.date) },
           { label: 'Credit Note#', render: num },
           { label: 'Reference#', render: (r) => r.referenceNumber },
-          { label: 'Vendor Name', render: (r) => r.contactName },
+          { label: 'Supplier Name', render: (r) => r.contactName },
           { label: 'Project Cost', render: (r) => money(r.projectFee), right: true },
           { label: 'Balance', render: (r) => money(r.balance), right: true },
           { label: 'Amount', render: (r) => money(r.total), right: true },
@@ -892,8 +892,8 @@ function Sales({ p, onInvoice }: { p: ProjectDetail; onInvoice: () => void }) {
         <button className="btn-primary" onClick={onInvoice}>
           <Plus size={14} /> Invoice unbilled {p.billingMethod === 'fixed' ? 'project fee' : 'time'}
         </button>
-        <button className="btn-secondary" onClick={() => navigate(`/sales/quotes/new${qs({ projectId: p.id, contactId: p.customerId })}`)}>
-          New Quote
+        <button className="btn-secondary" onClick={() => navigate(`/sales/estimates/new${qs({ projectId: p.id, contactId: p.customerId })}`)}>
+          New Estimate
         </button>
       </div>
       <TxnCard<DocRow>
@@ -912,13 +912,13 @@ function Sales({ p, onInvoice }: { p: ProjectDetail; onInvoice: () => void }) {
         ]}
       />
       <TxnCard<DocRow>
-        title="Quotes"
+        title="Estimates"
         rows={data.quotes}
-        empty="There are no quotes"
+        empty="There are no estimates"
         open={(r) => navigate(docPath(r))}
         cols={[
           { label: 'Date', render: (r) => fmtDate(r.date) },
-          { label: 'Quote#', render: num },
+          { label: 'Estimate#', render: num },
           { label: 'Reference#', render: (r) => r.referenceNumber },
           { label: 'Amount', render: (r) => money(r.total), right: true },
           { label: 'Status', render: st },

@@ -226,7 +226,7 @@ export function ContactPicker({ kind, value, onChange, placeholder, disabled, au
       onChange={(id) => onChange(id, data.find((c) => c.id === id))}
       footer={
         <a href={kind === 'customer' ? '/sales/customers/new' : '/purchases/vendors/new'} target="_blank" rel="noreferrer" className="link block px-3 py-2 text-[13px]">
-          + New {kind === 'customer' ? 'Customer' : 'Vendor'}
+          + New {kind === 'customer' ? 'Client' : 'Supplier'}
         </a>
       }
     />

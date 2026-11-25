@@ -21,7 +21,7 @@ function ItemList() {
   const { data = [], isLoading } = useApi<Item[]>(`/items?status=${status}&q=${encodeURIComponent(q)}`);
   const acct = (id: string) => accounts.find((a) => a.id === id)?.name;
   const views = [
-    { value: 'all', label: 'All Items' },
+    { value: 'all', label: 'All Products & Services' },
     { value: 'active', label: 'Active Items' },
     { value: 'inactive', label: 'Inactive Items' },
   ];
@@ -170,7 +170,7 @@ function ItemForm() {
             <Field label="Description" inline={false}>
               <textarea className="input" rows={3} value={f.purchaseDescription || ''} onChange={(e) => set({ purchaseDescription: e.target.value })} disabled={!f.purchasable} />
             </Field>
-            <Field label="Preferred Vendor" inline={false}>
+            <Field label="Preferred Supplier" inline={false}>
               <Select value={f.preferredVendorId || ''} onChange={(e) => set({ preferredVendorId: e.target.value || undefined })} placeholder="" options={vendors.map((v) => ({ value: v.id, label: v.displayName }))} disabled={!f.purchasable} />
             </Field>
           </div>

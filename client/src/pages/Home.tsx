@@ -315,17 +315,17 @@ function GettingStarted() {
   const steps = [
     { done: true, label: 'Set up your organization profile (Creatign, Tamil Nadu, INR)', to: '/settings' },
     { done: items.length > 0, label: 'Add the items you sell or buy', to: '/items/new' },
-    { done: customers.length > 0, label: 'Add your first customer', to: '/sales/customers/new' },
-    { done: invoices.length > 0, label: 'Create a quote, sales order or invoice', to: '/sales/invoices/new' },
-    { done: payments.length > 0, label: 'Record a customer payment', to: '/sales/payments-received/new' },
-    { done: vendors.length > 0, label: 'Add a vendor', to: '/purchases/vendors/new' },
+    { done: customers.length > 0, label: 'Add your first client', to: '/sales/customers/new' },
+    { done: invoices.length > 0, label: 'Create an estimate, sales order or invoice', to: '/sales/invoices/new' },
+    { done: payments.length > 0, label: 'Record a client payment', to: '/sales/payments-received/new' },
+    { done: vendors.length > 0, label: 'Add a supplier', to: '/purchases/vendors/new' },
     { done: bills.length > 0, label: 'Record a bill and pay it', to: '/purchases/bills/new' },
   ];
   const done = steps.filter((s) => s.done).length;
   return (
     <div className="max-w-3xl p-5">
       <div className="card p-5">
-        <div className="mb-1 text-base font-semibold">Welcome to Creatign Books</div>
+        <div className="mb-1 text-base font-semibold">Welcome to Creatign Ledger</div>
         <div className="mb-4 text-slate-500">
           {done} of {steps.length} steps complete
         </div>

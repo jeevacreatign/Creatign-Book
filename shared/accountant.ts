@@ -1,4 +1,4 @@
-// Accountant module metadata shared by the API and the client: Zoho's account types,
+// Accountant module metadata shared by the API and the client: account types,
 // reporting methods, transaction-locking modules and journal helpers.
 import type { AccountSubType, AccountType, BankTxnType, LockModule, ReportingMethod } from './types';
 
@@ -10,7 +10,7 @@ export interface AccountTypeInfo {
   hint: string;
 }
 
-/** Zoho Books "Account Type" list, in the order of the Create Account dropdown. */
+/** "Account Type" list, in the order of the Create Account dropdown. */
 export const ACCOUNT_TYPES: AccountTypeInfo[] = [
   { subType: 'other_asset', type: 'asset', group: 'Asset', label: 'Other Asset', hint: 'Track special assets like goodwill and other intangible assets' },
   { subType: 'other_current_asset', type: 'asset', group: 'Asset', label: 'Other Current Asset', hint: 'Any short term asset that can be converted into cash within a year: prepaid expenses, advances, deposits' },
@@ -20,14 +20,14 @@ export const ACCOUNT_TYPES: AccountTypeInfo[] = [
   { subType: 'stock', type: 'asset', group: 'Asset', label: 'Stock', hint: 'To keep track of your inventory assets' },
   { subType: 'payment_clearing', type: 'asset', group: 'Asset', label: 'Payment Clearing Account', hint: 'To keep track of funds moving in and out via payment processors like Stripe or Razorpay' },
   { subType: 'input_tax', type: 'asset', group: 'Asset', label: 'Input Tax', hint: 'Any tax paid on purchases that can be claimed as input tax credit' },
-  { subType: 'accounts_receivable', type: 'asset', group: 'Asset', label: 'Accounts Receivable', hint: 'Money owed to you by customers' },
+  { subType: 'accounts_receivable', type: 'asset', group: 'Asset', label: 'Accounts Receivable', hint: 'Money owed to you by clients' },
   { subType: 'credit_card', type: 'liability', group: 'Liability', label: 'Credit Card', hint: 'Create a credit card account to track your card spends' },
   { subType: 'long_term_liability', type: 'liability', group: 'Liability', label: 'Long Term Liability', hint: 'Liabilities that mature after a minimum period of one year: notes payable, debentures, long term loans' },
-  { subType: 'other_current_liability', type: 'liability', group: 'Liability', label: 'Other Current Liability', hint: 'Any short term liability: customer deposits, tax payable' },
-  { subType: 'overseas_tax_payable', type: 'liability', group: 'Liability', label: 'Overseas Tax Payable', hint: 'Track taxes charged on digital services sold to overseas customers' },
+  { subType: 'other_current_liability', type: 'liability', group: 'Liability', label: 'Other Current Liability', hint: 'Any short term liability: client deposits, tax payable' },
+  { subType: 'overseas_tax_payable', type: 'liability', group: 'Liability', label: 'Overseas Tax Payable', hint: 'Track taxes charged on digital services sold to overseas clients' },
   { subType: 'output_tax', type: 'liability', group: 'Liability', label: 'Output Tax', hint: 'Any tax collected on sales that is payable to the government' },
   { subType: 'other_liability', type: 'liability', group: 'Liability', label: 'Other Liability', hint: 'Obligations that do not fit in the other liability types' },
-  { subType: 'accounts_payable', type: 'liability', group: 'Liability', label: 'Accounts Payable', hint: 'Money you owe your vendors' },
+  { subType: 'accounts_payable', type: 'liability', group: 'Liability', label: 'Accounts Payable', hint: 'Money you owe your suppliers' },
   { subType: 'equity', type: 'equity', group: 'Equity', label: 'Equity', hint: "Owner's or stakeholders' interest in the assets of the business after deducting all the liabilities" },
   { subType: 'income', type: 'income', group: 'Income', label: 'Income', hint: 'Income or revenue earned from normal business activities' },
   { subType: 'other_income', type: 'income', group: 'Income', label: 'Other Income', hint: 'Income or revenue earned from activities not directly related to your business: interest, dividends' },
@@ -47,8 +47,8 @@ export const REPORTING_METHODS: { value: ReportingMethod; label: string }[] = [
 export const reportingMethodLabel = (m?: ReportingMethod) => REPORTING_METHODS.find((x) => x.value === (m || 'accrual_and_cash'))!.label;
 
 export const LOCK_MODULES: { value: LockModule; label: string; hint: string }[] = [
-  { value: 'sales', label: 'Sales', hint: 'Quotes, sales orders, invoices, delivery challans, credit notes and payments received' },
-  { value: 'purchases', label: 'Purchases', hint: 'Purchase orders, bills, vendor credits, expenses and payments made' },
+  { value: 'sales', label: 'Sales', hint: 'Estimates, sales orders, invoices, delivery challans, credit notes and payments received' },
+  { value: 'purchases', label: 'Purchases', hint: 'Purchase orders, bills, debit notes, expenses and supplier payments' },
   { value: 'banking', label: 'Banking', hint: 'Transfers, deposits, statement categorization and other transactions recorded from Banking' },
   { value: 'accountant', label: 'Accountant', hint: 'Manual journals and base currency adjustments' },
 ];

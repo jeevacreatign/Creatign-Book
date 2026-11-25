@@ -5,7 +5,7 @@ import type { Express } from 'express';
 import { guessMapping, mapRows, parseAmount, parseDelimited, parseStatementDate } from '../shared/bankImport';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 
 let app: Express;
 const api = () => request(app);
@@ -89,7 +89,7 @@ describe('import and categorize', () => {
     expect((await api().get(`/api/banking/statement-lines/${l.id}`)).body.status).toBe('uncategorized');
   });
 
-  it('records a customer payment and matches an existing transaction', async () => {
+  it('records a client payment and matches an existing transaction', async () => {
     const l = (await lines()).find((x) => x.description === 'NEFT from Acme Corp')!;
     const r = await api().post(`/api/banking/statement-lines/${l.id}/categorize`).send({ as: 'customer_payment', contactId: 'cus_test' });
     expect(r.status).toBe(200);

@@ -1,4 +1,4 @@
-// Accountant > Recurring Journals: profiles that publish the same journal on a schedule.
+// Accountant > Voucher Schedules: profiles that publish the same journal on a schedule.
 import { useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Pause, Pencil, Play, Plus, Trash2, X } from 'lucide-react';
@@ -22,7 +22,7 @@ function List() {
   const { data = [], isLoading } = useApi<RRow[]>('/recurring-journals');
   return (
     <div>
-      <ListHeader title={<h1 className="text-[19px]">Recurring Journals</h1>}>
+      <ListHeader title={<h1 className="text-[19px]">Voucher Schedules</h1>}>
         <button className="btn-primary" onClick={() => navigate(`${BASE}/new`)}>
           <Plus size={15} /> New
         </button>
@@ -89,7 +89,7 @@ function Form() {
   return (
     <div className="flex min-h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-        <h1 className="text-[19px]">{id ? 'Edit Recurring Journal' : 'New Recurring Journal'}</h1>
+        <h1 className="text-[19px]">{id ? 'Edit Voucher Schedule' : 'New Voucher Schedule'}</h1>
         <button className="btn-ghost w-8 px-0" onClick={() => navigate(-1)} aria-label="Close">
           <X size={18} />
         </button>
@@ -147,7 +147,7 @@ function View() {
   if (isLoading || !r) return <Spinner />;
   return (
     <div>
-      <DetailHeader kicker="Recurring Journal" title={r.profileName}>
+      <DetailHeader kicker="Voucher Schedule" title={r.profileName}>
         <button className="btn-ghost w-8 px-0 text-red-500" onClick={() => navigate(BASE)} aria-label="Close">
           <X size={18} />
         </button>

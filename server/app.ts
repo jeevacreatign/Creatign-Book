@@ -1,4 +1,4 @@
-// Express REST API for Creatign Books.
+// Express REST API for Creatign Ledger.
 import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -692,7 +692,7 @@ export function createApp() {
         throw new S.HttpError(502, `Could not sign in to the SMTP server: ${e instanceof Error ? e.message : e}`);
       }
     }
-    const mail = await sendEmail({ to: [to], subject: `Test email from ${db.organization.name}`, body: `This is a test email from Creatign Books.\n\nIf you can read this, email sending is working and your customers will receive invoices, quotes and portal invitations from ${settings.from || db.organization.email}.` }, origin(req)).catch((e) => {
+    const mail = await sendEmail({ to: [to], subject: `Test email from ${db.organization.name}`, body: `This is a test email from Creatign Ledger.\n\nIf you can read this, email sending is working and your clients will receive invoices, estimates and portal invitations from ${settings.from || db.organization.email}.` }, origin(req)).catch((e) => {
       S.commit();
       throw e;
     });
@@ -771,12 +771,12 @@ export function createApp() {
       .filter((d) => [d.number, d.referenceNumber, S.contactName(db, d.contactId), d.profileName].some((t) => matches(t, needle)))
       .slice(0, 15)
       .map((d) => ({ type: DOC_META[d.kind].label, title: `${d.number}`, subtitle: S.contactName(db, d.contactId), path: `${DOC_META[d.kind].path}/${d.id}` }));
-    const contacts = db.contacts.filter((c) => matches(c.displayName, needle) || matches(c.email, needle)).slice(0, 8).map((c) => ({ type: c.kind === 'customer' ? 'Customer' : 'Vendor', title: c.displayName, subtitle: c.email, path: `/${c.kind === 'customer' ? 'sales/customers' : 'purchases/vendors'}/${c.id}` }));
+    const contacts = db.contacts.filter((c) => matches(c.displayName, needle) || matches(c.email, needle)).slice(0, 8).map((c) => ({ type: c.kind === 'customer' ? 'Client' : 'Supplier', title: c.displayName, subtitle: c.email, path: `/${c.kind === 'customer' ? 'sales/customers' : 'purchases/vendors'}/${c.id}` }));
     const items = db.items.filter((i) => matches(i.name, needle)).slice(0, 8).map((i) => ({ type: 'Item', title: i.name, subtitle: i.type, path: `/items/${i.id}` }));
     const projects = db.projects.filter((x) => matches(x.name, needle) || matches(x.code, needle)).slice(0, 8).map((x) => ({ type: 'Project', title: x.name, subtitle: S.contactName(db, x.customerId), path: `/time-tracking/projects/${x.id}` }));
     return [...contacts, ...items, ...projects, ...docs];
   }));
-  // Reports Center: catalogue, generic report data and saved custom reports
+  // Report Library: catalogue, generic report data and saved custom reports
   api.get('/report-catalog', h(() => ({ categories: CATALOG_CATEGORIES, reports: reportCatalog(), saved: getDb().savedReports })));
   api.get('/report-data/:key', h((req) => {
     try {

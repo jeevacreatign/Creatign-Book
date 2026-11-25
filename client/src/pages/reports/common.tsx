@@ -1,4 +1,4 @@
-// Reports Center shared types, per-viewer favourites / recent list, and CSV / XLS export.
+// Report Library shared types, per-viewer favourites / recent list, and CSV / XLS export.
 import { useEffect, useState } from 'react';
 import { fmtDate } from '@shared/format';
 import type { SavedReport } from '@shared/types';

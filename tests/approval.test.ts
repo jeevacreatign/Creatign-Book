@@ -4,7 +4,7 @@ import request from 'supertest';
 import type { Express } from 'express';
 
 process.env.DB_FILE = ':memory:';
-process.env.UPLOAD_DIR = '/tmp/creatign-books-test-uploads';
+process.env.UPLOAD_DIR = '/tmp/creatign-ledger-test-uploads';
 
 let app: Express;
 const api = () => request(app);

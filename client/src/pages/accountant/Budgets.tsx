@@ -1,5 +1,5 @@
 // Accountant > Budgets: list, New Budget (name, fiscal year, period, income/expense accounts,
-// optional balance sheet accounts) and the Profit and Loss budget grid grouped like Zoho.
+// optional balance sheet accounts) and the Profit and Loss budget grid in the standard grouping.
 import { Fragment, useEffect, useState } from 'react';
 import { Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { MinusCircle, Pencil, Plus, Printer, Trash2, X } from 'lucide-react';
@@ -29,7 +29,7 @@ const fyStarts = (fyMonth: number) => {
   return [-1, 0, 1, 2].map((o) => `${y + o}-${String(fyMonth).padStart(2, '0')}-01`);
 };
 
-/** Zoho groups the P&L budget as Income (Income, Other Income) and Expense (COGS, Expense, Other Expense). */
+/** Group the P&L budget as Income (Income, Other Income) and Expense (COGS, Expense, Other Expense). */
 const SECTIONS: { title: string; groups: { title: string; subTypes: string[] }[] }[] = [
   { title: 'Income', groups: [{ title: 'Income', subTypes: ['income'] }, { title: 'Other Income', subTypes: ['other_income'] }] },
   { title: 'Expense', groups: [{ title: 'Cost Of Goods Sold', subTypes: ['cost_of_goods_sold'] }, { title: 'Expense', subTypes: ['expense'] }, { title: 'Other Expense', subTypes: ['other_expense'] }] },
@@ -45,7 +45,7 @@ function BudgetList() {
   const { data = [], isLoading } = useApi<BudgetView[]>('/budgets');
   return (
     <div>
-      <ListHeader title={<h1 className="text-[19px]">Budgets</h1>}>
+      <ListHeader title={<h1 className="text-[19px]">Budget Planner</h1>}>
         <button className="btn-primary" onClick={() => navigate(`${BASE}/new`)}>
           <Plus size={15} /> New
         </button>

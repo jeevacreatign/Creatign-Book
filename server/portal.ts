@@ -1,5 +1,5 @@
-// Customer portal and shared document links.
-//   staffPortalRoutes:  Settings > Customer Portal, inviting contacts, payment notices
+// Client portal and shared document links.
+//   staffPortalRoutes:  Settings > Client Portal, inviting contacts, payment notices
 //   portalRouter:       /api/portal/* used by the customer portal (session cookie auth)
 //   publicShareRoutes:  /api/public/share/:token used by shared links (token auth)
 import { scrypt as scryptCb, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -107,15 +107,15 @@ async function sendInvite(u: PortalUser, c: Contact, origin: string) {
 export async function inviteContact(contactId: string, emails: string[], origin: string) {
   const db = getDb();
   const c = S.getContact(contactId);
-  if (c.kind !== 'customer') throw bad('The portal is for customers');
-  if (c.status === 'inactive') throw bad('Mark this customer as active before inviting them');
+  if (c.kind !== 'customer') throw bad('The portal is for clients');
+  if (c.status === 'inactive') throw bad('Mark this client as active before inviting them');
   const cands = candidatesFor(c);
   const wanted = emails.map((e) => e.trim().toLowerCase()).filter(Boolean);
   if (!wanted.length) throw bad('Choose at least one contact to invite');
   const results = [];
   for (const email of wanted) {
     const cand = cands.find((x) => x.email === email);
-    if (!cand) throw bad(`${email} is not an email of this customer. Add it as a contact person first.`);
+    if (!cand) throw bad(`${email} is not an email of this client. Add it as a contact person first.`);
     const other = db.portalUsers.find((u) => u.email === email && u.contactId !== c.id && u.status !== 'disabled');
     if (other) throw bad(`${email} already has portal access for ${S.contactName(db, other.contactId)}`);
     let u = db.portalUsers.find((x) => x.email === email && x.contactId === c.id);
@@ -273,7 +273,7 @@ export function staffPortalRoutes(api: Router, commit: () => void) {
     n.status = 'recorded';
     n.paymentId = pmt.id;
     n.resolvedAt = now();
-    logActivity(db, 'invoice', inv.id, inv.contactId, 'Customer-reported payment recorded', `Payment #${pmt.number} for ${money(amount)}`);
+    logActivity(db, 'invoice', inv.id, inv.contactId, 'Client-reported payment recorded', `Payment #${pmt.number} for ${money(amount)}`);
     commit();
     return { notice: n, payment: pmt };
   }));
@@ -282,7 +282,7 @@ export function staffPortalRoutes(api: Router, commit: () => void) {
     const n = notice(p(req, 'id'));
     n.status = 'dismissed';
     n.resolvedAt = now();
-    logActivity(db, 'invoice', n.invoiceId, n.contactId, 'Customer-reported payment dismissed', str(req.body.reason));
+    logActivity(db, 'invoice', n.invoiceId, n.contactId, 'Client-reported payment dismissed', str(req.body.reason));
     commit();
     return n;
   }));
@@ -346,27 +346,27 @@ function markViewed(d: TxnDoc, who: string, via: 'portal' | 'link') {
   const db = getDb();
   if (!d.viewedAt) {
     d.viewedAt = now();
-    logActivity(db, d.kind, d.id, d.contactId, `${DOC_META[d.kind].label} viewed by the customer`, `Opened by ${who} via the ${via === 'portal' ? 'customer portal' : 'shared link'}`, who);
+    logActivity(db, d.kind, d.id, d.contactId, `${DOC_META[d.kind].label} viewed by the client`, `Opened by ${who} via the ${via === 'portal' ? 'customer portal' : 'shared link'}`, who);
   }
 }
 
 async function respondToQuote(d: TxnDoc, body: Record<string, unknown>, who: { name: string; email?: string }, via: 'portal' | 'link', origin: string) {
   const db = getDb();
-  if (d.kind !== 'quote') throw bad('Only quotes can be accepted or declined');
-  if (d.status !== 'sent') throw bad(d.customerResponse ? `This quote was already ${d.customerResponse.action}` : 'This quote can no longer be accepted or declined');
-  if (d.expiryDate && d.expiryDate < today()) throw bad('This quote has expired. Contact us for an updated quote.');
+  if (d.kind !== 'quote') throw bad('Only estimates can be accepted or declined');
+  if (d.status !== 'sent') throw bad(d.customerResponse ? `This estimate was already ${d.customerResponse.action}` : 'This estimate can no longer be accepted or declined');
+  if (d.expiryDate && d.expiryDate < today()) throw bad('This estimate has expired. Contact us for an updated estimate.');
   const action = body.action === 'accept' ? 'accepted' : body.action === 'decline' ? 'declined' : undefined;
   if (!action) throw bad('Choose accept or decline');
   const name = str(body.name) || who.name;
   if (!name) throw bad('Enter your name');
   const comment = str(body.comment)?.slice(0, 2000);
-  if (action === 'declined' && !comment) throw bad('Let us know why you are declining the quote');
+  if (action === 'declined' && !comment) throw bad('Let us know why you are declining the estimate');
   d.status = action;
   d.customerResponse = { action, by: name.slice(0, 120), email: who.email, comment, at: now(), via };
   d.updatedAt = now();
-  logActivity(db, 'quote', d.id, d.contactId, `Quote ${action} by the customer`, [`${name} ${action} quote ${d.number} via the ${via === 'portal' ? 'customer portal' : 'shared link'}`, comment ? `Comment: ${comment}` : ''].filter(Boolean).join('. '), name);
+  logActivity(db, 'quote', d.id, d.contactId, `Estimate ${action} by the client`, [`${name} ${action} estimate ${d.number} via the ${via === 'portal' ? 'customer portal' : 'shared link'}`, comment ? `Comment: ${comment}` : ''].filter(Boolean).join('. '), name);
   S.commit();
-  void notifyOrganization(`Quote ${d.number} ${action} by ${S.contactName(db, d.contactId)}`, `${name}${who.email ? ` (${who.email})` : ''} ${action} quote ${d.number} for ${money(d.total)}.${comment ? `\n\nComment: ${comment}` : ''}`, { label: 'Open Quote', url: `${origin}${DOC_META.quote.path}/${d.id}` }).then(() => S.commit());
+  void notifyOrganization(`Estimate ${d.number} ${action} by ${S.contactName(db, d.contactId)}`, `${name}${who.email ? ` (${who.email})` : ''} ${action} estimate ${d.number} for ${money(d.total)}.${comment ? `\n\nComment: ${comment}` : ''}`, { label: 'Open Estimate', url: `${origin}${DOC_META.quote.path}/${d.id}` }).then(() => S.commit());
   return d.customerResponse;
 }
 
@@ -384,7 +384,7 @@ async function reportPayment(d: TxnDoc, body: Record<string, unknown>, who: { na
   if (db.paymentNotices.filter((n) => n.invoiceId === d.id && n.status === 'pending').length >= 5) throw bad('We already have several payment notices for this invoice. We will review them shortly.');
   const n: PaymentNotice = { id: newId('pn'), contactId: d.contactId, invoiceId: d.id, amount, date, mode, reference, note: str(body.note)?.slice(0, 1000), submittedBy: (str(body.name) || who.name).slice(0, 120), submittedEmail: who.email, via, status: 'pending', createdAt: now() };
   db.paymentNotices.push(n);
-  logActivity(db, 'invoice', d.id, d.contactId, 'Customer reported a payment', `${n.submittedBy} reported ${money(amount)} paid on ${fmtDate(date)} via ${mode} (ref ${reference})`, n.submittedBy);
+  logActivity(db, 'invoice', d.id, d.contactId, 'Client reported a payment', `${n.submittedBy} reported ${money(amount)} paid on ${fmtDate(date)} via ${mode} (ref ${reference})`, n.submittedBy);
   S.commit();
   void notifyOrganization(`Payment reported for invoice ${d.number}`, `${n.submittedBy} from ${S.contactName(db, d.contactId)} reported a payment of ${money(amount)} on ${fmtDate(date)} via ${mode}.\nReference: ${reference}${n.note ? `\nNote: ${n.note}` : ''}\n\nReview it and record the payment from the invoice.`, { label: 'Review Payment', url: `${origin}${DOC_META.invoice.path}/${d.id}` }).then(() => S.commit());
   return n;
@@ -417,13 +417,13 @@ export function publicShareRoutes(api: Router) {
   }));
   api.post('/public/share/:token/respond', h(async (req) => {
     limit(`share:${req.ip}`, 20, 15 * 60_000);
-    if (!settings().allowActionsOnSharedLinks) throw new S.HttpError(403, 'Sign in to the customer portal to respond');
+    if (!settings().allowActionsOnSharedLinks) throw new S.HttpError(403, 'Sign in to the client portal to respond');
     const { d } = liveLink(p(req, 'token'));
     return respondToQuote(d, req.body, { name: str(req.body.name) || '' }, 'link', origin());
   }));
   api.post('/public/share/:token/payment-notice', h(async (req) => {
     limit(`share:${req.ip}`, 20, 15 * 60_000);
-    if (!settings().allowActionsOnSharedLinks || !settings().allowPaymentNotices) throw new S.HttpError(403, 'Sign in to the customer portal to report a payment');
+    if (!settings().allowActionsOnSharedLinks || !settings().allowPaymentNotices) throw new S.HttpError(403, 'Sign in to the client portal to report a payment');
     const { d } = liveLink(p(req, 'token'));
     if (!str(req.body.name)) throw bad('Enter your name');
     const n = await reportPayment(d, req.body, { name: str(req.body.name)! }, 'link', origin());
@@ -529,7 +529,7 @@ function sameOrigin(req: Request, _res: Response, next: NextFunction) {
 
 function auth(req: PortalReq, _res: Response, next: NextFunction) {
   const found = sessionUser(req);
-  if (!found) return next(new S.HttpError(401, 'Please sign in to the customer portal'));
+  if (!found) return next(new S.HttpError(401, 'Please sign in to the client portal'));
   req.portalUser = found.u;
   req.portalContact = found.c;
   next();
@@ -580,7 +580,7 @@ export function portalRouter(): Router {
     const password = String(req.body.password || '');
     limit(`login-ip:${req.ip}`, 30, 15 * 60_000);
     limit(`login:${email}`, 10, 15 * 60_000);
-    if (!settings().enabled) throw new S.HttpError(403, 'The customer portal is turned off');
+    if (!settings().enabled) throw new S.HttpError(403, 'The client portal is turned off');
     const db = getDb();
     const users = db.portalUsers.filter((u) => u.email === email);
     const u = users.find((x) => x.status === 'active') || users[0];
@@ -740,7 +740,7 @@ export function portalRouter(): Router {
     sendPdf(res, await renderDocPdf(d), `${DOC_META[d.kind].label.replace(/ /g, '-')}-${d.number}.pdf`, q(req, 'download') === '1');
   }));
   r.post('/docs/:id/respond', auth, h(async (req: PortalReq) => {
-    if (!settings().allowQuoteAcceptance) throw new S.HttpError(403, 'Contact us to accept or decline this quote');
+    if (!settings().allowQuoteAcceptance) throw new S.HttpError(403, 'Contact us to accept or decline this estimate');
     const d = ownDoc(req, p(req, 'id'));
     return respondToQuote(d, req.body, { name: req.portalUser!.name, email: req.portalUser!.email }, 'portal', origin());
   }));
