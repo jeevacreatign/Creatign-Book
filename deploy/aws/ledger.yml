@@ -1,0 +1,471 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Creatign Ledger on AWS: CloudFront (HTTPS) -> Application Load Balancer -> one ECS Fargate task
+  (React app + API) -> Amazon RDS for MySQL 8.4. Attachments live on EFS. Deploy with deploy/aws/deploy.sh.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: Container image to run, for example 123456789012.dkr.ecr.ap-south-1.amazonaws.com/creatign-ledger:abc1234
+  AdminEmail:
+    Type: String
+    Description: Only this email address can create the first Admin account (stops strangers claiming the new site).
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+  OriginVerifySecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: Random value CloudFront sends to the load balancer, so the load balancer only serves traffic that came through CloudFront.
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    Description: RDS size. db.t4g.micro suits a small team; db.t4g.small or larger for more users.
+  DbAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    Description: Database disk in GB (grows automatically up to 100 GB).
+  DbMultiAz:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Standby copy of the database in a second zone (about double the RDS cost).
+  TaskCpu:
+    Type: String
+    Default: '512'
+    AllowedValues: ['256', '512', '1024', '2048']
+  TaskMemory:
+    Type: String
+    Default: '1024'
+    AllowedValues: ['512', '1024', '2048', '3072', '4096']
+  CloudFrontPriceClass:
+    Type: String
+    Default: PriceClass_200
+    AllowedValues: [PriceClass_100, PriceClass_200, PriceClass_All]
+    Description: PriceClass_200 includes edge locations in India.
+
+Resources:
+  # ------------------------------------------------------------------ network
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}' }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway }
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}-public-a' }]
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}-public-b' }]
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}-db-a' }]
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}-db-b' }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetARoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetA, RouteTableId: !Ref PublicRouteTable }
+  PublicSubnetBRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetB, RouteTableId: !Ref PublicRouteTable }
+  # the database subnets have no route to the internet
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  PrivateSubnetARoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetA, RouteTableId: !Ref PrivateRouteTable }
+  PrivateSubnetBRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetB, RouteTableId: !Ref PrivateRouteTable }
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load balancer (requests without the CloudFront header are refused by the listener)
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0 }
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Creatign Ledger app task, reachable only from the load balancer
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 4000, ToPort: 4000, SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup }
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS MySQL, reachable only from the app task
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 3306, ToPort: 3306, SourceSecurityGroupId: !Ref AppSecurityGroup }
+  StorageSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EFS for attachments, reachable only from the app task
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 2049, ToPort: 2049, SourceSecurityGroupId: !Ref AppSecurityGroup }
+
+  # ------------------------------------------------------------------ secrets
+  DatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${AWS::StackName}/database'
+      Description: Creatign Ledger RDS login
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"ledger"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\''` '
+  AppSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${AWS::StackName}/app-secret'
+      Description: Key that encrypts passwords saved in Creatign Ledger settings (APP_SECRET). Keep it; changing it loses saved SMTP passwords.
+      GenerateSecretString:
+        PasswordLength: 48
+        ExcludePunctuation: true
+
+  # ------------------------------------------------------------------ database
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Creatign Ledger database subnets
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+  DatabaseParameters:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: Creatign Ledger MySQL 8.4 settings
+      Family: mysql8.4
+      Parameters:
+        require_secure_transport: '1'
+        character_set_server: utf8mb4
+        collation_server: utf8mb4_unicode_ci
+        time_zone: UTC
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub '${AWS::StackName}-db'
+      Engine: mysql
+      EngineVersion: '8.4'
+      AutoMinorVersionUpgrade: true
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: !Ref DbAllocatedStorage
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: !Ref DbMultiAz
+      DBName: creatign_ledger
+      MasterUsername: !Sub '{{resolve:secretsmanager:${DatabaseSecret}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DatabaseSecret}:SecretString:password}}'
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      DBParameterGroupName: !Ref DatabaseParameters
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '20:30-21:00'          # 2:00-2:30 AM IST
+      PreferredMaintenanceWindow: 'sun:21:30-sun:22:30'
+      CopyTagsToSnapshot: true
+      DeletionProtection: true
+      EnablePerformanceInsights: false
+
+  # ------------------------------------------------------------------ attachments (EFS)
+  FileStorage:
+    Type: AWS::EFS::FileSystem
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Encrypted: true
+      BackupPolicy: { Status: ENABLED }
+      LifecyclePolicies:
+        - TransitionToIA: AFTER_30_DAYS
+      FileSystemTags: [{ Key: Name, Value: !Sub '${AWS::StackName}-files' }]
+  FileStorageMountA:
+    Type: AWS::EFS::MountTarget
+    Properties: { FileSystemId: !Ref FileStorage, SubnetId: !Ref PublicSubnetA, SecurityGroups: [!Ref StorageSecurityGroup] }
+  FileStorageMountB:
+    Type: AWS::EFS::MountTarget
+    Properties: { FileSystemId: !Ref FileStorage, SubnetId: !Ref PublicSubnetB, SecurityGroups: [!Ref StorageSecurityGroup] }
+  FileStorageAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref FileStorage
+      PosixUser: { Uid: '1000', Gid: '1000' }          # the "node" user in the container
+      RootDirectory:
+        Path: /ledger
+        CreationInfo: { OwnerUid: '1000', OwnerGid: '1000', Permissions: '750' }
+
+  # private bucket used only by deploy/aws/import.sh to hand an old db.json to the import task
+  ImportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      BucketEncryption:
+        ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }]
+      LifecycleConfiguration:
+        Rules: [{ Id: delete-imports, Status: Enabled, ExpirationInDays: 1 }]
+
+  # ------------------------------------------------------------------ app (ECS Fargate)
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref AWS::StackName
+      ClusterSettings: [{ Name: containerInsights, Value: disabled }]
+  AppLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${AWS::StackName}'
+      RetentionInDays: 30
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy]
+      Policies:
+        - PolicyName: read-app-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - { Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!Ref DatabaseSecret, !Ref AppSecret] }
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: attachments-and-exec
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [elasticfilesystem:ClientMount, elasticfilesystem:ClientWrite]
+                Resource: !GetAtt FileStorage.Arn
+                Condition: { StringEquals: { 'elasticfilesystem:AccessPointArn': !GetAtt FileStorageAccessPoint.Arn } }
+              # lets you open a shell in the running task with "aws ecs execute-command"
+              - Effect: Allow
+                Action: [ssmmessages:CreateControlChannel, ssmmessages:CreateDataChannel, ssmmessages:OpenControlChannel, ssmmessages:OpenDataChannel]
+                Resource: '*'
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref AWS::StackName
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      RuntimePlatform: { OperatingSystemFamily: LINUX, CpuArchitecture: X86_64 }
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      Volumes:
+        - Name: files
+          EFSVolumeConfiguration:
+            FilesystemId: !Ref FileStorage
+            TransitEncryption: ENABLED
+            AuthorizationConfig: { AccessPointId: !Ref FileStorageAccessPoint, IAM: ENABLED }
+      ContainerDefinitions:
+        - Name: app
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings: [{ ContainerPort: 4000, Protocol: tcp }]
+          MountPoints: [{ SourceVolume: files, ContainerPath: /data }]
+          StopTimeout: 30
+          Environment:
+            - { Name: NODE_ENV, Value: production }
+            - { Name: PORT, Value: '4000' }
+            - { Name: DB_HOST, Value: !GetAtt Database.Endpoint.Address }
+            - { Name: DB_PORT, Value: !GetAtt Database.Endpoint.Port }
+            - { Name: DB_NAME, Value: creatign_ledger }
+            - { Name: DATABASE_SSL, Value: rds }
+            - { Name: SEED_SAMPLES, Value: 'false' }
+            - { Name: ADMIN_EMAIL, Value: !Ref AdminEmail }
+            - { Name: TRUST_PROXY, Value: '2' }
+            - { Name: COOKIE_SECURE, Value: '1' }
+            - { Name: APP_ORIGIN, Value: !Sub 'https://${Distribution.DomainName}' }
+            - { Name: UPLOAD_DIR, Value: /data/uploads }
+            - { Name: GOOGLE_OAUTH_TOKEN_FILE, Value: /data/google/google-mail.json }
+          Secrets:
+            - { Name: DB_USER, ValueFrom: !Sub '${DatabaseSecret}:username::' }
+            - { Name: DB_PASSWORD, ValueFrom: !Sub '${DatabaseSecret}:password::' }
+            - { Name: APP_SECRET, ValueFrom: !Ref AppSecret }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AppLogs
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: app
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      SecurityGroups: [!Ref LoadBalancerSecurityGroup]
+      LoadBalancerAttributes:
+        - { Key: idle_timeout.timeout_seconds, Value: '120' }
+        - { Key: routing.http.drop_invalid_header_fields.enabled, Value: 'true' }
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      TargetType: ip
+      Protocol: HTTP
+      Port: 4000
+      HealthCheckPath: /api/health
+      HealthCheckIntervalSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 4
+      TargetGroupAttributes:
+        - { Key: deregistration_delay.timeout_seconds, Value: '15' }
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig: { StatusCode: '403', ContentType: text/plain, MessageBody: Forbidden }
+  FromCloudFrontRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref Listener
+      Priority: 1
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig: { HttpHeaderName: X-Origin-Verify, Values: [!Ref OriginVerifySecret] }
+      Actions:
+        - { Type: forward, TargetGroupArn: !Ref TargetGroup }
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [FromCloudFrontRule, FileStorageMountA, FileStorageMountB]
+    Properties:
+      ServiceName: app
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      # exactly one copy: the app keeps the books in memory, so two copies must never run on one database
+      DesiredCount: 1
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 100
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+      HealthCheckGracePeriodSeconds: 90
+      EnableExecuteCommand: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+          SecurityGroups: [!Ref AppSecurityGroup]
+      LoadBalancers:
+        - { ContainerName: app, ContainerPort: 4000, TargetGroupArn: !Ref TargetGroup }
+
+  # ------------------------------------------------------------------ HTTPS front door
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'Creatign Ledger (${AWS::StackName})'
+        HttpVersion: http2and3
+        PriceClass: !Ref CloudFrontPriceClass
+        Origins:
+          - Id: app
+            DomainName: !GetAtt LoadBalancer.DNSName
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              OriginReadTimeout: 60
+            OriginCustomHeaders:
+              - { HeaderName: X-Origin-Verify, HeaderValue: !Ref OriginVerifySecret }
+        DefaultCacheBehavior:
+          TargetOriginId: app
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # Managed-CachingDisabled
+          OriginRequestPolicyId: 33f36d7e-f396-46d9-90e0-52428a34d9dc  # Managed-AllViewerAndCloudFrontHeaders-2022-06
+        CacheBehaviors:
+          # built JS/CSS have hashed names, so they can be cached at the edge
+          - PathPattern: /assets/*
+            TargetOriginId: app
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6        # Managed-CachingOptimized
+
+Outputs:
+  AppUrl:
+    Description: Open this to use Creatign Ledger
+    Value: !Sub 'https://${Distribution.DomainName}'
+  DistributionId:
+    Value: !Ref Distribution
+  ClusterName:
+    Value: !Ref Cluster
+  ServiceName:
+    Value: !GetAtt Service.Name
+  TaskDefinitionFamily:
+    Value: !Ref AWS::StackName
+  AppSubnets:
+    Value: !Join [',', [!Ref PublicSubnetA, !Ref PublicSubnetB]]
+  AppSecurityGroup:
+    Value: !Ref AppSecurityGroup
+  ImportBucket:
+    Value: !Ref ImportBucket
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DatabaseSecretArn:
+    Value: !Ref DatabaseSecret
+  LogGroup:
+    Value: !Ref AppLogs

@@ -14,7 +14,7 @@ export const DATA_DIR = path.join(here, 'data');
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(here, 'uploads');
 
 /** 'memory' for tests and scripts that should not touch a database, otherwise 'mysql'. */
-export const storage = (): 'memory' | 'mysql' => (process.env.DB_FILE === ':memory:' || (!process.env.DATABASE_URL && process.env.VITEST) ? 'memory' : 'mysql');
+export const storage = (): 'memory' | 'mysql' => (process.env.DB_FILE === ':memory:' || (!process.env.DATABASE_URL && !process.env.DB_HOST && process.env.VITEST) ? 'memory' : 'mysql');
 
 const nano = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
 export const newId = (prefix: string) => `${prefix}_${nano()}`;
@@ -41,9 +41,9 @@ let ready = false;
 /** Connect to MySQL, create or update the tables and load the books. Call once before serving. */
 export async function initDb(): Promise<Database> {
   if (storage() === 'memory') return loadDb();
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL is not set. Point it at your MySQL database, for example mysql://ledger:password@localhost:3306/creatign_ledger (see README).');
-  my.connect(url);
+  const target = my.connectionSettings();
+  if (!target) throw new Error('DATABASE_URL is not set. Point it at your MySQL database, for example mysql://ledger:password@localhost:3306/creatign_ledger (see README).');
+  my.connect(target);
   await my.migrate();
   const raw = await my.loadAll();
   if (raw) {

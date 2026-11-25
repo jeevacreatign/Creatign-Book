@@ -81,11 +81,17 @@ How it runs: the server creates missing tables and columns on start, loads the b
 
 **Tests** run against an in-memory copy and need no database. `tests/mysql.test.ts` also checks the MySQL layer when `TEST_DATABASE_URL` points at an empty test database, for example `TEST_DATABASE_URL=mysql://ledger:pass@localhost:3306/creatign_ledger_test npm test`.
 
+## Deploying to AWS
+
+`./deploy/aws/deploy.sh` builds the Docker image and creates the whole setup on AWS: CloudFront (HTTPS), a load balancer, ECS Fargate, RDS for MySQL 8.4 and EFS for attachments. `./deploy/aws/import.sh` moves existing books into RDS. See [docs/DEPLOY-AWS.md](docs/DEPLOY-AWS.md) for the steps, the cost and day-to-day commands.
+
+To run the same image anywhere else: `docker build -t creatign-ledger .` then `docker run -p 4000:4000 -e DATABASE_URL=mysql://... creatign-ledger`.
+
 ## Sign-up and sign-in
 
 The staff app and its API need a signed-in team member.
 
-* **First run**: opening the app shows **Set up Creatign Ledger**. The first person to sign up becomes the **Admin**. If their email matches a user already on file (the sample data has *accounts@creatign.example*), that user record is claimed.
+* **First run**: opening the app shows **Set up Creatign Ledger**. The first person to sign up becomes the **Admin**. If their email matches a user already on file (the sample data has *accounts@creatign.example*), that user record is claimed. On a public server set `ADMIN_EMAIL` so that only the owner's address can do this.
 * **Later sign-ups** (`/signup`) wait as *Awaiting approval* until an Admin approves them in **Settings → Users & Access**, where the Admin also picks their role (Admin, Staff or Timesheet Staff).
 * **Invitations**: **Settings → Users & Access → Invite User** emails a link (valid 7 days, single use) to set a password. If email is not set up, the link is shown to copy.
 * **Forgot password** emails a reset link valid for 2 hours. Resetting signs out every other browser.
@@ -167,6 +173,7 @@ client/src/
   mailer.ts    transports: Gmail OAuth, SMTP (settings or .env), outbox
   portal.ts    client portal API, invitations, sessions, shared links, payment notices
 client/src/client/  client-facing pages: /portal and /share/:token
+deploy/aws/    ledger.yml (CloudFormation), deploy.sh, import.sh   Dockerfile  production image
 tests/               workflow, approval, PDF template, email and portal tests
 docs/SCHEMA.md       architecture and data model
 ```

@@ -89,12 +89,17 @@ function freshness(_req: Request, _res: Response, next: NextFunction) {
 
 export function createApp() {
   const app = express();
+  // Behind CloudFront + a load balancer, TRUST_PROXY=2 makes req.ip the visitor's address (used for sign-in rate limits)
+  const hops = Number(process.env.TRUST_PROXY);
+  if (hops > 0) app.set('trust proxy', hops);
   app.use(express.json({ limit: '5mb' }));
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   app.use('/uploads', requireStaff, express.static(UPLOAD_DIR));
   app.use('/api', requireStaff);
 
   const api = express.Router();
+  // load balancer health check (no sign-in needed)
+  api.get('/health', (_req, res) => { res.json({ ok: true }); });
   api.use(freshness);
   api.use(lockGuard);
 

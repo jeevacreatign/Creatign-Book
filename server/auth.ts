@@ -87,7 +87,7 @@ function startSession(req: Request, res: Response, u: User, remember: boolean) {
   u.lastLoginAt = now();
   u.failedLogins = 0;
   u.lockedUntil = undefined;
-  const secure = req.secure || req.get('x-forwarded-proto') === 'https';
+  const secure = req.secure || req.get('x-forwarded-proto') === 'https' || req.get('cloudfront-forwarded-proto') === 'https' || process.env.COOKIE_SECURE === '1';
   // without "remember me" the cookie lasts until the browser closes (and the session for a day)
   res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax${remember ? `; Expires=${expires.toUTCString()}` : ''}${secure ? '; Secure' : ''}`);
 }
@@ -175,9 +175,14 @@ export function registerAuthRoutes(api: Router, h: Wrap, m: Wrap) {
     const password = checkPassword(req.body?.password);
     const existing = db.users.find((u) => sameEmail(u.email, email));
     if (needsSetup()) {
+      // On a public server ADMIN_EMAIL stops a stranger from claiming the Admin account first
+      const owner = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+      if (owner && !sameEmail(owner, email)) throw new S.HttpError(403, 'This Creatign Ledger is waiting for its owner to set it up. Sign up with the Admin email address set on the server.');
       // the owner: claim the matching record or create one, as Admin
-      const u: User = existing ?? { id: newId('usr'), name, email, role: 'Admin', status: 'active', createdAt: now() };
-      if (!existing) db.users.push(u);
+      // no matching email: take over the unclaimed Admin placeholder from the starter data instead of leaving it behind
+      const claim = existing ?? db.users.find((x) => x.id === 'usr_admin' && x.role === 'Admin' && !x.passwordHash);
+      const u: User = claim ?? { id: newId('usr'), name, email, role: 'Admin', status: 'active', createdAt: now() };
+      if (!claim) db.users.push(u);
       Object.assign(u, { name, email, role: 'Admin', status: 'active', passwordHash: await hashPassword(password), approvedAt: now(), inviteTokenHash: undefined, inviteExpiresAt: undefined });
       startSession(req, res, u, true);
       S.commit();

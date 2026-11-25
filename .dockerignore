@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+server/data/*.json
+server/uploads/*
+*.log
+tests
+deploy/aws/*.json
