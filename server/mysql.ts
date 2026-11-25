@@ -6,6 +6,7 @@
 // The app still works on an in-memory copy that is loaded once at start-up. After each change the
 // rows that differ from what MySQL holds are written in one transaction, and the API waits for that
 // write before it answers. Run one app process per database.
+import awsCaBundle from 'aws-ssl-profiles';
 import mysql, { type Pool, type PoolConnection } from 'mysql2/promise';
 import type { Database } from '../shared/types';
 
@@ -120,8 +121,30 @@ function sqlValue(type: ColType, v: unknown): unknown {
 
 let pool: Pool | undefined;
 
-export function connect(url: string) {
-  pool = mysql.createPool({ uri: url, connectionLimit: 5, charset: 'utf8mb4', dateStrings: true, supportBigNumbers: true, decimalNumbers: true, multipleStatements: false });
+/**
+ * TLS for the MySQL connection, from DATABASE_SSL:
+ *   rds      verify the server with the Amazon RDS certificate authorities (use this on AWS RDS)
+ *   true     verify with the system certificate authorities
+ *   (unset)  no TLS, for a local server
+ */
+export function sslOption(mode = process.env.DATABASE_SSL?.trim().toLowerCase()) {
+  if (!mode || mode === 'false' || mode === '0' || mode === 'off') return undefined;
+  if (mode === 'rds' || mode === 'amazon rds') return { ca: awsCaBundle.ca, rejectUnauthorized: true };
+  return { rejectUnauthorized: true };
+}
+
+/** DATABASE_URL, or DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME (used on AWS, where the password comes from Secrets Manager). */
+export function connectionSettings(env = process.env): { uri: string } | { host: string; port: number; user: string; password: string; database: string } | undefined {
+  if (env.DATABASE_URL?.trim()) return { uri: env.DATABASE_URL.trim() };
+  if (env.DB_HOST?.trim() && env.DB_USER && env.DB_NAME)
+    return { host: env.DB_HOST.trim(), port: Number(env.DB_PORT) || 3306, user: env.DB_USER, password: env.DB_PASSWORD ?? '', database: env.DB_NAME };
+  return undefined;
+}
+
+export function connect(target: string | NonNullable<ReturnType<typeof connectionSettings>>) {
+  const where = typeof target === 'string' ? { uri: target } : target;
+  const ssl = sslOption();
+  pool = mysql.createPool({ ...where, ...(ssl ? { ssl } : {}), connectionLimit: 5, charset: 'utf8mb4', dateStrings: true, supportBigNumbers: true, decimalNumbers: true, multipleStatements: false });
   return pool;
 }
 

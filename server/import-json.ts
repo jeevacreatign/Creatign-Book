@@ -1,5 +1,6 @@
-// npm run db:import -- [path/to/db.json] [--force]
+// npm run db:import -- [path/to/db.json | https://link/to/db.json] [--force]
 // Moves books kept in the old JSON file (server/data/db.json) into the MySQL database in DATABASE_URL.
+// An https link (for example an S3 pre-signed URL) lets a one-off task on AWS import a file it cannot see.
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,20 +9,34 @@ import { recompute } from './engine';
 import * as my from './mysql';
 
 const args = process.argv.slice(2);
-const file = path.resolve(args.find((a) => !a.startsWith('--')) ?? path.join(DATA_DIR, 'db.json'));
+const source = args.find((a) => !a.startsWith('--')) ?? path.join(DATA_DIR, 'db.json');
+const remote = /^https:\/\//i.test(source);
+const file = remote ? new URL(source).origin + new URL(source).pathname : path.resolve(source);
 const force = args.includes('--force');
 
-if (!fs.existsSync(file)) {
-  console.error(`No JSON file at ${file}`);
-  process.exit(1);
+let text: string;
+if (remote) {
+  const r = await fetch(source);
+  if (!r.ok) {
+    console.error(`Could not download ${file}: HTTP ${r.status}`);
+    process.exit(1);
+  }
+  text = await r.text();
+} else {
+  if (!fs.existsSync(file)) {
+    console.error(`No JSON file at ${file}`);
+    process.exit(1);
+  }
+  text = fs.readFileSync(file, 'utf8');
 }
-const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-if (!process.env.DATABASE_URL) {
+const data = JSON.parse(text);
+const target = my.connectionSettings();
+if (!target) {
   console.error('Set DATABASE_URL to your MySQL database first (see README).');
   process.exit(1);
 }
 
-my.connect(process.env.DATABASE_URL);
+my.connect(target);
 await my.migrate();
 const existing = await my.loadAll();
 await my.close();
