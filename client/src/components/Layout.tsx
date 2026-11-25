@@ -9,7 +9,7 @@ import { api, qs } from '../api';
 import { useOutside } from './ui';
 import { TimerChip } from '../pages/time/common';
 
-type NavItem = { to: string; label: string };
+type NavItem = { to: string; label: string; noNew?: boolean };
 const SALES: NavItem[] = [
   { to: '/sales/customers', label: 'Customers' },
   { to: '/sales/quotes', label: 'Quotes' },
@@ -32,7 +32,12 @@ const PURCHASES: NavItem[] = [
 ];
 const ACCOUNTANT: NavItem[] = [
   { to: '/accountant/manual-journals', label: 'Manual Journals' },
-  { to: '/accountant/chart-of-accounts', label: 'Chart of Accounts' },
+  { to: '/accountant/recurring-journals', label: 'Recurring Journals' },
+  { to: '/accountant/bulk-update', label: 'Bulk Update', noNew: true },
+  { to: '/accountant/currency-adjustments', label: 'Currency Adjustments', noNew: true },
+  { to: '/accountant/chart-of-accounts', label: 'Chart of Accounts', noNew: true },
+  { to: '/accountant/budgets', label: 'Budgets' },
+  { to: '/accountant/transaction-locking', label: 'Transaction Locking', noNew: true },
 ];
 const TIME: NavItem[] = [
   { to: '/time-tracking/projects', label: 'Projects' },
@@ -67,7 +72,7 @@ function Group({ icon, label, items, base }: { icon: ReactNode; label: string; i
               {({ isActive }) => (
                 <>
                   <span>{i.label}</span>
-                  <span
+                  {!i.noNew && <span
                     role="button"
                     aria-label={`New ${i.label}`}
                     onClick={(e) => {
@@ -77,7 +82,7 @@ function Group({ icon, label, items, base }: { icon: ReactNode; label: string; i
                     className={clsx('rounded px-1 text-sm leading-none', isActive ? 'text-white' : 'invisible text-brand-600 group-hover:visible')}
                   >
                     +
-                  </span>
+                  </span>}
                 </>
               )}
             </NavLink>

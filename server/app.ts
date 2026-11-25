@@ -11,7 +11,11 @@ import type { Account, Attachment, DocKind, Journal, PaymentMade, Project, TimeE
 import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import { normalizeTimeTracking, registerProjectRoutes } from './projects';
+import { lockGuard, registerAccountantRoutes } from './accountant';
+import { registerBankingRoutes } from './banking';
+import { registerDocumentRoutes } from './documents';
 import * as R from './reports';
+import { CATEGORIES as CATALOG_CATEGORIES, catalog as reportCatalog, runReport } from './reportCatalog';
 import * as S from './services';
 import { mailSettings, savedSmtp, verifySmtp, type SmtpSettings } from './mailer';
 import { composeDefaults, emailTemplates, isEmail, previewEmail, publicOrigin, resendMail, sendEmail } from './email';
@@ -89,6 +93,7 @@ export function createApp() {
 
   const api = express.Router();
   api.use(freshness);
+  api.use(lockGuard);
 
   // ------------------------------------------------------------ org & setup
   api.get('/bootstrap', h(() => {
@@ -213,32 +218,9 @@ export function createApp() {
     return { ok: true };
   }));
 
-  // ------------------------------------------------------------ accounts
-  api.get('/accounts', h(() => getDb().accounts.map((a) => ({ ...a, balance: R.accountBalance(getDb(), a.id) }))));
-  api.post('/accounts', m((req) => {
-    const db = getDb();
-    const b = req.body as Partial<Account>;
-    if (!b.name || !b.type || !b.subType) throw new S.HttpError(400, 'Account name and type are required');
-    if (db.accounts.some((a) => a.name.toLowerCase() === b.name!.toLowerCase())) throw new S.HttpError(400, 'An account with this name already exists');
-    const a: Account = { id: newId('acc'), code: b.code || '', name: b.name, type: b.type, subType: b.subType, description: b.description, active: true };
-    db.accounts.push(a);
-    return a;
-  }));
-  api.put('/accounts/:id', m((req) => {
-    const a = getDb().accounts.find((x) => x.id === p(req, 'id'));
-    if (!a) throw new S.HttpError(404, 'Account not found');
-    const { name, code, description, active } = req.body as Partial<Account>;
-    Object.assign(a, { name: name ?? a.name, code: code ?? a.code, description, active: active ?? a.active });
-    return a;
-  }));
-  api.delete('/accounts/:id', m((req) => {
-    const db = getDb();
-    const a = db.accounts.find((x) => x.id === p(req, 'id'));
-    if (!a) throw new S.HttpError(404, 'Account not found');
-    if (a.system) throw new S.HttpError(400, 'System accounts cannot be deleted');
-    if (db.journals.some((j) => j.lines.some((l) => l.accountId === a.id))) throw new S.HttpError(400, 'This account has transactions and cannot be deleted');
-    db.accounts = db.accounts.filter((x) => x.id !== a.id);
-  }));
+  // ------------------------------------------------------------ accountant (server/accountant.ts)
+  registerAccountantRoutes(api, h, m);
+  registerBankingRoutes(api, h, m);
 
   // ------------------------------------------------------------ items
   api.get('/items', h((req) => {
@@ -560,38 +542,6 @@ export function createApp() {
   }));
   api.post('/recurring-expenses/:id/actions/:action', m((req) => S.recurringExpenseAction(p(req, 'id'), p(req, 'action'))));
 
-  // ------------------------------------------------------------ journals
-  api.get('/journals', h((req) => {
-    const db = getDb();
-    const kind = q(req, 'kind');
-    return db.journals.filter((j) => !kind || (kind === 'manual' ? j.sourceType === 'manual' : true)).slice().reverse();
-  }));
-  api.get('/journals/:id', h((req) => {
-    const j = getDb().journals.find((x) => x.id === p(req, 'id'));
-    if (!j) throw new S.HttpError(404, 'Journal not found');
-    return j;
-  }));
-  api.post('/journals', m((req) => {
-    const db = getDb();
-    const b = req.body as Partial<Journal>;
-    const lines = (b.lines || []).filter((l) => l.accountId && (Number(l.debit) || Number(l.credit))).map((l) => ({ ...l, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 }));
-    const dr = lines.reduce((s, l) => s + l.debit, 0);
-    const cr = lines.reduce((s, l) => s + l.credit, 0);
-    if (lines.length < 2) throw new S.HttpError(400, 'A journal needs at least two lines');
-    if (Math.abs(dr - cr) > 0.004) throw new S.HttpError(400, `Debits (${dr.toFixed(2)}) and credits (${cr.toFixed(2)}) must be equal`);
-    const n = (db.counters.manual_journal || 0) + 1;
-    db.counters.manual_journal = n;
-    const j: Journal = { id: newId('mj'), number: `MJ-${String(n).padStart(5, '0')}`, date: b.date || today(), sourceType: 'manual', reference: b.reference, notes: b.notes, projectId: b.projectId && db.projects.some((x) => x.id === b.projectId) ? b.projectId : undefined, lines, createdAt: now() };
-    db.journals.push(j);
-    return j;
-  }));
-  api.delete('/journals/:id', m((req) => {
-    const db = getDb();
-    const j = db.journals.find((x) => x.id === p(req, 'id'));
-    if (!j || j.sourceType !== 'manual') throw new S.HttpError(400, 'Only manual journals can be deleted');
-    db.journals = db.journals.filter((x) => x.id !== j.id);
-  }));
-
   // ------------------------------------------------------------ comments, activity, mail
   api.get('/comments', h((req) => getDb().comments.filter((c) => c.entityId === q(req, 'entityId')).slice().reverse()));
   api.post('/comments', m((req) => {
@@ -805,16 +755,7 @@ export function createApp() {
     const files = (req.files as Express.Multer.File[]) || [];
     return files.map<Attachment>((f) => ({ id: path.parse(f.filename).name, name: f.originalname, size: f.size, mimeType: f.mimetype, url: `/uploads/${f.filename}`, uploadedAt: now() }));
   }));
-  api.get('/documents', h(() => {
-    const db = getDb();
-    const out: (Attachment & { source: string; sourceId: string; sourceLabel: string })[] = [];
-    for (const d of db.docs) for (const a of d.attachments) out.push({ ...a, source: d.kind, sourceId: d.id, sourceLabel: `${DOC_META[d.kind].label} ${d.number}` });
-    for (const c of db.contacts) for (const a of c.documents) out.push({ ...a, source: c.kind, sourceId: c.id, sourceLabel: c.displayName });
-    for (const e of db.expenses) for (const a of e.receipts) out.push({ ...a, source: 'expense', sourceId: e.id, sourceLabel: `Expense ${e.date}` });
-    for (const x of db.paymentsReceived) for (const a of x.attachments) out.push({ ...a, source: 'payment_received', sourceId: x.id, sourceLabel: `Payment #${x.number}` });
-    for (const x of db.paymentsMade) for (const a of x.attachments) out.push({ ...a, source: 'payment_made', sourceId: x.id, sourceLabel: `Payment #${x.number}` });
-    return out.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
-  }));
+  registerDocumentRoutes(api, h, m, upload.array('files', 10));
 
   // ------------------------------------------------------------ projects & time (server/projects.ts)
   registerProjectRoutes(api, h, m);
@@ -835,6 +776,31 @@ export function createApp() {
     const projects = db.projects.filter((x) => matches(x.name, needle) || matches(x.code, needle)).slice(0, 8).map((x) => ({ type: 'Project', title: x.name, subtitle: S.contactName(db, x.customerId), path: `/time-tracking/projects/${x.id}` }));
     return [...contacts, ...items, ...projects, ...docs];
   }));
+  // Reports Center: catalogue, generic report data and saved custom reports
+  api.get('/report-catalog', h(() => ({ categories: CATALOG_CATEGORIES, reports: reportCatalog(), saved: getDb().savedReports })));
+  api.get('/report-data/:key', h((req) => {
+    try {
+      return runReport(getDb(), p(req, 'key'), Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, typeof v === 'string' && v ? v : undefined])));
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) throw new S.HttpError(404, 'Unknown report');
+      throw e;
+    }
+  }));
+  api.post('/saved-reports', m((req) => {
+    const b = req.body || {};
+    const nm = String(b.name || '').trim();
+    if (!nm) throw new S.HttpError(400, 'Report Name is required');
+    if (!reportCatalog().some((r) => r.key === b.report)) throw new S.HttpError(400, 'Unknown report');
+    const db = getDb();
+    if (db.savedReports.some((x) => x.name.toLowerCase() === nm.toLowerCase())) throw new S.HttpError(400, 'A custom report with this name already exists');
+    const params = Object.fromEntries(Object.entries((b.params || {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string' && v).map(([k, v]) => [k, String(v)]));
+    const r = { id: newId('srep'), name: nm.slice(0, 120), report: String(b.report), params, hiddenColumns: Array.isArray(b.hiddenColumns) ? b.hiddenColumns.map(String) : [], createdAt: now() };
+    db.savedReports.push(r);
+    return r;
+  }));
+  api.delete('/saved-reports/:id', m((req) => {
+    getDb().savedReports = getDb().savedReports.filter((x) => x.id !== p(req, 'id'));
+  }));
   api.get('/reports/:name', h((req) => {
     const fy = getDb().organization.fiscalYearStartMonth;
     const r = periodRange((q(req, 'period') as PeriodKey) || 'this_fiscal_year', today(), fy);
@@ -842,11 +808,11 @@ export function createApp() {
     const to = q(req, 'to') || r.to;
     switch (p(req, 'name')) {
       case 'profit-and-loss':
-        return R.profitAndLoss(from, to);
+        return R.profitAndLoss(from, to, q(req, 'basis') === 'cash' ? 'cash' : 'accrual');
       case 'balance-sheet':
-        return R.balanceSheet(to);
+        return R.balanceSheet(to, q(req, 'basis') === 'cash' ? 'cash' : 'accrual');
       case 'trial-balance':
-        return R.trialBalance(to);
+        return R.trialBalance(to, q(req, 'basis') === 'cash' ? 'cash' : 'accrual');
       case 'general-ledger':
         return R.generalLedger(from, to, q(req, 'accountId'));
       case 'journal':

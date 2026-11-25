@@ -307,6 +307,11 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
     doc.taxInclusive = Boolean(doc.taxInclusive) && !doc.reverseCharge;
     if (doc.gstTreatment && treatmentNeedsGstin(doc.gstTreatment) && doc.gstin && !GSTIN_RE.test(doc.gstin)) throw bad('Enter a valid GSTIN (15 characters, e.g. 33ABCDE1234F1Z5)');
   } else {
+    // sales: place of supply comes from the customer, the source is the organization's state
+    doc.gstTreatment = doc.gstTreatment || contact.gstTreatment || (contact.gstin ? 'registered_business' : undefined);
+    doc.gstin = str(doc.gstin) ?? contact.gstin;
+    doc.sourceOfSupply = doc.sourceOfSupply || db.organization.state;
+    doc.destinationOfSupply = doc.destinationOfSupply || contact.placeOfSupply || stateFromGstin(contact.gstin) || db.organization.state;
     doc.taxInclusive = Boolean(doc.taxInclusive);
   }
   // computed fields are never trusted from the client

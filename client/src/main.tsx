@@ -14,8 +14,11 @@ import DocModule from './pages/docs/DocModule';
 import PaymentsReceived from './pages/payments/PaymentsReceived';
 import PaymentsMade from './pages/payments/PaymentsMade';
 import Expenses, { RecurringExpenses } from './pages/expenses/Expenses';
-import { Accountant, Banking, Reports } from './pages/misc/Accounting';
-import { AppPlaceholder, Documents, PrintDoc, PrintExpense, PrintPayment, PrintStatement, Settings } from './pages/misc/Other';
+import Reports from './pages/reports';
+import Documents from './pages/documents';
+import Banking from './pages/banking';
+import Accountant from './pages/accountant';
+import { AppPlaceholder, PrintDoc, PrintExpense, PrintPayment, PrintStatement, Settings } from './pages/misc/Other';
 import TimeTracking from './pages/time';
 import SharePage from './customer/SharePage';
 import PortalApp from './customer/Portal';
@@ -82,10 +85,10 @@ function App() {
         <Route path="purchases/expenses/*" element={<Expenses />} />
         <Route path="purchases/recurring-expenses/*" element={<RecurringExpenses />} />
         <Route path="time-tracking/*" element={<TimeTracking />} />
-        <Route path="banking" element={<Banking />} />
+        <Route path="banking/*" element={<Banking />} />
         <Route path="accountant/*" element={<Accountant />} />
         <Route path="reports/*" element={<Reports />} />
-        <Route path="documents" element={<Documents />} />
+        <Route path="documents/*" element={<Documents />} />
         <Route path="settings/*" element={<Settings />} />
         <Route path="apps/payroll" element={<AppPlaceholder app="payroll" />} />
         <Route path="apps/payments" element={<AppPlaceholder app="payments" />} />

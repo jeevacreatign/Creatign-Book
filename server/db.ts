@@ -26,6 +26,11 @@ function emptyDefaults(d: Partial<Database>): Database {
   // add system accounts introduced after this file was created (e.g. GST input/output accounts)
   const have = new Set(out.accounts.map((a) => a.id));
   for (const a of seed.accounts) if (a.system && !have.has(a.id)) out.accounts.push({ ...a });
+  // manual journals moved to their own collection (drafts never reach the ledger)
+  if (!d.manualJournals) {
+    out.manualJournals = (out.journals || []).filter((j) => j.sourceType === 'manual').map((j) => ({ ...j, status: j.status ?? 'published', reportingMethod: j.reportingMethod ?? 'accrual_and_cash' }));
+  }
+  if (!out.transactionLocks?.modules) out.transactionLocks = { modules: {}, history: [] };
   return out;
 }
 

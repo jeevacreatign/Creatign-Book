@@ -13,7 +13,7 @@ function acc(id: string, code: string, name: string, type: Account['type'], subT
 export const DEFAULT_ACCOUNTS: Account[] = [
   acc(A.pettyCash, '1000', 'Petty Cash', 'asset', 'cash', 'Small cash on hand for day-to-day expenses'),
   acc(A.undepositedFunds, '1010', 'Undeposited Funds', 'asset', 'cash', 'Payments received but not yet deposited'),
-  acc(A.bank, '1020', 'HDFC Current Account', 'asset', 'bank'),
+  { ...acc(A.bank, '1020', 'HDFC Current Account', 'asset', 'bank'), bankName: 'HDFC Bank', currencyCode: 'INR', primary: true },
   acc(A.ar, '1100', 'Accounts Receivable', 'asset', 'accounts_receivable'),
   acc(A.tdsReceivable, '1150', 'TDS Receivable', 'asset', 'other_current_asset', 'Tax deducted at source by customers'),
   acc(A.tcsReceivable, '1160', 'TCS Receivable', 'asset', 'other_current_asset', 'Tax collected at source by vendors'),
@@ -54,6 +54,15 @@ export const DEFAULT_ACCOUNTS: Account[] = [
   acc('acc_printing', '6100', 'Printing and Stationery', 'expense', 'expense'),
   acc('acc_meals', '6110', 'Meals and Entertainment', 'expense', 'expense'),
   acc('acc_other_expense', '6900', 'Other Expenses', 'expense', 'other_expense', 'Adjustments and round-off on purchase documents'),
+];
+
+export const DEFAULT_CURRENCIES = [
+  { code: 'INR', name: 'Indian Rupee', symbol: '₹', rate: 1 },
+  { code: 'USD', name: 'United States Dollar', symbol: '$', rate: 84.5 },
+  { code: 'EUR', name: 'Euro', symbol: '€', rate: 89.2 },
+  { code: 'GBP', name: 'Pound Sterling', symbol: '£', rate: 106.4 },
+  { code: 'AED', name: 'UAE Dirham', symbol: 'AED', rate: 23.0 },
+  { code: 'SGD', name: 'Singapore Dollar', symbol: 'S$', rate: 63.1 },
 ];
 
 function contact(p: Partial<Contact> & Pick<Contact, 'id' | 'kind' | 'displayName'>): Contact {
@@ -132,6 +141,21 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     users: [{ id: 'usr_admin', name: 'Jeeva V', email: 'accounts@creatign.example', role: 'Admin', status: 'active', createdAt: ts() }],
     timers: [],
     budgets: [],
+    manualJournals: [],
+    journalTemplates: [],
+    recurringJournals: [],
+    currencies: DEFAULT_CURRENCIES.map((c) => ({ ...c })),
+    currencyAdjustments: [],
+    transactionLocks: { modules: {}, history: [] },
+    bankTransactions: [],
+    statementLines: [],
+    statementImports: [],
+    bankRules: [],
+    reconciliations: [],
+    documents: [],
+    docFolders: [],
+    savedReports: [],
+    reportSchedules: [],
     counters: {},
     pdfTemplates: builtInTemplates(),
     preferences: {

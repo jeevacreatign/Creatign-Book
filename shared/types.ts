@@ -66,7 +66,15 @@ export type AccountSubType =
   | 'other_income'
   | 'cost_of_goods_sold'
   | 'expense'
-  | 'other_expense';
+  | 'other_expense'
+  | 'other_asset'
+  | 'stock'
+  | 'payment_clearing'
+  | 'input_tax'
+  | 'long_term_liability'
+  | 'output_tax'
+  | 'other_liability'
+  | 'overseas_tax_payable';
 
 export interface Account {
   id: ID;
@@ -77,6 +85,17 @@ export interface Account {
   description?: string;
   system?: boolean; // system accounts cannot be deleted
   active: boolean;
+  /** sub-account of another account of the same type */
+  parentId?: ID;
+  /** show on the dashboard watchlist */
+  watchlist?: boolean;
+  // bank and credit card accounts (Banking > Add Bank Account or Credit Card)
+  accountNumber?: string;
+  bankName?: string;
+  ifsc?: string;
+  currencyCode?: string;
+  primary?: boolean;
+  attachments?: Attachment[];
 }
 
 export type ItemType = 'goods' | 'service';
@@ -488,7 +507,10 @@ export type JournalSource =
   | 'payment_made'
   | 'expense'
   | 'opening_balance'
+  | 'bank_transaction'
   | 'manual';
+
+export type ReportingMethod = 'accrual_and_cash' | 'accrual_only' | 'cash_only';
 
 export interface Journal {
   id: ID;
@@ -501,6 +523,232 @@ export interface Journal {
   reference?: string;
   notes?: string;
   lines: JournalLine[];
+  createdAt: string;
+  // manual journals only
+  status?: 'draft' | 'published';
+  reportingMethod?: ReportingMethod;
+  /** date of the auto-created reversing journal */
+  reverseDate?: string;
+  reversalOf?: ID;
+  attachments?: Attachment[];
+  locked?: boolean;
+  createdBy?: string;
+  recurringProfileId?: ID;
+  updatedAt?: string;
+}
+
+/** Accountant > Manual Journals > Templates */
+export interface JournalTemplate {
+  id: ID;
+  name: string;
+  reference?: string;
+  notes?: string;
+  reportingMethod: ReportingMethod;
+  /** when false the template keeps accounts and Dr/Cr types only */
+  enterAmount: boolean;
+  lines: { accountId: ID; description?: string; contactId?: ID; type: 'debit' | 'credit'; amount?: number }[];
+  createdAt: string;
+}
+
+export interface RecurringJournal {
+  id: ID;
+  profileName: string;
+  repeatEvery: RepeatEvery;
+  startOn: string;
+  endsOn?: string;
+  neverExpires: boolean;
+  reference?: string;
+  notes?: string;
+  reportingMethod: ReportingMethod;
+  lines: JournalLine[];
+  status: 'active' | 'stopped' | 'expired';
+  lastGeneratedDate?: string;
+  nextDate?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface Currency {
+  code: string;
+  name: string;
+  symbol: string;
+  /** units of the base currency (INR) per 1 unit */
+  rate: number;
+}
+
+export interface CurrencyAdjustment {
+  id: ID;
+  currencyCode: string;
+  date: string;
+  rate: number;
+  notes: string;
+  gainOrLoss: number;
+  createdAt: string;
+}
+
+export type LockModule = 'sales' | 'purchases' | 'banking' | 'accountant';
+export interface TransactionLock {
+  date: string;
+  reason?: string;
+  lockedAt: string;
+}
+export interface TransactionLocks {
+  /** "Lock All Transactions At Once" */
+  all?: TransactionLock;
+  modules: Partial<Record<LockModule, TransactionLock>>;
+  history: { module: LockModule | 'all'; action: 'lock' | 'unlock'; date?: string; reason?: string; at: string }[];
+}
+
+// ------------------------------------------------------------------ banking
+
+export type BankTxnType =
+  | 'deposit'
+  | 'other_income'
+  | 'interest_income'
+  | 'owner_contribution'
+  | 'transfer_in'
+  | 'expense_refund'
+  | 'owner_drawings'
+  | 'transfer_out'
+  | 'card_payment'
+  | 'expense';
+
+/** Money In / Money Out recorded from Banking (transfers, deposits, owner's contribution, drawings...). */
+export interface BankTransaction {
+  id: ID;
+  type: BankTxnType;
+  date: string;
+  /** the bank/cash/card account the money moved in or out of */
+  accountId: ID;
+  /** the other side: transfer account, income/equity/expense account */
+  offsetAccountId: ID;
+  amount: number;
+  referenceNumber?: string;
+  description?: string;
+  contactId?: ID;
+  /** statement line this transaction was categorized from */
+  statementLineId?: ID;
+  attachments?: Attachment[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface StatementLine {
+  id: ID;
+  accountId: ID;
+  date: string;
+  description?: string;
+  reference?: string;
+  payee?: string;
+  /** money in */
+  deposit: number;
+  /** money out */
+  withdrawal: number;
+  status: 'uncategorized' | 'categorized' | 'matched' | 'excluded';
+  /** transaction this line was categorized as or matched to */
+  match?: { type: 'bank_transaction' | 'expense' | 'payment_received' | 'payment_made' | 'manual' | 'journal'; id: ID; journalId?: ID };
+  /** rule that recognized the line (pre-filled suggestion) */
+  ruleId?: ID;
+  importId?: ID;
+  createdAt: string;
+}
+
+export interface StatementImport {
+  id: ID;
+  accountId: ID;
+  fileName: string;
+  lines: number;
+  duplicates: number;
+  from?: string;
+  to?: string;
+  /** closing balance read from the statement's balance column */
+  closingBalance?: number;
+  documentId?: ID;
+  createdAt: string;
+}
+
+export interface RuleCriterion {
+  field: 'description' | 'reference' | 'payee' | 'amount';
+  op: 'contains' | 'not_contains' | 'equals' | 'starts_with' | 'ends_with' | 'gt' | 'lt' | 'eq';
+  value: string;
+}
+export interface BankRule {
+  id: ID;
+  name: string;
+  applyTo: 'deposits' | 'withdrawals';
+  /** recognized: suggest; categorized: record automatically */
+  markAs: 'recognized' | 'categorized';
+  match: 'any' | 'all';
+  criteria: RuleCriterion[];
+  recordAs: BankTxnType;
+  offsetAccountId: ID;
+  contactId?: ID;
+  referenceFrom?: 'none' | 'description' | 'reference';
+  /** empty = every bank and card account */
+  accountIds: ID[];
+  scope: 'all' | 'banks' | 'cards' | 'custom';
+  order: number;
+  createdAt: string;
+}
+
+export interface Reconciliation {
+  id: ID;
+  accountId: ID;
+  startDate: string;
+  endDate: string;
+  openingBalance: number;
+  closingBalance: number;
+  /** ledger journal ids (or journal id + line index) cleared in this reconciliation */
+  cleared: string[];
+  status: 'draft' | 'reconciled';
+  createdAt: string;
+  reconciledAt?: string;
+}
+
+// ------------------------------------------------------------------ documents
+
+export interface DocFolder {
+  id: ID;
+  name: string;
+  permission: 'all' | 'custom';
+  userIds?: ID[];
+  createdAt: string;
+}
+
+export interface DocLink {
+  type: string;
+  id: ID;
+  label: string;
+}
+
+/** A file in Documents (inbox upload). Files attached directly to transactions stay on the transaction. */
+export interface DocFile extends Attachment {
+  inbox: 'files' | 'bank_statements';
+  folderId?: ID;
+  uploadedBy: string;
+  links: DocLink[];
+  trashedAt?: string;
+  /** bank statement inbox: statement imported into this account */
+  importedToAccountId?: ID;
+}
+
+export interface SavedReport {
+  id: ID;
+  name: string;
+  report: string;
+  params: Record<string, string>;
+  hiddenColumns?: string[];
+  createdAt: string;
+}
+
+export interface ReportSchedule {
+  id: ID;
+  report: string;
+  name: string;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  format: 'pdf' | 'csv' | 'xls';
+  to: string[];
+  active: boolean;
   createdAt: string;
 }
 
@@ -658,7 +906,7 @@ export interface RunningTimer {
   createdAt: string;
 }
 
-export type BudgetPeriod = 'monthly' | 'quarterly' | 'yearly';
+export type BudgetPeriod = 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
 export interface BudgetLine {
   accountId: ID;
   /** one amount per period bucket, in order */
@@ -701,6 +949,21 @@ export interface Database {
   users: User[];
   timers: RunningTimer[];
   budgets: Budget[];
+  manualJournals: Journal[];
+  journalTemplates: JournalTemplate[];
+  recurringJournals: RecurringJournal[];
+  currencies: Currency[];
+  currencyAdjustments: CurrencyAdjustment[];
+  transactionLocks: TransactionLocks;
+  bankTransactions: BankTransaction[];
+  statementLines: StatementLine[];
+  statementImports: StatementImport[];
+  bankRules: BankRule[];
+  reconciliations: Reconciliation[];
+  documents: DocFile[];
+  docFolders: DocFolder[];
+  savedReports: SavedReport[];
+  reportSchedules: ReportSchedule[];
   counters: Record<string, number>;
   preferences: Record<string, unknown>;
   pdfTemplates: PdfTemplate[];

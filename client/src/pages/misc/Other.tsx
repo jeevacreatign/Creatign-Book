@@ -19,53 +19,6 @@ import type { ExpenseDetailData } from '../expenses/ExpenseDetail';
 import PortalSettingsPage from '../settings/Portal';
 
 
-// ------------------------------------------------------------ documents
-
-export function Documents() {
-  const { data = [] } = useApi<(Attachment & { source: string; sourceId: string; sourceLabel: string })[]>('/documents');
-  const path = (s: string, id: string) => (s in DOC_META ? `${DOC_META[s as keyof typeof DOC_META].path}/${id}` : s === 'customer' ? `/sales/customers/${id}` : s === 'vendor' ? `/purchases/vendors/${id}` : s === 'expense' ? `/purchases/expenses/${id}` : s === 'payment_received' ? `/sales/payments-received/${id}` : `/purchases/payments-made/${id}`);
-  return (
-    <div>
-      <PageHeader title="Documents" sub="Every file attached to a transaction, contact or expense" />
-      <table className="table">
-        <thead>
-          <tr>
-            <th>File Name</th>
-            <th>Attached To</th>
-            <th>Size</th>
-            <th>Uploaded</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((d) => (
-            <tr key={`${d.id}-${d.sourceId}`}>
-              <td>
-                <a className="link inline-flex items-center gap-1.5" href={d.url} target="_blank" rel="noreferrer">
-                  <FileText size={13} /> {d.name}
-                </a>
-              </td>
-              <td>
-                <Link className="link" to={path(d.source, d.sourceId)}>
-                  {d.sourceLabel}
-                </Link>
-              </td>
-              <td>{(d.size / 1024).toFixed(1)} KB</td>
-              <td>{fmtDateTime(d.uploadedAt)}</td>
-            </tr>
-          ))}
-          {!data.length && (
-            <tr>
-              <td colSpan={4} className="py-12 text-center text-slate-400">
-                No documents yet. Files you attach to invoices, bills, expenses and contacts appear here.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 // ------------------------------------------------------------ settings
 
 function OrgProfile() {
