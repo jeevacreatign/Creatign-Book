@@ -17,6 +17,8 @@ import { StatementView } from '../contacts/Contacts';
 import EmailSettings from '../settings/Emails';
 import type { ExpenseDetailData } from '../expenses/ExpenseDetail';
 import PortalSettingsPage from '../settings/Portal';
+import { MyAccount, UsersAccess } from '../settings/Team';
+import { useMe } from '../../auth';
 
 
 // ------------------------------------------------------------ settings
@@ -217,14 +219,17 @@ function DataAdmin() {
 }
 
 export function Settings() {
+  const me = useMe();
   const tabs = [
     { to: '/settings', label: 'Organization Profile', end: true },
+    { to: '/settings/account', label: 'My Account' },
+    ...(me.user.role === 'Admin' ? [{ to: '/settings/users', label: 'Users & Access' }] : []),
     { to: '/settings/preferences', label: 'Preferences' },
     { to: '/settings/approvals', label: 'Approvals' },
     { to: '/settings/templates', label: 'PDF Templates' },
     { to: '/settings/emails', label: 'Emails' },
     { to: '/settings/portal', label: 'Client Portal' },
-    { to: '/settings/features', label: 'Configure Features' },
+    { to: '/settings/features', label: 'Feature Settings' },
     { to: '/settings/import', label: 'Import Data' },
     { to: '/settings/data', label: 'Data & Backup' },
   ];
@@ -241,6 +246,8 @@ export function Settings() {
       <div className="flex-1 overflow-y-auto p-6">
         <Routes>
           <Route index element={<OrgProfile />} />
+          <Route path="account" element={<MyAccount />} />
+          <Route path="users" element={<UsersAccess />} />
           <Route path="preferences" element={<Preferences />} />
           <Route path="approvals" element={<Approvals />} />
           <Route path="templates" element={<TemplatesSettings />} />

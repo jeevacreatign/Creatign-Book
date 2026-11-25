@@ -824,8 +824,30 @@ export interface User {
   name: string;
   email?: string;
   role: 'Admin' | 'Staff' | 'Timesheet Staff';
-  status: 'active' | 'inactive';
+  /** pending: signed up and waiting for an admin to approve; invited: sign-in link sent, no password yet */
+  status: 'active' | 'inactive' | 'pending' | 'invited';
   createdAt: string;
+  // sign-in (never sent to the client)
+  passwordHash?: string;
+  lastLoginAt?: string;
+  failedLogins?: number;
+  lockedUntil?: string;
+  resetTokenHash?: string;
+  resetExpiresAt?: string;
+  inviteTokenHash?: string;
+  inviteExpiresAt?: string;
+  approvedAt?: string;
+}
+
+/** A signed-in browser session of a team member (cookie holds the token; only its hash is stored). */
+export interface StaffSession {
+  id: ID;
+  tokenHash: string;
+  userId: ID;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
+  userAgent?: string;
 }
 
 export interface ProjectTask {
@@ -943,6 +965,7 @@ export interface Database {
   emailTemplates: EmailTemplate[];
   portalUsers: PortalUser[];
   portalSessions: PortalSession[];
+  staffSessions: StaffSession[];
   paymentNotices: PaymentNotice[];
   projects: Project[];
   timeEntries: TimeEntry[];

@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Home, Package, ShoppingCart, ShoppingBag, Clock, Landmark, UserCog, BarChart3, FolderOpen, Wallet, CreditCard, ChevronRight, ChevronDown, Search, Plus, Settings, Bell, RefreshCw, PanelLeftClose, PanelLeftOpen, Building2, Check, Sparkles,
+  Home, Package, ShoppingCart, ShoppingBag, Clock, Landmark, UserCog, BarChart3, FolderOpen, Wallet, CreditCard, ChevronRight, ChevronDown, Search, Plus, Settings, Bell, RefreshCw, PanelLeftClose, PanelLeftOpen, Building2, Check, Sparkles, LogOut, UserRound, Users,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useOrg } from '../lib/app';
 import { api, qs } from '../api';
 import { useOutside } from './ui';
 import { TimerChip } from '../pages/time/common';
+import { useMe, useSignOut } from '../auth';
+
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
 
 type NavItem = { to: string; label: string; noNew?: boolean };
 const SALES: NavItem[] = [
@@ -234,6 +237,8 @@ function Topbar() {
   useOutside(plusRef, () => setPlus(false));
   useOutside(orgRef, () => setOrgOpen(false));
   useOutside(profRef, () => setProfile(false));
+  const me = useMe();
+  const signOut = useSignOut();
   return (
     <header className="no-print flex h-12 shrink-0 items-center gap-3 bg-ink-900 px-3 text-white">
       <Link to="/" className="flex w-[196px] items-center gap-2">
@@ -312,25 +317,44 @@ function Topbar() {
         <Settings size={16} />
       </button>
       <div ref={profRef} className="relative">
-        <button className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-400 text-[12px] font-semibold text-ink-900" onClick={() => setProfile((p) => !p)} aria-label="Profile">
-          {org.name[0]}
+        <button className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-400 text-[12px] font-semibold text-ink-900" onClick={() => setProfile((p) => !p)} aria-label="Profile" title={me.user.name}>
+          {initials(me.user.name)}
         </button>
         {profile && (
-          <div className="menu right-0 w-64 p-3 text-slate-800">
-            <div className="font-medium">{org.name} Admin</div>
-            <div className="text-xxs text-slate-500">{org.email}</div>
-            <div className="mt-2 flex items-center gap-1 text-xxs text-slate-500">
+          <div className="menu right-0 w-72 p-0 text-slate-800">
+            <div className="flex items-center gap-3 border-b border-slate-100 p-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-400 text-[15px] font-semibold text-ink-900">{initials(me.user.name)}</span>
+              <div className="min-w-0">
+                <div className="truncate font-medium">{me.user.name}</div>
+                <div className="truncate text-xxs text-slate-500">{me.user.email}</div>
+                <div className="mt-0.5 text-xxs text-slate-500">
+                  {me.user.role} · {org.name}
+                </div>
+              </div>
+            </div>
+            <div className="p-1.5">
+              <button className="menu-item rounded" onClick={() => { setProfile(false); navigate('/settings/account'); }}>
+                <UserRound size={14} /> My Account
+              </button>
+              {me.user.role === 'Admin' && (
+                <button className="menu-item rounded" onClick={() => { setProfile(false); navigate('/settings/users'); }}>
+                  <Users size={14} /> Users & Access
+                </button>
+              )}
+              <button className="menu-item rounded" onClick={() => { setProfile(false); navigate('/settings'); }}>
+                <Settings size={14} /> Settings
+              </button>
+            </div>
+            {!me.authDisabled && (
+              <div className="border-t border-slate-100 p-1.5">
+                <button className="menu-item rounded text-red-600 hover:bg-red-50 hover:text-red-700" onClick={signOut}>
+                  <LogOut size={14} /> Sign out
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-1 border-t border-slate-100 px-3 py-2 text-xxs text-slate-400">
               <Sparkles size={12} /> Organization ID: {org.id}
             </div>
-            <button
-              className="btn-secondary btn-sm mt-3 w-full"
-              onClick={() => {
-                setProfile(false);
-                navigate('/settings');
-              }}
-            >
-              My Account & Settings
-            </button>
           </div>
         )}
       </div>

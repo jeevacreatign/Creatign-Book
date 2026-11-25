@@ -546,6 +546,11 @@ export async function sendSystemEmail(o: { kind: EmailTemplateKind; to: string; 
   return sendRaw({ to: [o.to], subject: fillPlaceholders(t.subject, values), text: fillPlaceholders(t.body, values), button: o.button, contactId: o.contact?.id, entityType: o.kind, templateId: t.id, db });
 }
 
+/** Sign-in emails to team members (invitations, password resets). */
+export async function sendStaffEmail(to: string, subject: string, text: string, button: EmailButton) {
+  return sendRaw({ to: [to], subject, text, button, entityType: 'staff_account', db: getDb() });
+}
+
 /** Tell the organization about something a customer did in the portal. Never throws. */
 export async function notifyOrganization(subject: string, text: string, button?: EmailButton) {
   const db = getDb();

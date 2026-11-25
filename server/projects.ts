@@ -1,5 +1,6 @@
 // Time tracking: projects (four billing methods, tasks, users, budgets), timesheet entries,
 // the running timer, and invoicing unbilled time.
+import { publicUser, requestUser } from './auth';
 import type { Request, RequestHandler, Router } from 'express';
 import { DOC_META } from '../shared/docmeta';
 import { round2, today } from '../shared/format';
@@ -57,7 +58,8 @@ export function normalizeTimeTracking(db: Database) {
 
 // ================================================================== helpers
 
-export const currentUser = (db: Database): User => db.users.find((u) => u.role === 'Admin' && u.status === 'active') ?? db.users[0];
+/** The signed-in team member, or the first Admin when sign-in is turned off (tests, scripts). */
+export const currentUser = (db: Database): User => requestUser() ?? db.users.find((u) => u.role === 'Admin' && u.status === 'active') ?? db.users[0];
 
 function getProject(db: Database, id: string) {
   const x = db.projects.find((y) => y.id === id);
@@ -482,7 +484,7 @@ function saveBudget(db: Database, body: Partial<Budget>, existing?: Budget): Bud
 
 export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
   // ---------------------------------------------------------------- users
-  api.get('/users', h(() => getDb().users));
+  api.get('/users', h(() => getDb().users.map(publicUser)));
   api.post('/users', m((req) => {
     const db = getDb();
     const b = req.body as Partial<User>;

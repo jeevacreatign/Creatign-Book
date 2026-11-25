@@ -41,6 +41,19 @@ On first start the server creates `server/data/db.json` with the Creatign organi
 
 Environment variables go in a `.env` file in the project folder (copy `.env.example`): `PORT` (default 4000), `DB_FILE` (default `server/data/db.json`, `:memory:` for no disk) and the email settings below. `.env` is ignored by git, so passwords stay on your computer.
 
+## Sign-up and sign-in
+
+The staff app and its API need a signed-in team member.
+
+* **First run**: opening the app shows **Set up Creatign Ledger**. The first person to sign up becomes the **Admin**. If their email matches a user already on file (the sample data has *accounts@creatign.example*), that user record is claimed.
+* **Later sign-ups** (`/signup`) wait as *Awaiting approval* until an Admin approves them in **Settings → Users & Access**, where the Admin also picks their role (Admin, Staff or Timesheet Staff).
+* **Invitations**: **Settings → Users & Access → Invite User** emails a link (valid 7 days, single use) to set a password. If email is not set up, the link is shown to copy.
+* **Forgot password** emails a reset link valid for 2 hours. Resetting signs out every other browser.
+* **Sessions** are random tokens in an HttpOnly, SameSite=Lax cookie (14 days with *Keep me signed in*, otherwise until the browser closes). Only a hash is stored. Passwords are hashed with scrypt; 8 wrong attempts lock the account for 15 minutes, and sign-in, sign-up and reset requests are rate limited.
+* Requests that change data must carry the `X-CL-Request: 1` header the app sends, so other websites cannot post forms to the API. `/uploads` files also need a session.
+* **My Account** (profile menu) changes your name and password. **Sign out** is in the same menu.
+* `AUTH_DISABLED=1` turns sign-in off. The automated tests use it; never set it on a server others can reach.
+
 ## Sending email
 
 Email is set up in **Settings → Emails**, which shows which transport is in use and has a **Send Test** button. The app tries, in order:
@@ -210,7 +223,7 @@ Security: passwords are hashed with scrypt; sessions are random tokens stored ha
 
 * **Email** is delivered through Gmail or SMTP once set up (see *Sending email*); otherwise it waits in the outbox. Attached PDFs use the document's PDF template and the fonts in `client/public/fonts`. Automatic, scheduled payment reminders are not implemented; send reminders from the invoice (the Payment Reminder template is picked for overdue invoices).
 * **Online payments**: the portal shows UPI and bank details and lets clients report payments for you to confirm; there is no card or net-banking gateway, so nothing is charged online.
-* **Exposing the portal on the internet**: the portal and share links have their own authentication, but the staff app and its `/api` routes do not (Creatign Ledger is a single-user app). Only publish `/portal`, `/share` and `/api/portal`, `/api/public` through your reverse proxy, or put the staff app behind a VPN or a login, before making the portal public. Set `APP_ORIGIN` (or the Portal URL setting) to the public address so email links point there.
+* **Exposing the app on the internet**: the staff app needs sign-in, and the portal and share links have their own authentication. Serve it over HTTPS so cookies are marked Secure, and keep `AUTH_DISABLED` unset. Set `APP_ORIGIN` (or the Portal URL setting) to the public address so email links point there.
 * **PDF** uses the browser's print-to-PDF from the PDF/Print buttons (pages under `/print/...`), sized to the template's paper and margins. Emailed PDFs embed JPG and PNG logos only, and page numbers appear on emailed PDFs only.
 * Recurring invoices, bills and expenses generate due documents when the server starts, on the first request each day, and from **More → Generate due invoices now**.
 * Single organisation and single user. GST tax lines, multi-currency, bank feeds and reconciliation are not implemented.
