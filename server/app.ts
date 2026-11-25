@@ -8,12 +8,12 @@ import { DOC_META } from '../shared/docmeta';
 import { periodRange, today, type PeriodKey } from '../shared/format';
 import { CUSTOM_FIELD_TYPES, builtInTemplates, normalizeTemplate, resolveTemplate, type CustomFieldDef, type PdfTemplate } from '../shared/pdfTemplate';
 import type { Account, Attachment, DocKind, Journal, PaymentMade, Project, TimeEntry, TxnDoc } from '../shared/types';
-import { UPLOAD_DIR, getDb, newId, now, peekNumber, resetDb } from './db';
+import { UPLOAD_DIR, flushDb, getDb, newId, now, peekNumber, resetDb } from './db';
 import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import { normalizeTimeTracking, registerProjectRoutes } from './projects';
 import { lockGuard, registerAccountantRoutes } from './accountant';
 import { registerBankingRoutes } from './banking';
-import { registerAuthRoutes, requireStaff } from './auth';
+import { registerAuthRoutes, requireAdmin, requireStaff } from './auth';
 import { registerDocumentRoutes } from './documents';
 import * as R from './reports';
 import { CATEGORIES as CATALOG_CATEGORIES, catalog as reportCatalog, runReport } from './reportCatalog';
@@ -30,6 +30,7 @@ type Handler = (req: Request, res: Response) => unknown;
 const h = (fn: Handler) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     const out = await fn(req, res);
+    await flushDb(); // answer only once the change is saved
     if (!res.headersSent) res.json(out ?? { ok: true });
   } catch (e) {
     next(e);
@@ -214,8 +215,22 @@ export function createApp() {
     prefs.docDefaults = dd;
     return Object.assign(prefs, body);
   }));
+  api.get('/admin/backup', (req, res, next) => {
+    try {
+      requireAdmin();
+    } catch (e) {
+      return next(e);
+    }
+    const db = getDb();
+    // sign-in secrets and sessions never leave the server
+    const safe = { ...db, users: db.users.map(({ passwordHash: _p, resetTokenHash: _r, inviteTokenHash: _i, ...u }) => u), staffSessions: [], portalSessions: [], portalUsers: db.portalUsers.map((u) => ({ ...u, passwordHash: undefined, resetTokenHash: undefined, inviteTokenHash: undefined })) };
+    res.setHeader('Content-Disposition', `attachment; filename="creatign-ledger-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.json(safe);
+  });
   api.post('/admin/reset', h((req) => {
-    resetDb(req.body?.samples !== false);
+    requireAdmin();
+    // the team and their sign-ins stay
+    resetDb(req.body?.samples !== false, ['users', 'staffSessions']);
     S.commit();
     return { ok: true };
   }));

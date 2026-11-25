@@ -14,32 +14,72 @@ The architecture, every entity and the double-entry posting rules are documented
 |---|---|
 | Frontend | React 18, TypeScript, Tailwind CSS 3, Vite 5, React Router 6, TanStack Query 5, Recharts, lucide-react |
 | Backend | Node.js, Express 5 (run with `tsx`), multer for attachments |
-| Persistence | JSON document store at `server/data/db.json`, written atomically. Attachments go to `server/uploads/` |
+| Database | MySQL 8 (or MariaDB 10.6+) through `mysql2`: one table per entity plus a `journal_lines` ledger table. Attachments go to `server/uploads/` |
 | Tests | Vitest + Supertest (end-to-end API workflows) |
 
 ## Setup
 
-Requirements: Node.js 20 or newer and npm.
+Requirements: Node.js 20 or newer, npm, and a MySQL 8 (or MariaDB 10.6+) server.
 
-```bash
-npm install
-npm run dev
-```
+1. **Start MySQL.** With Docker: `docker compose up -d mysql` (uses `docker-compose.yml`, which creates the `creatign_ledger` database and user). Or create them yourself:
+
+   ```sql
+   CREATE DATABASE creatign_ledger CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE USER 'ledger'@'%' IDENTIFIED BY 'choose-a-strong-password';
+   GRANT ALL ON creatign_ledger.* TO 'ledger'@'%';
+   ```
+
+2. **Point the app at it.** Copy `.env.example` to `.env` and set `DATABASE_URL=mysql://ledger:choose-a-strong-password@localhost:3306/creatign_ledger`.
+
+3. **Run it.**
+
+   ```bash
+   npm install
+   npm run dev
+   ```
 
 * App: http://localhost:5173
 * API: http://localhost:4000/api (Vite proxies `/api` and `/uploads` to it)
 
-On first start the server creates `server/data/db.json` with the Creatign organisation, a chart of accounts and a little sample data (4 items, clients *Test Company* and *Ananya Textiles*, suppliers, two projects with tasks, users and time entries), so every screen has something to show.
+On first start the server creates the tables and fills them with the Creatign organisation, a chart of accounts and a little sample data (4 items, clients *Test Company* and *Ananya Textiles*, suppliers, two projects with tasks, users and time entries), so every screen has something to show.
 
 | Command | What it does |
 |---|---|
 | `npm run dev` | Starts API (port 4000, auto-reload) and web app (port 5173) together |
 | `npm test` | Runs the workflow tests against an in-memory database |
 | `npm run typecheck` | TypeScript check for client, server and shared code |
-| `npm run reset-data` | Wipes the data file and reseeds sample data. `npm run reset-data -- --empty` seeds only the organisation and accounts |
+| `npm run reset-data` | Wipes the MySQL database and reseeds sample data. `npm run reset-data -- --empty` seeds only the organisation and accounts |
+| `npm run db:import -- server/data/db.json` | Moves books from the old JSON file into MySQL (add `--force` to replace books already in MySQL) |
 | `npm run build` then `npm start` | Production build; the API then also serves the built app on port 4000 |
 
-Environment variables go in a `.env` file in the project folder (copy `.env.example`): `PORT` (default 4000), `DB_FILE` (default `server/data/db.json`, `:memory:` for no disk) and the email settings below. `.env` is ignored by git, so passwords stay on your computer.
+Environment variables go in a `.env` file in the project folder (copy `.env.example`): `DATABASE_URL` (required), `PORT` (default 4000) and the email settings below. `.env` is ignored by git, so passwords stay on your computer.
+
+## Database
+
+The books live in MySQL. Every list in the app has its own table (`transactions` for invoices, quotes, bills and other documents, `contacts`, `items`, `accounts`, `payments_received`, `payments_made`, `expenses`, `journals`, `bank_transactions`, `statement_lines`, `users`, …). Each table has:
+
+* `id` (primary key) and `seq` (the order rows appear in the app),
+* typed, indexed columns for querying and reporting, such as `date`, `contact_id`, `account_id`, `status`, `total`, `balance`,
+* `data`: the full record as JSON, so nothing is lost,
+* `updated_at`.
+
+`journal_lines` holds every ledger posting (`journal_id`, `date`, `account_id`, `contact_id`, `debit`, `credit`, `source_type`, `source_id`), so you can run SQL such as account balances directly:
+
+```sql
+SELECT a.code, a.name, SUM(l.debit) - SUM(l.credit) AS balance
+FROM journal_lines l JOIN accounts a ON a.id = l.account_id
+WHERE l.date <= '2027-03-31' GROUP BY a.id ORDER BY a.code;
+```
+
+Single settings (organisation profile, preferences, numbering counters, transaction locks) are rows of the `settings` table.
+
+How it runs: the server creates missing tables and columns on start, loads the books into memory, and after every change writes only the rows that changed, in one transaction, before it answers the request. Run **one** app process per database (do not put two servers on the same database), and edit data through the app rather than with SQL while it is running.
+
+**Moving from the JSON file**: if you used an earlier version, your books are in `server/data/db.json`. Set `DATABASE_URL`, then run `npm run db:import -- server/data/db.json`. Keep the JSON file until you have checked everything in the app.
+
+**Backups**: use `mysqldump creatign_ledger > backup.sql` (or your host's MySQL backups). Admins can also download a JSON copy from **Settings → Data & Backup**.
+
+**Tests** run against an in-memory copy and need no database. `tests/mysql.test.ts` also checks the MySQL layer when `TEST_DATABASE_URL` points at an empty test database, for example `TEST_DATABASE_URL=mysql://ledger:pass@localhost:3306/creatign_ledger_test npm test`.
 
 ## Sign-up and sign-in
 
@@ -118,7 +158,7 @@ server/
   services.ts  validation, numbering, document actions, payments, credits, expenses
   engine.ts    recompute balances/statuses and rebuild journals after each change
   reports.ts   dashboard, P&L, balance sheet, trial balance, ledgers, aging, sales reports
-  db.ts        load/persist the JSON store     seed.ts  organisation, accounts, samples
+  db.ts        load / save the books   mysql.ts  MySQL tables and writes     seed.ts  organisation, accounts, samples
 client/src/
   components/  layout (sidebar + top bar), form controls, document preview, shared panels
   pages/       Home, items, contacts, docs (all 10 sales/purchase documents), payments,
@@ -227,4 +267,4 @@ Security: passwords are hashed with scrypt; sessions are random tokens stored ha
 * **PDF** uses the browser's print-to-PDF from the PDF/Print buttons (pages under `/print/...`), sized to the template's paper and margins. Emailed PDFs embed JPG and PNG logos only, and page numbers appear on emailed PDFs only.
 * Recurring invoices, bills and expenses generate due documents when the server starts, on the first request each day, and from **More → Generate due invoices now**.
 * Single organisation and single user. GST tax lines, multi-currency, bank feeds and reconciliation are not implemented.
-* The JSON store suits a single small business. For multi-user use, swap `server/db.ts` for a database; the schema in docs/SCHEMA.md maps directly to tables.
+* One app process serves one MySQL database; it keeps the books in memory and writes each change through. Scaling out to several app servers would need the services to query MySQL directly.

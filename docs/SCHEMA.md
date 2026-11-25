@@ -18,11 +18,12 @@ This document describes how Creatign Books is put together, every entity it stor
 │  routes → services.ts (validation, numbering, actions)           │
 │         → engine.ts   (recompute balances/statuses + journals)    │
 │         → reports.ts  (dashboard, P&L, BS, TB, GL, aging …)       │
-│         → db.ts       (load / atomic persist)                     │
+│         → db.ts       (load / save) → mysql.ts (tables, writes)   │
 └───────────────┬──────────────────────────────────────────────────┘
                 │
-        server/data/db.json   (single JSON document, written atomically:
-                               tmp file + rename; DB_FILE=:memory: for tests)
+        MySQL (DATABASE_URL)  one table per collection + journal_lines,
+                              changed rows written per request in one transaction
+                              (DB_FILE=:memory: for tests)
         server/uploads/       (attachments, via multer, 10 MB per file)
 ```
 
@@ -54,7 +55,7 @@ Code that both sides need lives in `shared/`:
 
 ## 3. Entities
 
-The JSON store is one `Database` object whose arrays map one-to-one to tables. Types below are TypeScript, with `?` meaning nullable. Ids are prefixed strings (`cus_…`, `inv_…`).
+In memory the books are one `Database` object; each array is a MySQL table (see `server/mysql.ts` for table and column names) and the single objects are rows of `settings`. Types below are TypeScript, with `?` meaning nullable. Ids are prefixed strings (`cus_…`, `inv_…`).
 
 ### Database (root)
 
