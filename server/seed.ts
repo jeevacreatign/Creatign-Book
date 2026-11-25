@@ -135,6 +135,7 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     emailTemplates: builtInEmailTemplates(),
     portalUsers: [],
     portalSessions: [],
+    staffSessions: [],
     paymentNotices: [],
     projects: [],
     timeEntries: [],

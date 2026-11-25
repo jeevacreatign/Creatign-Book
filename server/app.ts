@@ -13,6 +13,7 @@ import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import { normalizeTimeTracking, registerProjectRoutes } from './projects';
 import { lockGuard, registerAccountantRoutes } from './accountant';
 import { registerBankingRoutes } from './banking';
+import { registerAuthRoutes, requireStaff } from './auth';
 import { registerDocumentRoutes } from './documents';
 import * as R from './reports';
 import { CATEGORIES as CATALOG_CATEGORIES, catalog as reportCatalog, runReport } from './reportCatalog';
@@ -89,7 +90,8 @@ export function createApp() {
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  app.use('/uploads', express.static(UPLOAD_DIR));
+  app.use('/uploads', requireStaff, express.static(UPLOAD_DIR));
+  app.use('/api', requireStaff);
 
   const api = express.Router();
   api.use(freshness);
@@ -219,6 +221,7 @@ export function createApp() {
   }));
 
   // ------------------------------------------------------------ accountant (server/accountant.ts)
+  registerAuthRoutes(api, h, m);
   registerAccountantRoutes(api, h, m);
   registerBankingRoutes(api, h, m);
 

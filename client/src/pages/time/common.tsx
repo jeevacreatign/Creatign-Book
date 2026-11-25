@@ -1,5 +1,6 @@
 // Shared time tracking UI: types, the log entry dialog, the running timer in the top bar,
 // filter pills and the "Invoice project" dialog.
+import { useMe } from '../../auth';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -171,9 +172,10 @@ export function LogEntryModal({ open, onClose, entry, defaults }: { open: boolea
     if (open) setF(blank());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, entry?.id]);
+  const me = useMe();
   useEffect(() => {
-    // default to the signed-in user (the first admin)
-    if (open && !f.userId && users.length) setF((x) => ({ ...x, userId: (users.find((u) => u.role === 'Admin' && u.status === 'active') ?? users[0]).id }));
+    // default to the signed-in user
+    if (open && !f.userId && users.length) setF((x) => ({ ...x, userId: (users.find((u) => u.id === me.user.id) ?? users.find((u) => u.role === 'Admin' && u.status === 'active') ?? users[0]).id }));
   }, [open, users.length, f.userId]);
   const project = projects.find((p) => p.id === f.projectId);
   const selectable = projects.filter((p) => p.status === 'active' || p.id === f.projectId);

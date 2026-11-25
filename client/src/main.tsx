@@ -22,6 +22,7 @@ import { AppPlaceholder, PrintDoc, PrintExpense, PrintPayment, PrintStatement, S
 import TimeTracking from './pages/time';
 import SharePage from './customer/SharePage';
 import PortalApp from './customer/Portal';
+import { AcceptInvite, AuthGate, ForgotPassword, ResetPassword, SignIn, SignUp } from './auth';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } } });
 
@@ -50,12 +51,19 @@ function Root() {
     <Routes>
       <Route path="/share/:token" element={<SharePage />} />
       <Route path="/portal/*" element={<PortalApp />} />
+      <Route path="/signin" element={<SignIn />} />
+      <Route path="/signup" element={<SignUp />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password/:token" element={<ResetPassword />} />
+      <Route path="/invite/:token" element={<AcceptInvite />} />
       <Route
         path="*"
         element={
-          <AppProvider>
-            <App />
-          </AppProvider>
+          <AuthGate>
+            <AppProvider>
+              <App />
+            </AppProvider>
+          </AuthGate>
         }
       />
     </Routes>

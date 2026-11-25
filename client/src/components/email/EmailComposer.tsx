@@ -198,7 +198,7 @@ export function EmailModal(o: EmailOptions) {
   useEffect(() => {
     if (view !== 'preview') return;
     let live = true;
-    fetch('/api/mail/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload()) })
+    fetch('/api/mail/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CL-Request': '1' }, body: JSON.stringify(payload()) })
       .then((r) => r.text())
       .then((html) => live && setPreviewHtml(html))
       .catch(() => live && setPreviewHtml('<p style="font-family:sans-serif;color:#b42318">Could not load the preview.</p>'));
