@@ -74,6 +74,8 @@ export const TABLES: TableDef[] = [
   { key: 'docFolders', table: 'file_folders', cols: [c('name', 'text', 'name')] },
   { key: 'savedReports', table: 'saved_reports', cols: [c('name', 'text', 'name'), c('report', 'str', 'report')] },
   { key: 'reportSchedules', table: 'report_schedules', cols: [c('name', 'text', 'name'), c('report', 'str', 'report')] },
+  { key: 'priceLists', table: 'price_lists', cols: [c('name', 'text', 'name'), c('type', 'str', 'type'), status, created] },
+  { key: 'inventoryAdjustments', table: 'inventory_adjustments', cols: [number, date('date', 'date'), c('reason', 'text', 'reason'), created] },
 ];
 
 /** Single objects (not lists) live in one key/value table. */

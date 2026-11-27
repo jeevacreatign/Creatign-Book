@@ -25,6 +25,7 @@ import { portalRouter, publicShareRoutes, staffPortalRoutes } from './portal';
 import { EMAIL_TEMPLATE_KINDS, builtInEmailTemplates, type EmailTemplate, type EmailTemplateKind } from '../shared/email';
 import { consumeGoogleAuthorizationState, createGoogleAuthorizationUrl, disconnectGoogleAccount, finishGoogleAuthorization, googleOAuthResultPage } from './google-mail';
 import { renderDocPdf, renderPaymentPdf, renderStatementPdf } from './pdf';
+import { registerCatalogRoutes, withStock } from './catalog';
 import { dueReminders, reminderLog, runReminders, saveReminderSettings } from './reminders';
 import { reminderSettings } from '../shared/reminders';
 
@@ -286,14 +287,15 @@ export function createApp() {
   // ------------------------------------------------------------ items
   api.get('/items', h((req) => {
     const status = q(req, 'status');
-    return getDb().items.filter((i) => (!status || status === 'all' || i.status === status) && (matches(i.name, q(req, 'q')) || matches(i.sku, q(req, 'q'))));
+    const db = getDb();
+    return withStock(db, db.items.filter((i) => (!status || status === 'all' || i.status === status) && (matches(i.name, q(req, 'q')) || matches(i.sku, q(req, 'q')))));
   }));
   api.get('/items/:id', h((req) => {
     const db = getDb();
     const item = db.items.find((i) => i.id === p(req, 'id'));
     if (!item) throw new S.HttpError(404, 'Item not found');
     const usage = db.docs.filter((d) => d.lineItems.some((l) => l.itemId === item.id)).map((d) => ({ id: d.id, kind: d.kind, number: d.number, date: d.date, status: d.status, contact: S.contactName(db, d.contactId), total: d.total }));
-    return { ...item, usage };
+    return { ...withStock(db, [item])[0], usage };
   }));
   api.post('/items', m((req) => S.upsertItem(req.body)));
   api.put('/items/:id', m((req) => S.upsertItem(req.body, p(req, 'id'))));
@@ -830,6 +832,7 @@ export function createApp() {
 
   // ------------------------------------------------------------ projects & time (server/projects.ts)
   registerProjectRoutes(api, h, m);
+  registerCatalogRoutes(api, h, m);
 
   // ------------------------------------------------------------ dashboard, search & reports
   api.get('/dashboard', h((req) => R.dashboard({ cashPeriod: q(req, 'cashPeriod') as PeriodKey, incomePeriod: q(req, 'incomePeriod') as PeriodKey, expensePeriod: q(req, 'expensePeriod') as PeriodKey, basis: q(req, 'basis') as 'cash' })));

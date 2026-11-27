@@ -121,3 +121,99 @@ describe('automatic payment reminders', () => {
     expect(dueReminders('2026-11-20').some((x) => x.invoiceId === inv)).toBe(false);
   });
 });
+
+describe('price lists', () => {
+  it('marks every item up or down and rounds', async () => {
+    const bad = await api().post('/api/price-lists').send({ name: 'Bad', type: 'percentage', percentage: 0 });
+    expect(bad.status).toBe(400);
+    const r = await api().post('/api/price-lists').send({ name: 'Partner discount', type: 'percentage', direction: 'markdown', percentage: 10, rounding: 'whole' });
+    expect(r.status).toBe(200);
+    const d = await api().get(`/api/price-lists/${r.body.id}`);
+    expect(d.body.rates.find((x: { itemId: string }) => x.itemId === 'item_web').rate).toBe(40500);
+    expect(d.body.rates.find((x: { itemId: string }) => x.itemId === 'item_brochure').rate).toBe(23); // 22.5 rounded
+  });
+
+  it('sets custom rates per item and applies them to a client', async () => {
+    const r = await api().post('/api/price-lists').send({ name: 'Ananya rates', type: 'per_item', items: [{ itemId: 'item_logo', rate: 6500 }] });
+    expect(r.status).toBe(200);
+    const c = await api().put('/api/contacts/cus_ananya').send({ priceListId: r.body.id });
+    expect(c.status).toBe(200);
+    const rates = await api().get('/api/price-lists/for-contact/cus_ananya');
+    expect(rates.body.priceList.name).toBe('Ananya rates');
+    expect(rates.body.rates.item_logo).toBe(6500);
+    expect(rates.body.rates.item_web).toBe(45000); // not on the list: the item's own rate
+    expect((await api().put('/api/contacts/cus_ananya').send({ priceListId: 'pl_missing' })).status).toBe(400);
+    // deleting the list releases the client
+    await api().delete(`/api/price-lists/${r.body.id}`);
+    expect((await api().get('/api/contacts/cus_ananya')).body.priceListId).toBeUndefined();
+  });
+});
+
+describe('stock tracking', () => {
+  let itemId = '';
+  it('counts opening stock, bills, invoices and adjustments', async () => {
+    const it1 = await api().post('/api/items').send({ name: 'Visiting Cards (box)', type: 'goods', unit: 'box', sellingPrice: 400, costPrice: 150, trackInventory: true, openingStock: 20, reorderLevel: 5 });
+    expect(it1.status).toBe(200);
+    itemId = it1.body.id;
+    await api().post('/api/docs').send({ kind: 'bill', mode: 'open', contactId: 'ven_murugan', number: 'SMP-STOCK-1', date: '2026-11-02', lineItems: [{ itemId, name: 'Visiting Cards (box)', quantity: 30, rate: 150 }] });
+    await api().post('/api/docs').send({ kind: 'invoice', mode: 'open', contactId: 'cus_test', date: '2026-11-03', lineItems: [{ itemId, name: 'Visiting Cards (box)', quantity: 12, rate: 400 }] });
+    // drafts do not move stock
+    await api().post('/api/docs').send({ kind: 'invoice', mode: 'draft', contactId: 'cus_test', date: '2026-11-04', lineItems: [{ itemId, name: 'Visiting Cards (box)', quantity: 100, rate: 400 }] });
+    let i = await api().get(`/api/items/${itemId}`);
+    expect(i.body.stockOnHand).toBe(38);
+    const adj = await api().post('/api/inventory-adjustments').send({ date: '2026-11-05', reason: 'Damaged in transit', lines: [{ itemId, quantity: -3 }] });
+    expect(adj.status).toBe(200);
+    expect(adj.body.number).toMatch(/^ADJ-/);
+    i = await api().get(`/api/items/${itemId}`);
+    expect(i.body.stockOnHand).toBe(35);
+    const list = await api().get('/api/items').query({ status: 'active' });
+    expect(list.body.find((x: { id: string }) => x.id === itemId).stockOnHand).toBe(35);
+    const history = await api().get(`/api/items/${itemId}/stock`);
+    expect(history.body.movements).toHaveLength(3);
+    expect(history.body.movements[0].balance).toBe(35);
+  });
+
+  it('refuses adjustments for untracked items and empty adjustments', async () => {
+    expect((await api().post('/api/inventory-adjustments').send({ reason: 'Count', lines: [{ itemId: 'item_web', quantity: 1 }] })).status).toBe(400);
+    expect((await api().post('/api/inventory-adjustments').send({ reason: 'Count', lines: [{ itemId, quantity: 0 }] })).status).toBe(400);
+    expect((await api().post('/api/inventory-adjustments').send({ lines: [{ itemId, quantity: 2 }] })).status).toBe(400);
+  });
+
+  it('never tracks stock for services', async () => {
+    const s = await api().post('/api/items').send({ name: 'Consulting hour', type: 'service', sellingPrice: 2000, costPrice: 0, trackInventory: true });
+    expect(s.body.trackInventory).toBe(false);
+  });
+});
+
+describe('timesheet approvals', () => {
+  let prj = '';
+  let entry = '';
+  it('only invoices approved time once approvals are on', async () => {
+    const p = await api().post('/api/projects').send({ name: 'Approval test', customerId: 'cus_test', billingMethod: 'project_hours', rate: 1000 });
+    prj = p.body.id;
+    await api().put('/api/preferences').send({ timesheetApprovals: true });
+    // an Admin's own time is approved straight away
+    const mine = await api().post('/api/time-entries').send({ projectId: prj, date: '2026-11-10', hours: '2:00' });
+    expect(mine.body.approvalStatus).toBe('approved');
+    // someone else's time waits for approval
+    const other = await api().post('/api/time-entries').send({ projectId: prj, date: '2026-11-11', hours: '3:00' });
+    entry = other.body.id;
+    const { getDb } = await import('../server/db');
+    getDb().timeEntries.find((t) => t.id === entry)!.approvalStatus = 'pending';
+    const u = await api().get(`/api/projects/${prj}/unbilled`);
+    expect(u.body.entries.map((t: { id: string }) => t.id)).not.toContain(entry);
+    const pending = await api().get('/api/time-entries').query({ approval: 'pending' });
+    expect(pending.body.map((t: { id: string }) => t.id)).toEqual([entry]);
+  });
+
+  it('rejects with a reason and approves', async () => {
+    expect((await api().post('/api/time-entries/review').send({ action: 'reject', ids: [entry] })).status).toBe(400);
+    const rj = await api().post('/api/time-entries/review').send({ action: 'reject', ids: [entry], reason: 'Wrong task' });
+    expect(rj.status).toBe(200);
+    expect((await api().get(`/api/time-entries/${entry}`)).body.rejectionReason).toBe('Wrong task');
+    await api().post('/api/time-entries/review').send({ action: 'approve', ids: [entry] });
+    const u = await api().get(`/api/projects/${prj}/unbilled`);
+    expect(u.body.entries.map((t: { id: string }) => t.id)).toContain(entry);
+    await api().put('/api/preferences').send({ timesheetApprovals: false });
+  });
+});

@@ -113,6 +113,8 @@ export function upsertContact(body: Partial<Contact>, id?: string): Contact {
     updatedAt: ts,
   } as Contact;
   if ((merged.documents?.length ?? 0) > 10) throw bad('You can upload a maximum of 10 documents');
+  if ((body.priceListId as unknown) === '' || body.priceListId === null) merged.priceListId = undefined;
+  if (merged.priceListId && (kind !== 'customer' || !db.priceLists?.some((l) => l.id === merged.priceListId))) throw bad('Select a valid price list');
   if (merged.gstin) {
     merged.gstin = merged.gstin.trim().toUpperCase();
     if (!GSTIN_RE.test(merged.gstin)) throw bad('Enter a valid GSTIN (15 characters, e.g. 33ABCDE1234F1Z5)');
@@ -171,6 +173,13 @@ export function upsertItem(body: Partial<Item>, id?: string): Item {
     purchaseAccountId: body.purchaseAccountId || existing?.purchaseAccountId || A.cogs,
     updatedAt: ts,
   } as Item;
+  delete (item as Partial<Item>).stockOnHand; // computed, never stored
+  item.trackInventory = item.type === 'goods' && Boolean(item.trackInventory);
+  if (item.trackInventory) {
+    item.openingStock = round2(n(item.openingStock));
+    item.reorderLevel = item.reorderLevel == null || (item.reorderLevel as unknown) === '' ? undefined : round2(n(item.reorderLevel));
+    if ((item.reorderLevel ?? 0) < 0) throw bad('Reorder level cannot be negative');
+  } else if (existing?.trackInventory && db.inventoryAdjustments?.some((a) => a.lines.some((l) => l.itemId === item.id))) throw bad('This item has stock adjustments. Delete them before you stop tracking its stock.');
   if (item.taxPreference && item.taxPreference !== 'taxable') item.taxId = item.taxPreference;
   else if (item.taxId && !taxRate(item.taxId)) throw bad('Unknown tax rate');
   if (existing) Object.assign(existing, item);
@@ -180,7 +189,8 @@ export function upsertItem(body: Partial<Item>, id?: string): Item {
 
 export function deleteItem(id: string) {
   const db = getDb();
-  if (db.docs.some((d) => d.lineItems.some((l) => l.itemId === id))) throw bad('This item is used in transactions and cannot be deleted. Mark it as inactive instead.');
+  if (db.docs.some((d) => d.lineItems.some((l) => l.itemId === id)) || db.inventoryAdjustments?.some((a) => a.lines.some((l) => l.itemId === id))) throw bad('This item is used in transactions and cannot be deleted. Mark it as inactive instead.');
+  for (const l of db.priceLists ?? []) l.items = l.items.filter((x) => x.itemId !== id);
   db.items = db.items.filter((i) => i.id !== id);
 }
 

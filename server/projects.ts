@@ -80,11 +80,25 @@ function projectInvoices(db: Database, id: string) {
   return db.docs.filter((d) => d.kind === 'invoice' && d.status !== 'void' && docProjectId(db, d) === id);
 }
 
+// ---------------------------------------------------------------- timesheet approvals
+
+export const timesheetApprovalsOn = (db: Database) => Boolean(db.preferences.timesheetApprovals);
+/** Time that may be invoiced: billable, not invoiced yet, and approved when approvals are on. */
+export const invoiceable = (db: Database, t: TimeEntry) => t.billable && !t.invoiced && (!timesheetApprovalsOn(db) || !t.approvalStatus || t.approvalStatus === 'approved');
+
+/** Approval state of a new or changed entry: Admins' time is approved, everyone else's waits. */
+function approvalFor(db: Database, existing?: TimeEntry): Pick<TimeEntry, 'approvalStatus' | 'approvedBy' | 'approvedAt' | 'rejectionReason'> {
+  if (!timesheetApprovalsOn(db)) return { approvalStatus: existing?.approvalStatus, approvedBy: existing?.approvedBy, approvedAt: existing?.approvedAt };
+  const me = currentUser(db);
+  if (me?.role === 'Admin') return { approvalStatus: 'approved', approvedBy: me.name, approvedAt: now() };
+  return { approvalStatus: 'pending' };
+}
+
 export function stats(db: Database, prj: Project) {
   const entries = db.timeEntries.filter((t) => t.projectId === prj.id);
   const hours = (f: (t: TimeEntry) => boolean) => sum(entries.filter(f).map((t) => t.hours));
   const billedAmount = sum(projectInvoices(db, prj.id).map(projectFee));
-  const unbilledEntries = entries.filter((t) => t.billable && !t.invoiced);
+  const unbilledEntries = entries.filter((t) => invoiceable(db, t));
   const unbilledExpenses = db.expenses.filter((e) => e.projectId === prj.id && e.billable && e.status === 'unbilled');
   const unbilledAmount =
     prj.billingMethod === 'fixed'
@@ -97,7 +111,8 @@ export function stats(db: Database, prj: Project) {
     billableHours: hours((t) => t.billable),
     nonBillableHours: hours((t) => !t.billable),
     billedHours: hours((t) => t.invoiced),
-    unbilledHours: hours((t) => t.billable && !t.invoiced),
+    unbilledHours: hours((t) => invoiceable(db, t)),
+    pendingApprovalHours: hours((t) => timesheetApprovalsOn(db) && t.approvalStatus === 'pending'),
     unbilledAmount,
     unbilledExpenses: sum(unbilledExpenses.map((e) => e.amount)),
     billedAmount,
@@ -152,12 +167,14 @@ function filterEntries(db: Database, req: Request) {
   const customerId = q(req, 'customerId');
   const userId = timesheetOnlyUser()?.id ?? q(req, 'userId');
   const status = q(req, 'status');
+  const approval = q(req, 'approval');
   const search = q(req, 'q')?.toLowerCase();
   return db.timeEntries
     .filter((t) => t.date >= r.from && t.date <= r.to)
     .filter((t) => !projectId || t.projectId === projectId)
     .filter((t) => !userId || t.userId === userId)
     .filter((t) => !status || status === 'all' || billingStatus(t) === status)
+    .filter((t) => !approval || approval === 'all' || (t.approvalStatus ?? 'approved') === approval)
     .map((t) => entryRow(db, t))
     .filter((t) => !customerId || t.customerId === customerId)
     .filter((t) => !search || [t.projectName, t.customerName, t.taskName, t.userName, t.notes].some((x) => x?.toLowerCase().includes(search)))
@@ -235,6 +252,7 @@ function buildEntry(db: Database, b: Record<string, unknown>, existing?: TimeEnt
     billable,
     invoiced: existing?.invoiced ?? false,
     invoiceId: existing?.invoiceId,
+    ...approvalFor(db, existing),
     createdAt: existing?.createdAt ?? now(),
     updatedAt: existing ? now() : undefined,
   };
@@ -349,7 +367,7 @@ interface InvoiceRequest {
 
 function unbilled(db: Database, prj: Project, r: InvoiceRequest) {
   const entries = db.timeEntries
-    .filter((t) => t.projectId === prj.id && t.billable && !t.invoiced)
+    .filter((t) => t.projectId === prj.id && invoiceable(db, t))
     .filter((t) => (!r.from || t.date >= r.from) && (!r.to || t.date <= r.to))
     .filter((t) => !r.entryIds || r.entryIds.includes(t.id));
   const expenses = db.expenses
@@ -822,7 +840,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
   api.post('/time-entries/:id/clone', m((req) => {
     const db = getDb();
     const t = ownEntry(db, p(req, 'id'));
-    const c: TimeEntry = { ...t, id: newId('te'), date: str((req.body as { date?: string }).date) ?? today(), invoiced: false, invoiceId: undefined, billable: t.billable, createdAt: now(), updatedAt: undefined };
+    const c: TimeEntry = { ...t, id: newId('te'), date: str((req.body as { date?: string }).date) ?? today(), invoiced: false, invoiceId: undefined, billable: t.billable, rejectionReason: undefined, ...approvalFor(db), createdAt: now(), updatedAt: undefined };
     db.timeEntries.push(c);
     return entryRow(db, c);
   }));
@@ -837,6 +855,35 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
       db.timers = db.timers.filter((x) => !x.entryId || !ids.includes(x.entryId)); // no timer left pointing at a deleted entry
     } else if (action === 'billable' || action === 'non_billable') for (const t of list) t.billable = action === 'billable';
     else throw bad('Unknown action');
+    return { done: list.length };
+  }));
+  /** Approve or reject submitted time (Admin and Staff; never Timesheet Staff). */
+  api.post('/time-entries/review', m((req) => {
+    const db = getDb();
+    if (timesheetOnlyUser()) throw new S.HttpError(403, 'Only an Admin or Staff can approve time');
+    const { action, ids, reason } = req.body as { action: 'approve' | 'reject'; ids: string[]; reason?: string };
+    if (action !== 'approve' && action !== 'reject') throw bad('Unknown action');
+    if (!Array.isArray(ids) || !ids.length) throw bad('Select at least one entry');
+    const list = ids.map((id) => {
+      const t = db.timeEntries.find((x) => x.id === id);
+      if (!t) throw new S.HttpError(404, 'Time entry not found');
+      return t;
+    });
+    if (list.some((t) => t.invoiced)) throw bad('Some of the selected entries are already invoiced');
+    if (action === 'reject' && !str(reason)) throw bad('Give a reason so the person knows what to fix');
+    const me = currentUser(db);
+    for (const t of list) {
+      t.approvalStatus = action === 'approve' ? 'approved' : 'rejected';
+      t.approvedBy = action === 'approve' ? me.name : undefined;
+      t.approvedAt = action === 'approve' ? now() : undefined;
+      t.rejectionReason = action === 'reject' ? str(reason) : undefined;
+    }
+    const byProject = new Map<string, number>();
+    for (const t of list) byProject.set(t.projectId, (byProject.get(t.projectId) ?? 0) + t.hours);
+    for (const [pid, hrs] of byProject) {
+      const prj = db.projects.find((x) => x.id === pid);
+      if (prj) logActivity(db, 'project', prj.id, prj.customerId, action === 'approve' ? 'Time approved' : 'Time rejected', `${round2(hrs)} hours ${action === 'approve' ? 'approved' : `rejected: ${str(reason)}`}`, me.name);
+    }
     return { done: list.length };
   }));
   /** Weekly log: one row per project+task with seven daily times. */
