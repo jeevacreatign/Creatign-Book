@@ -92,6 +92,10 @@ export function DocForm({ kind }: { kind: DocKind }) {
     if (contactData) setContact(contactData);
   }, [contactData]);
 
+  // client price list: selling rates for this client
+  const { data: pricing } = useApi<{ priceList: { id: string; name: string } | null; rates: Record<string, number> }>(sales && d?.contactId ? `/price-lists/for-contact/${d.contactId}` : null);
+  const sellRate = (it: Item) => pricing?.rates[it.id] ?? it.sellingPrice;
+
   const totals = useMemo(() => (d ? computeTotals({ ...d, roundOff: d.roundOff }) : null), [d]);
   if (!d || !totals) return <Spinner />;
 
@@ -119,7 +123,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
       itemId: it.id,
       name: it.name,
       description: sales ? it.salesDescription : it.purchaseDescription,
-      rate: sales ? it.sellingPrice : it.costPrice,
+      rate: sales ? sellRate(it) : it.costPrice,
       unit: it.unit,
       accountId: sales ? it.salesAccountId : it.purchaseAccountId,
       taxId: it.taxId,
@@ -330,6 +334,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
           <div className="flex items-center justify-between rounded-t-md border border-b-0 border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex items-center gap-4">
               <div className="font-semibold">Item Table</div>
+              {sales && pricing?.priceList && <span className="chip bg-brand-50 text-brand-800" title="New rows use this client's price list">Price list: {pricing.priceList.name}</span>}
               {!sales && <TaxInclusiveSelect value={!!d.taxInclusive} disabled={!!d.reverseCharge} onChange={(v) => set({ taxInclusive: v })} />}
             </div>
             <div className="flex gap-3 text-xs text-brand-600">
@@ -367,7 +372,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
                         value={l.itemId}
                         onChange={(v) => pickItem(i, v)}
                         placeholder="Type or click to select an item."
-                        options={items.filter((it) => (sales ? it.sellable : it.purchasable)).map((it) => ({ value: it.id, label: it.name, sub: `Rate: ${money(sales ? it.sellingPrice : it.costPrice)}${it.unit ? ` / ${it.unit}` : ''}` }))}
+                        options={items.filter((it) => (sales ? it.sellable : it.purchasable)).map((it) => ({ value: it.id, label: it.name, sub: `Rate: ${money(sales ? sellRate(it) : it.costPrice)}${it.unit ? ` / ${it.unit}` : ''}` }))}
                       />
                       <textarea className="input mt-1 text-xs" rows={1} placeholder="Add a description" value={l.description || ''} onChange={(e) => setLine(i, { description: e.target.value })} />
                     </td>
@@ -528,7 +533,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
       <BulkItems
         open={bulk}
         onClose={() => setBulk(false)}
-        items={items.filter((it) => (sales ? it.sellable : it.purchasable))}
+        items={items.filter((it) => (sales ? it.sellable : it.purchasable)).map((it) => (sales ? { ...it, sellingPrice: sellRate(it) } : it))}
         sales={sales}
         onAdd={(lines) => set({ lineItems: [...d.lineItems.filter((l) => l.name || l.itemId), ...lines] })}
       />

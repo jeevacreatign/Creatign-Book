@@ -2,11 +2,12 @@
 // period, customer, project and user, per-row Start, New Log Entry and the weekly log.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BarChart3, Briefcase, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, List, MoreHorizontal, Plus, Trash2, User as UserIcon, X } from 'lucide-react';
+import { BarChart3, Briefcase, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Clock, Download, List, MoreHorizontal, Plus, Trash2, User as UserIcon, X } from 'lucide-react';
 import { addDays, fmtDate, money, parseISO, toISO, today } from '@shared/format';
 import { fmtHours, parseHours } from '@shared/projects';
 import type { Contact } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
+import { useBoot } from '../../lib/app';
 import { Dropdown, MenuItem, Modal, Select, Spinner, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle } from '../../components/shared';
 import { ExportMenu } from '../../components/ExportMenu';
@@ -74,6 +75,9 @@ export default function Timesheet() {
   const [customerId, setCustomerId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [userId, setUserId] = useState('');
+  const [approval, setApproval] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
   const [month, setMonth] = useState(() => today().slice(0, 7));
   const [selected, setSelected] = useState<string[]>([]);
   const [edit, setEdit] = useState<EntryRow>();
@@ -96,7 +100,7 @@ export default function Timesheet() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const monthRange = { from: `${month}-01`, to: toISO(new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)) };
-  const filters = { status: view, customerId, projectId, userId, ...(layout === 'calendar' ? { period: 'custom', ...monthRange } : { period, ...(period === 'custom' ? custom : {}) }) };
+  const filters = { status: view, approval, customerId, projectId, userId, ...(layout === 'calendar' ? { period: 'custom', ...monthRange } : { period, ...(period === 'custom' ? custom : {}) }) };
   const { data = [], isLoading } = useApi<EntryRow[]>(`/time-entries${qs(filters)}`);
   const { data: summary } = useApi<Summary>(showSummary ? `/time-entries/summary${qs(filters)}` : null);
   const timeOnly = useMe().user.role === 'Timesheet Staff';
@@ -106,11 +110,13 @@ export default function Timesheet() {
   const customers = timeOnly ? [...new Map(projects.filter((x) => x.customerId).map((x) => [x.customerId, { id: x.customerId!, displayName: x.customerName ?? '' }])).values()] : allCustomers;
   const { data: users = [] } = useUsers();
   const confirm = useConfirm();
+  const approvalsOn = Boolean(useBoot().preferences.timesheetApprovals);
+  const review = useAction((v: { action: 'approve' | 'reject'; reason?: string }) => api<{ done: number }>('/time-entries/review', { body: { ...v, ids: selected } }), (r) => `${r.done} entr${r.done === 1 ? 'y' : 'ies'} reviewed`);
   const bulk = useAction((action: string) => api<{ done: number }>('/time-entries/bulk', { body: { action, ids: selected } }), (r) => `${r.done} entr${r.done === 1 ? 'y' : 'ies'} updated`);
   const all = data.length > 0 && data.filter((r) => !r.invoiced).every((r) => selected.includes(r.id));
   const exportRows = selected.length ? data.filter((r) => selected.includes(r.id)) : data;
   const total = data.reduce((s, t) => s + t.hours, 0);
-  const anyFilter = view !== 'all' || period !== 'all' || customerId || projectId || userId;
+  const anyFilter = view !== 'all' || period !== 'all' || customerId || projectId || userId || approval;
   const importEntries = async (records: CsvImportRecord[]): Promise<CsvImportResult[]> => {
     const results: CsvImportResult[] = [];
     for (const record of records) {
@@ -168,6 +174,16 @@ export default function Timesheet() {
           <button className="btn-secondary btn-sm" onClick={() => bulk.mutate('non_billable', { onSuccess: () => setSelected([]) })}>
             Mark as Non-Billable
           </button>
+          {approvalsOn && !timeOnly && (
+            <>
+              <button className="btn-secondary btn-sm text-emerald-700" onClick={() => review.mutate({ action: 'approve' }, { onSuccess: () => setSelected([]) })}>
+                <CheckCircle2 size={13} /> Approve
+              </button>
+              <button className="btn-secondary btn-sm text-red-600" onClick={() => setRejecting(true)}>
+                Reject
+              </button>
+            </>
+          )}
           <ExportMenu rows={exportRows} filename={`timesheet-${today()}`} columns={TIMESHEET_EXPORT_COLUMNS} label="Export Selected" />
           <button className="btn-secondary btn-sm text-red-600" onClick={() => confirm.ask('Delete entries', `Delete ${selected.length} time entr${selected.length === 1 ? 'y' : 'ies'}?`, () => bulk.mutate('delete', { onSuccess: () => setSelected([]) }), { danger: true, label: 'Delete' })}>
             <Trash2 size={13} /> Delete
@@ -218,7 +234,7 @@ export default function Timesheet() {
               <button className="btn-primary rounded-r-none" onClick={() => setNewOpen({})}>
                 <Plus size={15} /> New Log Entry
               </button>
-              <Dropdown align="right" button={() => <button className="btn-primary w-8 rounded-l-none border-l border-l-brand-700 px-0" aria-label="More log options"><ChevronDown size={14} /></button>}>
+              <Dropdown align="right" button={() => <button className="btn-primary w-8 rounded-l-none border-l border-l-white/20 px-0" aria-label="More log options"><ChevronDown size={14} /></button>}>
                 <MenuItem onClick={() => setNewOpen({})}>New Log Entry</MenuItem>
                 <MenuItem onClick={() => setWeekly(true)}>New Weekly Log</MenuItem>
               </Dropdown>
@@ -238,8 +254,11 @@ export default function Timesheet() {
         <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={customerId} onChange={(v) => { setCustomerId(v); setProjectId(''); setSelected([]); }} placeholder="Select client" options={[{ value: '', label: 'All clients' }, ...customers.map((c) => ({ value: c.id, label: c.displayName }))]} />
         <FilterPill icon={<Briefcase size={13} className="text-slate-400" />} value={projectId} onChange={(v) => { setProjectId(v); setSelected([]); }} placeholder="Select a project" options={[{ value: '', label: 'All projects' }, ...projects.filter((p) => !customerId || p.customerId === customerId).map((p) => ({ value: p.id, label: p.name }))]} />
         <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={userId} onChange={(v) => { setUserId(v); setSelected([]); }} placeholder="Select user" options={[{ value: '', label: 'All users' }, ...users.map((u) => ({ value: u.id, label: u.name }))]} />
+        {approvalsOn && (
+          <FilterPill icon={<CheckCircle2 size={13} className="text-slate-400" />} value={approval} onChange={(v) => { setApproval(v); setSelected([]); }} placeholder="Approval" options={[{ value: '', label: 'Any approval' }, { value: 'pending', label: 'Awaiting approval' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }]} />
+        )}
         {anyFilter && (
-          <button className="ml-1 text-[13px] text-brand-600 hover:underline" onClick={() => { setView('all'); setPeriod('all'); setCustomerId(''); setProjectId(''); setUserId(''); setSelected([]); }}>
+          <button className="ml-1 text-[13px] text-brand-600 hover:underline" onClick={() => { setView('all'); setApproval(''); setPeriod('all'); setCustomerId(''); setProjectId(''); setUserId(''); setSelected([]); }}>
             Clear filters
           </button>
         )}
@@ -305,6 +324,11 @@ export default function Timesheet() {
                   <td className="text-right font-medium tabular-nums">{fmtHours(t.hours)}</td>
                   <td>
                     <BillingStatusText status={t.billingStatus} invoice={t.invoiceNumber} />
+                    {approvalsOn && t.approvalStatus && t.approvalStatus !== 'approved' && (
+                      <div className={clsx('mt-0.5 text-xs font-medium', t.approvalStatus === 'pending' ? 'text-amber-700' : 'text-red-600')} title={t.rejectionReason}>
+                        {t.approvalStatus === 'pending' ? 'Awaiting approval' : `Rejected${t.rejectionReason ? `: ${t.rejectionReason}` : ''}`}
+                      </div>
+                    )}
                   </td>
                   <td className="pr-4">
                     <EntryRowActions e={t} onEdit={() => setEdit(t)} />
@@ -336,6 +360,26 @@ export default function Timesheet() {
       <LogEntryModal open={Boolean(newOpen)} onClose={() => setNewOpen(null)} defaults={{ date: newOpen?.date, projectId: projectId || undefined, userId: userId || undefined }} />
       <LogEntryModal open={Boolean(edit)} onClose={() => setEdit(undefined)} entry={edit} />
       <WeeklyLogModal open={weekly} onClose={() => setWeekly(false)} />
+      <Modal
+        open={rejecting}
+        onClose={() => setRejecting(false)}
+        title={`Reject ${selected.length} entr${selected.length === 1 ? 'y' : 'ies'}`}
+        footer={
+          <>
+            <button className="btn-danger" disabled={!reason.trim()} onClick={() => review.mutate({ action: 'reject', reason }, { onSuccess: () => { setSelected([]); setRejecting(false); setReason(''); } })}>
+              Reject
+            </button>
+            <button className="btn-secondary" onClick={() => setRejecting(false)}>
+              Cancel
+            </button>
+          </>
+        }
+      >
+        <label className="block">
+          <span className="label">Reason (shown to the person who logged the time)</span>
+          <textarea className="input mt-1" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+        </label>
+      </Modal>
       {confirm.node}
     </div>
   );
@@ -379,7 +423,7 @@ function SummaryPanel({ s }: { s?: Summary }) {
                   <span className="tabular-nums text-slate-700">{fmtHours(x.hours)}</span>
                 </div>
                 <div className="mt-1 flex h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full bg-[#2a78d6]" style={{ width: `${(x.billable / (m as number)) * 100}%` }} title={`Billable ${fmtHours(x.billable)}`} />
+                  <div className="h-full bg-ink-600" style={{ width: `${(x.billable / (m as number)) * 100}%` }} title={`Billable ${fmtHours(x.billable)}`} />
                   <div className="h-full bg-[#9bbbe3]" style={{ width: `${((x.hours - x.billable) / (m as number)) * 100}%` }} title={`Non-billable ${fmtHours(x.hours - x.billable)}`} />
                 </div>
               </li>

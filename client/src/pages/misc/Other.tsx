@@ -116,7 +116,8 @@ function Preferences() {
 function Approvals() {
   const boot = useBoot();
   const [on, setOn] = useState<Record<string, boolean>>(boot.approvals || {});
-  const save = useAction(() => api('/preferences', { method: 'PUT', body: { approvals: on } }), 'Approval preferences saved');
+  const [time, setTime] = useState(Boolean(boot.preferences.timesheetApprovals));
+  const save = useAction(() => api('/preferences', { method: 'PUT', body: { approvals: on, timesheetApprovals: time } }), 'Approval preferences saved');
   return (
     <div className="max-w-2xl">
       <div className="mb-1 text-[15px] font-semibold">Transaction Approval</div>
@@ -142,6 +143,18 @@ function Approvals() {
             </span>
           </label>
         ))}
+        <label className="flex cursor-pointer items-center justify-between px-4 py-2.5">
+          <span>
+            Timesheets
+            <span className="block text-xs text-slate-500">Time logged by Staff and Timesheet Staff waits for an Admin or Staff to approve it before it can be invoiced. An Admin's own time is approved as it is logged.</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">
+            {time ? 'Approval required' : 'No approval'}
+            <button type="button" role="switch" aria-checked={time} aria-label="Require approval for timesheets" onClick={() => setTime(!time)} className={clsx('relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition', time ? 'bg-brand-600' : 'bg-slate-300')}>
+              <span className={clsx('inline-block h-4 w-4 rounded-full bg-white shadow transition', time ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+            </button>
+          </span>
+        </label>
       </div>
       <button className="btn-primary mt-4" onClick={() => save.mutate()}>
         Save

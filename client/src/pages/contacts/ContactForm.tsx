@@ -3,7 +3,7 @@ import { stateFromGstin, treatmentNeedsGstin } from '@shared/gst';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2, X, Mail, Phone } from 'lucide-react';
-import { PAYMENT_TERMS, TDS_RATES, type Address, type Contact, type ContactKind } from '@shared/types';
+import { PAYMENT_TERMS, TDS_RATES, type Address, type Contact, type ContactKind, type PriceList } from '@shared/types';
 import { api, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { toast } from '../../lib/toast';
@@ -61,6 +61,7 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
   const label = kind === 'customer' ? 'Client' : 'Supplier';
   const base = kind === 'customer' ? '/sales/customers' : '/purchases/vendors';
   const { data: existing } = useApi<Contact>(id ? `/contacts/${id}` : null);
+  const { data: priceLists = [] } = useApi<PriceList[]>(kind === 'customer' ? '/price-lists' : null);
   const [f, setF] = useState<Partial<Contact> | null>(
     id ? null : { kind, customerType: 'business', language: 'English', currencyCode: 'INR', paymentTerms: 'due_on_receipt', billingAddress: { country: 'India', state: 'Tamil Nadu' }, shippingAddress: { country: 'India' }, contactPersons: [], bankDetails: [], documents: [], customFields: {}, reportingTags: {}, portalEnabled: false, openingBalance: 0 },
   );
@@ -186,6 +187,11 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
               <Field label="Payment Terms">
                 <Select className="max-w-xs" value={f.paymentTerms || 'due_on_receipt'} onChange={(e) => set({ paymentTerms: e.target.value as Contact['paymentTerms'] })} options={PAYMENT_TERMS} />
               </Field>
+              {kind === 'customer' && priceLists.length > 0 && (
+                <Field label="Price List">
+                  <Select className="max-w-xs" value={f.priceListId || ''} onChange={(e) => set({ priceListId: e.target.value || (null as unknown as undefined) })} placeholder="Standard rates" options={priceLists.filter((l) => l.status === 'active' || l.id === f.priceListId).map((l) => ({ value: l.id, label: l.name }))} />
+                </Field>
+              )}
               {kind === 'vendor' && (
                 <Field label="TDS">
                   <Select className="max-w-xs" value={f.tdsRate ?? 0} onChange={(e) => set({ tdsRate: Number(e.target.value) })} options={TDS_RATES} />
