@@ -10,6 +10,7 @@ import { useBoot, isCashLike } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { AccountSelect, Checkbox, ContactPicker, DateInput, Dropdown, Field, FormFooter, MenuItem, MoneyInput, PageHeader, Radio, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle, Timeline } from '../../components/shared';
+import { ExportMenu } from '../../components/ExportMenu';
 import { ProjectPicker, RepeatSelect, ReportingTags, TagChips, expenseTaxPreview } from './parts';
 import { GstFields, TaxRows, TaxSelect } from '../../components/gst';
 import { stateFromGstin, treatmentLabel } from '@shared/gst';
@@ -44,14 +45,27 @@ function StatusPicker({ status, setStatus }: { status: string; setStatus: (s: st
 function RecurringList() {
   const navigate = useNavigate();
   const [status, setStatus] = useState('all');
+  const [selected, setSelected] = useState<string[]>([]);
   const { data, isLoading } = useProfiles(status);
   if (isLoading) return <Spinner />;
   const empty = !data.length && status === 'all';
+  const allSelected = data.length > 0 && data.every((r) => selected.includes(r.id));
+  const exportRows = selected.length ? data.filter((r) => selected.includes(r.id)) : data;
   return (
     <div>
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-        <StatusPicker status={status} setStatus={setStatus} />
+        <StatusPicker status={status} setStatus={(v) => { setStatus(v); setSelected([]); }} />
         <div className="flex gap-2">
+          <ExportMenu rows={exportRows} filename="recurring-expenses" label={selected.length ? 'Export Selected' : 'Export'} columns={[
+            { header: 'Profile Name', value: (r) => r.profileName },
+            { header: 'Expense Account', value: (r) => r.accountName },
+            { header: 'Supplier Name', value: (r) => r.vendorName },
+            { header: 'Frequency', value: (r) => frequencyLabel(r.repeatEvery) },
+            { header: 'Last Expense Date', value: (r) => r.lastGeneratedDate },
+            { header: 'Next Expense Date', value: (r) => r.status === 'active' ? r.nextDate : '' },
+            { header: 'Status', value: (r) => r.status },
+            { header: 'Amount', value: (r) => r.amount },
+          ]} />
           <button className="btn-primary" onClick={() => navigate('/purchases/recurring-expenses/new')}>
             <Plus size={15} /> New
           </button>
@@ -80,6 +94,9 @@ function RecurringList() {
         <table className="table">
           <thead>
             <tr>
+              <th className="w-8 pl-4">
+                <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : data.map((r) => r.id))} aria-label="Select all" />
+              </th>
               <th>Profile Name</th>
               <th>Expense Account</th>
               <th>Supplier Name</th>
@@ -92,7 +109,10 @@ function RecurringList() {
           </thead>
           <tbody>
             {data.map((r) => (
-              <tr key={r.id} className="row-link" onClick={() => navigate(`/purchases/recurring-expenses/${r.id}`)}>
+            <tr key={r.id} className={clsx('row-link', selected.includes(r.id) && 'bg-brand-50/50')} onClick={() => navigate(`/purchases/recurring-expenses/${r.id}`)}>
+              <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+                <input type="checkbox" className="accent-brand-600" checked={selected.includes(r.id)} onChange={() => setSelected((s) => s.includes(r.id) ? s.filter((x) => x !== r.id) : [...s, r.id])} aria-label={`Select ${r.profileName}`} />
+              </td>
                 <td className="text-brand-600">{r.profileName}</td>
                 <td>{r.accountName}</td>
                 <td>{r.vendorName}</td>
@@ -107,7 +127,7 @@ function RecurringList() {
             ))}
             {!data.length && (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-slate-400">
+                <td colSpan={9} className="py-10 text-center text-slate-400">
                   No profiles in this view.
                 </td>
               </tr>

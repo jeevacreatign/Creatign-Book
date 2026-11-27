@@ -8,6 +8,7 @@ import { useBoot, isCashLike } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { AccountSelect, ContactPicker, DateInput, Dropdown, Field, MenuItem, MoneyInput, SearchBox, Select, Spinner, Status, Tabs, clsx, useConfirm, Drawer, Modal } from '../../components/ui';
 import { Attachments, EmailModal, JournalTable, Lifecycle, Timeline } from '../../components/shared';
+import { ExportMenu } from '../../components/ExportMenu';
 import { ReceiptPreview } from '../../components/DocumentPreview';
 import { useDocTemplate } from '../../components/pdf/Customize';
 import { Tb } from './PaymentsReceived';
@@ -18,13 +19,27 @@ type Detail = PaymentMade & { contactName: string; contact?: Contact; bills: { d
 function List() {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<Row[]>(`/payments-made${qs({ q })}`);
   if (isLoading) return <Spinner />;
+  const allSelected = data.length > 0 && data.every((p) => selected.includes(p.id));
+  const exportRows = selected.length ? data.filter((p) => selected.includes(p.id)) : data;
   return (
     <div>
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
         <div className="text-[15px] font-semibold">All Payments</div>
         <div className="flex gap-2">
+          <ExportMenu rows={exportRows} filename="payments-made" label={selected.length ? 'Export Selected' : 'Export'} columns={[
+            { header: 'Date', value: (p) => p.date },
+            { header: 'Payment #', value: (p) => p.number },
+            { header: 'Reference#', value: (p) => p.referenceNumber },
+            { header: 'Supplier Name', value: (p) => p.contactName },
+            { header: 'Bill#', value: (p) => p.type === 'vendor_advance' ? 'Supplier Advance' : p.billNumbers.join(', ') },
+            { header: 'Mode', value: (p) => p.mode },
+            { header: 'Status', value: (p) => p.status },
+            { header: 'Amount', value: (p) => p.amount },
+            { header: 'Unused Amount', value: (p) => p.unusedAmount },
+          ]} />
           <button className="btn-primary" onClick={() => navigate('/purchases/payments-made/new')}>
             <Plus size={15} /> New
           </button>
@@ -53,12 +68,15 @@ function List() {
         <>
           <div className="px-5 py-3">
             <div className="w-72">
-              <SearchBox value={q} onChange={setQ} placeholder="Search payments" />
+              <SearchBox value={q} onChange={(v) => { setQ(v); setSelected([]); }} placeholder="Search payments" />
             </div>
           </div>
           <table className="table">
             <thead>
               <tr>
+                <th className="w-8 pl-4">
+                  <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : data.map((p) => p.id))} aria-label="Select all" />
+                </th>
                 <th>Date</th>
                 <th>Payment #</th>
                 <th>Reference#</th>
@@ -72,7 +90,10 @@ function List() {
             </thead>
             <tbody>
               {data.map((p) => (
-                <tr key={p.id} className="row-link" onClick={() => navigate(`/purchases/payments-made/${p.id}`)}>
+                <tr key={p.id} className={clsx('row-link', selected.includes(p.id) && 'bg-brand-50/50')} onClick={() => navigate(`/purchases/payments-made/${p.id}`)}>
+                  <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" className="accent-brand-600" checked={selected.includes(p.id)} onChange={() => setSelected((s) => s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id])} aria-label={`Select payment ${p.number}`} />
+                  </td>
                   <td>{fmtDate(p.date)}</td>
                   <td className="text-brand-600">{p.number}</td>
                   <td>{p.referenceNumber}</td>

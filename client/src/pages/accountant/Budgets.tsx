@@ -11,6 +11,8 @@ import { api, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { Dropdown, Field, MenuItem, Select, Spinner, clsx, useConfirm } from '../../components/ui';
 import { ListHeader } from '../../components/split';
+import { ExportMenu } from '../../components/ExportMenu';
+import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
 
 type BudgetView = Omit<Budget, 'lines'> & { projectName?: string; buckets: { from: string; to: string; label: string }[]; lines: (Budget['lines'][number] & { accountName: string; accountType?: string; actuals: number[]; total: number; actualTotal: number })[] };
 
@@ -42,10 +44,114 @@ const BS_SECTIONS: { title: string; type: string }[] = [
 
 function BudgetList() {
   const navigate = useNavigate();
+  const { accounts } = useBoot();
+  const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<BudgetView[]>('/budgets');
+  const { data: projects = [] } = useApi<{ id: string; name: string }[]>('/projects?view=all');
+  const allSelected = data.length > 0 && data.every((b) => selected.includes(b.id));
+  const exportRows = selected.length ? data.filter((b) => selected.includes(b.id)) : data;
+  const totalFor = (b: BudgetView, type: string) => b.lines.filter((l) => l.accountType === type).reduce((s, l) => s + l.total, 0);
+  const importBudgets = async (records: CsvImportRecord[]): Promise<CsvImportResult[]> => {
+    type ImportedBudget = { key: string; rowNumber: number; name: string; fiscalYearStart: string; period: BudgetPeriod; projectId?: string; lines: { accountId: string; amounts: number[] }[]; includeBalanceSheet: boolean; invalid?: string };
+    const groups = new Map<string, ImportedBudget>();
+    const results: CsvImportResult[] = [];
+    for (const record of records) {
+      const name = record.get('Budget Name', 'Name');
+      if (!name) {
+        results.push({ rowNumber: record.rowNumber, label: 'Budget', success: false, message: 'Budget Name is required' });
+        continue;
+      }
+      const projectText = record.get('Project', 'Project Name');
+      const project = projectText ? projects.find((item) => item.id === projectText || item.name.toLowerCase() === projectText.toLowerCase()) : undefined;
+      const key = `${name.toLowerCase()}|${project?.id || projectText || ''}`;
+      const existing = groups.get(key);
+      const row = existing ?? {
+        key,
+        rowNumber: record.rowNumber,
+        name,
+        fiscalYearStart: '',
+        period: 'monthly' as BudgetPeriod,
+        projectId: project?.id,
+        lines: [],
+        includeBalanceSheet: false,
+      };
+      try {
+        if (projectText && !project) throw new Error(`Project "${projectText}" was not found`);
+        const fiscalYearStart = record.get('Fiscal Year Start', 'FY Start');
+        if (!fiscalYearStart || !/^\d{4}-\d{2}-01$/.test(fiscalYearStart) || Number.isNaN(Date.parse(`${fiscalYearStart}T00:00:00`))) {
+          throw new Error('Fiscal Year Start must be the first day of a month in YYYY-MM-01 format');
+        }
+        const periodText = (record.get('Budget Period', 'Period') || 'monthly').toLowerCase().replace(/[\s-]/g, '_');
+        const period = periodText === 'month' ? 'monthly' : periodText === 'quarter' ? 'quarterly' : periodText === 'half_year' ? 'half_yearly' : periodText === 'year' ? 'yearly' : periodText;
+        if (!['monthly', 'quarterly', 'half_yearly', 'yearly'].includes(period)) throw new Error(`Unknown Budget Period "${periodText}"`);
+        if (existing && (existing.fiscalYearStart !== fiscalYearStart || existing.period !== period || existing.projectId !== project?.id)) {
+          throw new Error('Rows in the same budget must use matching fiscal year, period, and project');
+        }
+        const accountText = record.get('Account', 'Account Name', 'Account ID');
+        const account = accounts.find((item) => item.id === accountText || item.name.toLowerCase() === accountText?.toLowerCase());
+        if (!account) throw new Error(`Account "${accountText || ''}" was not found`);
+        const bucketCount = period === 'monthly' ? 12 : period === 'quarterly' ? 4 : period === 'half_yearly' ? 2 : 1;
+        const amountText = record.get('Amounts', 'Budget Amounts');
+        const amountValues = amountText
+          ? amountText.split('|')
+          : Array.from({ length: bucketCount }, (_, index) => record.get(`Period ${index + 1}`, `Amount ${index + 1}`));
+        if (amountValues.length > bucketCount) throw new Error(`This budget period accepts at most ${bucketCount} amount(s) per account`);
+        const amounts = Array.from({ length: bucketCount }, (_, index) => {
+          const value = amountValues[index];
+          const amount = value ? Number(value.replace(/[^\d.-]/g, '')) : 0;
+          if (!Number.isFinite(amount) || amount < 0) throw new Error('Amounts must be non-negative numbers');
+          return amount;
+        });
+        if (row.lines.some((line) => line.accountId === account.id)) throw new Error(`Account "${account.name}" appears more than once in this budget`);
+        row.fiscalYearStart = fiscalYearStart;
+        row.period = period as BudgetPeriod;
+        row.includeBalanceSheet ||= ['asset', 'liability', 'equity'].includes(account.type);
+        row.lines.push({ accountId: account.id, amounts });
+        groups.set(key, row);
+      } catch (error) {
+        row.invalid = error instanceof Error ? error.message : 'Import failed';
+        groups.set(key, row);
+      }
+    }
+    for (const group of groups.values()) {
+      if (group.invalid) {
+        results.push({ rowNumber: group.rowNumber, label: group.name, success: false, message: group.invalid });
+        continue;
+      }
+      try {
+        await api('/budgets', { body: {
+          name: group.name,
+          fiscalYearStart: group.fiscalYearStart,
+          period: group.period,
+          projectId: group.projectId,
+          includeBalanceSheet: group.includeBalanceSheet,
+          lines: group.lines,
+        } });
+        results.push({ rowNumber: group.rowNumber, label: group.name, success: true });
+      } catch (error) {
+        results.push({ rowNumber: group.rowNumber, label: group.name, success: false, message: error instanceof Error ? error.message : 'Import failed' });
+      }
+    }
+    return results;
+  };
   return (
     <div>
       <ListHeader title={<h1 className="text-[19px]">Budget Planner</h1>}>
+        <CsvImportButton
+          title="Budgets"
+          filename="budgets"
+          headers={['Budget Name', 'Fiscal Year Start', 'Budget Period', 'Project', 'Account', 'Amounts']}
+          instructions="Import one account per row and repeat the same budget details on every row in that budget. Fiscal Year Start must be YYYY-MM-01. Amounts is a | separated list in fiscal-period order (12 monthly, 4 quarterly, 2 half-yearly, or 1 yearly value). Project is optional."
+          onImport={importBudgets}
+        />
+        <ExportMenu rows={exportRows} filename="budgets" label={selected.length ? 'Export Selected' : 'Export'} columns={[
+          { header: 'Name', value: (b) => b.name },
+          { header: 'Fiscal Year', value: (b) => fiscalYearLabel(b.fiscalYearStart) },
+          { header: 'Budget Period', value: (b) => periodLabel(b.period) },
+          { header: 'Project', value: (b) => b.projectName },
+          { header: 'Budgeted Income', value: (b) => totalFor(b, 'income') },
+          { header: 'Budgeted Expense', value: (b) => totalFor(b, 'expense') },
+        ]} />
         <button className="btn-primary" onClick={() => navigate(`${BASE}/new`)}>
           <Plus size={15} /> New
         </button>
@@ -56,6 +162,9 @@ function BudgetList() {
         <table className="table">
           <thead>
             <tr>
+              <th className="w-8 pl-4">
+                <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : data.map((b) => b.id))} aria-label="Select all" />
+              </th>
               <th className="pl-5">Name</th>
               <th>Fiscal Year</th>
               <th>Budget Period</th>
@@ -66,18 +175,21 @@ function BudgetList() {
           </thead>
           <tbody>
             {data.map((b) => (
-              <tr key={b.id} className="row-link" onClick={() => navigate(`${BASE}/${b.id}`)}>
+            <tr key={b.id} className={clsx('row-link', selected.includes(b.id) && 'bg-brand-50/50')} onClick={() => navigate(`${BASE}/${b.id}`)}>
+              <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+                <input type="checkbox" className="accent-brand-600" checked={selected.includes(b.id)} onChange={() => setSelected((s) => s.includes(b.id) ? s.filter((x) => x !== b.id) : [...s, b.id])} aria-label={`Select ${b.name}`} />
+              </td>
                 <td className="pl-5 font-medium text-brand-600">{b.name}</td>
                 <td>{fiscalYearLabel(b.fiscalYearStart)}</td>
                 <td>{periodLabel(b.period)}</td>
                 <td>{b.projectName || '-'}</td>
-                <td className="text-right tabular-nums">{money(b.lines.filter((l) => l.accountType === 'income').reduce((s, l) => s + l.total, 0))}</td>
-                <td className="pr-5 text-right tabular-nums">{money(b.lines.filter((l) => l.accountType === 'expense').reduce((s, l) => s + l.total, 0))}</td>
+                <td className="text-right tabular-nums">{money(totalFor(b, 'income'))}</td>
+                <td className="pr-5 text-right tabular-nums">{money(totalFor(b, 'expense'))}</td>
               </tr>
             ))}
             {!data.length && (
               <tr>
-                <td colSpan={6} className="py-16 text-center">
+                <td colSpan={7} className="py-16 text-center">
                   <div className="text-[15px] font-medium text-slate-700">Plan your year with budgets</div>
                   <div className="mt-1 text-slate-500">Set monthly, quarterly or yearly targets for income and expense accounts, then compare them with actuals.</div>
                   <button className="btn-primary mt-4" onClick={() => navigate(`${BASE}/new`)}>

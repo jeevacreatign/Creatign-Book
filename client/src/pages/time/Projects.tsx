@@ -4,10 +4,13 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, Clock, Columns2, Download, List, MoreHorizontal, Plus, Search, Trash2, X } from 'lucide-react';
 import { money } from '@shared/format';
 import { BILLING_METHODS, fmtHours } from '@shared/projects';
-import type { Project, ProjectBudgetHours, ProjectTask, ProjectUser } from '@shared/types';
+import type { Contact, Project, ProjectBudgetHours, ProjectTask, ProjectUser } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
 import { Checkbox, ContactPicker, Dropdown, Empty, Field, FormFooter, MenuItem, Modal, MoneyInput, PageHeader, Select, Spinner, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle } from '../../components/shared';
+import { ExportMenu } from '../../components/ExportMenu';
+import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
+import { downloadRows } from '../../lib/export';
 import { openTimer, useUsers, type ProjectDetail, type ProjectRow } from './common';
 import { ProjectPage } from './ProjectTabs';
 
@@ -39,16 +42,18 @@ function useLayout() {
 
 const rateText = (p: ProjectRow) => (p.billingMethod === 'fixed' || p.billingMethod === 'project_hours' ? money(p.rate) : p.billingMethod === 'task_hours' ? 'Per task' : 'Per user');
 
-function exportCsv(rows: ProjectRow[]) {
-  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['Project Name', 'Project Code', 'Client Name', 'Billing Method', 'Rate', 'Status', 'Logged Hours', 'Unbilled Hours', 'Unbilled Amount', 'Billed Amount'];
-  const body = rows.map((p) => [p.name, p.code, p.customerName, p.billingMethodLabel, p.rate, p.status, fmtHours(p.loggedHours), fmtHours(p.unbilledHours), p.unbilledAmount, p.billedAmount].map(esc).join(','));
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' }));
-  a.download = 'projects.csv';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+const PROJECT_EXPORT_COLUMNS = [
+  { header: 'Project Name', value: (p: ProjectRow) => p.name },
+  { header: 'Project Code', value: (p: ProjectRow) => p.code },
+  { header: 'Client Name', value: (p: ProjectRow) => p.customerName },
+  { header: 'Billing Method', value: (p: ProjectRow) => p.billingMethodLabel },
+  { header: 'Rate', value: (p: ProjectRow) => p.rate },
+  { header: 'Status', value: (p: ProjectRow) => p.status },
+  { header: 'Logged Hours', value: (p: ProjectRow) => fmtHours(p.loggedHours) },
+  { header: 'Unbilled Hours', value: (p: ProjectRow) => fmtHours(p.unbilledHours) },
+  { header: 'Unbilled Amount', value: (p: ProjectRow) => p.unbilledAmount },
+  { header: 'Billed Amount', value: (p: ProjectRow) => p.billedAmount },
+];
 
 function ViewTitle({ view, setView, compact }: { view: string; setView: (v: string) => void; compact?: boolean }) {
   return (
@@ -113,10 +118,54 @@ function ProjectList() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<ProjectRow[]>(`/projects${qs({ view, q })}`);
+  const { data: customers = [] } = useApi<Contact[]>('/contacts?kind=customer');
   const confirm = useConfirm();
   const bulk = useAction((v: { action: string; ids: string[] }) => api<{ done: number }>('/projects/bulk', { body: v }), (r) => `${r.done} project(s) updated`);
   const all = data.length > 0 && data.every((p) => selected.includes(p.id));
+  const exportRows = selected.length ? data.filter((p) => selected.includes(p.id)) : data;
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const importProjects = async (records: CsvImportRecord[]): Promise<CsvImportResult[]> => {
+    const results: CsvImportResult[] = [];
+    for (const record of records) {
+      const name = record.get('Project Name', 'Name') || `row ${record.rowNumber}`;
+      try {
+        const projectName = record.get('Project Name', 'Name');
+        const clientName = record.get('Client Name', 'Customer', 'Client');
+        if (!projectName) throw new Error('Project Name is required');
+        const customer = customers.find((item) => item.id === clientName || item.displayName.toLowerCase() === clientName?.toLowerCase() || item.companyName?.toLowerCase() === clientName?.toLowerCase());
+        if (!customer) throw new Error(`Client "${clientName || ''}" was not found`);
+        const billingInput = record.get('Billing Method')?.trim().toLowerCase();
+        const billingMethod = BILLING_METHODS.find((method) => method.value === billingInput || method.label.toLowerCase() === billingInput)?.value;
+        if (billingInput && !billingMethod) throw new Error(`Unknown Billing Method "${billingInput}"`);
+        const rateText = record.get('Rate', 'Project Rate');
+        const rate = rateText ? Number(rateText.replace(/[^\d.-]/g, '')) : 0;
+        if (!Number.isFinite(rate) || rate < 0) throw new Error('Rate must be a non-negative number');
+        const taskRateText = record.get('Task Rate');
+        const taskRate = taskRateText ? Number(taskRateText.replace(/[^\d.-]/g, '')) : rate;
+        if (!Number.isFinite(taskRate) || taskRate < 0) throw new Error('Task Rate must be a non-negative number');
+        const tasks = (record.get('Tasks') || '').split('|').map((task) => task.trim()).filter(Boolean).map((task) => ({ name: task, ratePerHour: taskRate, billable: true }));
+        const budgetHoursText = record.get('Budget Hours');
+        const budgetHours = budgetHoursText ? Number(budgetHoursText) : undefined;
+        if (budgetHours !== undefined && (!Number.isFinite(budgetHours) || budgetHours < 0)) throw new Error('Budget Hours must be a non-negative number');
+        const project = await api<Project>('/projects', { body: {
+          name: projectName,
+          code: record.get('Project Code', 'Code'),
+          customerId: customer.id,
+          billingMethod: billingMethod || 'project_hours',
+          rate,
+          description: record.get('Description'),
+          budgetHoursType: budgetHours === undefined ? 'none' : 'total',
+          budgetHours,
+          tasks,
+        } });
+        if (/^(inactive|false|no)$/i.test(record.get('Status') || '')) await api(`/projects/${project.id}/actions/deactivate`, { body: {} });
+        results.push({ rowNumber: record.rowNumber, label: projectName, success: true });
+      } catch (error) {
+        results.push({ rowNumber: record.rowNumber, label: name, success: false, message: error instanceof Error ? error.message : 'Import failed' });
+      }
+    }
+    return results;
+  };
   useEffect(() => {
     if (layout === 'split' && data.length) navigate(`/time-tracking/projects/${data[0].id}`, { replace: true });
   }, [layout, data.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -132,9 +181,7 @@ function ProjectList() {
             <button className="btn-secondary btn-sm" onClick={() => bulk.mutate({ action: 'deactivate', ids: selected }, { onSuccess: () => setSelected([]) })}>
               Mark as Inactive
             </button>
-            <button className="btn-secondary btn-sm" onClick={() => exportCsv(data.filter((p) => selected.includes(p.id)))}>
-              <Download size={13} /> Export
-            </button>
+            <ExportMenu rows={exportRows} filename="projects" columns={PROJECT_EXPORT_COLUMNS} label="Export Selected" />
             <button className="btn-secondary btn-sm text-red-600" onClick={() => confirm.ask('Delete projects', `Delete ${selected.length} project(s) and their unbilled time? Projects with invoices cannot be deleted.`, () => bulk.mutate({ action: 'delete', ids: selected }, { onSuccess: () => setSelected([]) }), { danger: true, label: 'Delete' })}>
               <Trash2 size={13} /> Delete
             </button>
@@ -149,6 +196,13 @@ function ProjectList() {
           <ViewTitle view={view} setView={(v) => { setView(v); setSelected([]); }} />
           <div className="flex items-center gap-2">
             <LayoutToggle layout={layout} setLayout={setLayout} />
+            <CsvImportButton
+              title="Projects"
+              filename="projects"
+              headers={['Project Name', 'Project Code', 'Client Name', 'Billing Method', 'Rate', 'Status', 'Description', 'Budget Hours', 'Tasks', 'Task Rate']}
+              instructions="Import one project per row. Client Name must match an existing client. Tasks can be separated with |. Billing Method accepts fixed, project_hours, task_hours, or staff_hours (or the displayed label)."
+              onImport={importProjects}
+            />
             <button className="btn-secondary" onClick={() => openTimer()}>
               <Clock size={14} /> Start
             </button>
@@ -162,9 +216,8 @@ function ProjectList() {
               </Dropdown>
             </div>
             <Dropdown align="right" button={() => <button className="btn-icon" aria-label="More"><MoreHorizontal size={15} /></button>}>
-              <MenuItem icon={<Download size={13} />} onClick={() => exportCsv(data)}>
-                Export Projects
-              </MenuItem>
+              <MenuItem icon={<Download size={13} />} onClick={() => downloadRows('projects', data, PROJECT_EXPORT_COLUMNS, 'csv')}>Export Projects (CSV)</MenuItem>
+              <MenuItem icon={<Download size={13} />} onClick={() => downloadRows('projects', data, PROJECT_EXPORT_COLUMNS, 'xlsx')}>Export Projects (Excel)</MenuItem>
               <MenuItem onClick={() => navigate('/time-tracking/timesheet')}>Go to Timesheet</MenuItem>
             </Dropdown>
           </div>
@@ -199,8 +252,8 @@ function ProjectList() {
               <th className="w-10 pr-4 text-right">
                 {searchOpen ? (
                   <span className="relative inline-flex">
-                    <input autoFocus className="input h-7 w-48 pr-6 text-xs normal-case" value={q} placeholder="Search projects" onChange={(e) => setQ(e.target.value)} />
-                    <button className="absolute right-1.5 top-1.5 text-slate-400" onClick={() => { setQ(''); setSearchOpen(false); }} aria-label="Close search">
+                    <input autoFocus className="input h-7 w-48 pr-6 text-xs normal-case" value={q} placeholder="Search projects" onChange={(e) => { setQ(e.target.value); setSelected([]); }} />
+                    <button className="absolute right-1.5 top-1.5 text-slate-400" onClick={() => { setQ(''); setSelected([]); setSearchOpen(false); }} aria-label="Close search">
                       <X size={13} />
                     </button>
                   </span>

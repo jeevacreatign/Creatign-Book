@@ -344,7 +344,7 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
   const approvals = approvalEnabled(db.preferences, kind);
   let submitted = false;
   if (meta.recurring) {
-    doc.status = existing?.status ?? 'active';
+    doc.status = existing?.status ?? (body.status === 'stopped' ? 'stopped' : 'active');
   } else if (!existing || isUnposted(existing.status)) {
     if (mode === 'draft') doc.status = existing && existing.status !== 'draft' ? existing.status : 'draft';
     else if (approvals) {

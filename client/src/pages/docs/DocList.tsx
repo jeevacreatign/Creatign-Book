@@ -10,8 +10,22 @@ import { api, qs, useAction, useApi } from '../../api';
 import { Dropdown, MenuItem, SearchBox, Spinner, Status, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle } from '../../components/shared';
 import { DOC_UI, type Column } from './config';
+import { ExportMenu } from '../../components/ExportMenu';
+import { downloadRows, type ExportColumn } from '../../lib/export';
 
 export type DocRow = TxnDoc & { contactName: string };
+
+const DOC_EXPORT_COLUMNS: ExportColumn<DocRow>[] = [
+  { header: 'Date', value: (d) => d.date },
+  { header: 'Number', value: (d) => d.number },
+  { header: 'Reference', value: (d) => d.referenceNumber },
+  { header: 'Contact', value: (d) => d.contactName },
+  { header: 'Status', value: (d) => d.status },
+  { header: 'Sub Total', value: (d) => d.subTotal },
+  { header: 'Tax', value: (d) => d.taxAmount ?? 0 },
+  { header: 'Total', value: (d) => d.total },
+  { header: 'Balance', value: (d) => d.balance },
+];
 
 const HEAD: Record<Column, string> = {
   date: 'Date',
@@ -102,7 +116,7 @@ function headerFor(kind: DocKind, c: Column) {
   return HEAD[c];
 }
 
-function ListHeader({ kind, status, setStatus, compact }: { kind: DocKind; status: string; setStatus: (s: string) => void; compact?: boolean }) {
+function ListHeader({ kind, status, setStatus, compact, rows }: { kind: DocKind; status: string; setStatus: (s: string) => void; compact?: boolean; rows?: DocRow[] }) {
   const meta = DOC_META[kind];
   const ui = DOC_UI[kind];
   const navigate = useNavigate();
@@ -137,10 +151,9 @@ function ListHeader({ kind, status, setStatus, compact }: { kind: DocKind; statu
               Generate due {kind === 'recurring_bill' ? 'bills' : 'invoices'} now
             </MenuItem>
           )}
-          <MenuItem icon={<Download size={13} />} onClick={() => exportCsv(kind)}>
-            Export {meta.plural}
-          </MenuItem>
-          <MenuItem icon={<Upload size={13} />} onClick={() => navigate('/settings/import')}>
+          <MenuItem icon={<Download size={13} />} onClick={() => { void exportDocs(kind, 'csv', rows); }}>Export {meta.plural} (CSV)</MenuItem>
+          <MenuItem icon={<Download size={13} />} onClick={() => { void exportDocs(kind, 'xlsx', rows); }}>Export {meta.plural} (Excel)</MenuItem>
+          <MenuItem icon={<Upload size={13} />} onClick={() => navigate(`/settings/import?kind=${kind}`)}>
             Import {meta.plural}
           </MenuItem>
         </Dropdown>
@@ -149,14 +162,9 @@ function ListHeader({ kind, status, setStatus, compact }: { kind: DocKind; statu
   );
 }
 
-async function exportCsv(kind: DocKind, picked?: DocRow[]) {
+async function exportDocs(kind: DocKind, format: 'csv' | 'xlsx', picked?: DocRow[]) {
   const rows = picked ?? (await api<DocRow[]>(`/docs${qs({ kind })}`));
-  const head = ['Date', 'Number', 'Reference', 'Contact', 'Status', 'Sub Total', 'Tax', 'Total', 'Balance'];
-  const csv = [head, ...rows.map((r) => [r.date, r.number, r.referenceNumber || '', r.contactName, r.status, r.subTotal, r.taxAmount ?? 0, r.total, r.balance])].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `${DOC_META[kind].plural.toLowerCase().replace(/ /g, '-')}.csv`;
-  a.click();
+  downloadRows(DOC_META[kind].plural.toLowerCase().replace(/ /g, '-'), rows, DOC_EXPORT_COLUMNS, format);
 }
 
 /** Full-width list (no record selected). */
@@ -204,9 +212,7 @@ export function DocListPage({ kind }: { kind: DocKind }) {
                 Record Payment{payable.length ? ` (${payable.length})` : ''}
               </button>
             )}
-            <button className="btn-secondary btn-sm" onClick={() => exportCsv(kind, rows.filter((r) => selected.includes(r.id)))}>
-              <Download size={13} /> Export Selected
-            </button>
+            <ExportMenu rows={rows.filter((r) => selected.includes(r.id))} filename={meta.plural.toLowerCase().replace(/ /g, '-')} columns={DOC_EXPORT_COLUMNS} label="Export Selected" />
             <button className="btn-secondary btn-sm text-red-600" onClick={() => confirm.ask(`Delete ${meta.plural}`, `Delete ${selected.length} ${selected.length === 1 ? meta.label.toLowerCase() : meta.plural.toLowerCase()}? This cannot be undone.`, bulkDelete, { danger: true, label: 'Delete' })}>
               <Trash2 size={13} /> Delete
             </button>
@@ -217,11 +223,11 @@ export function DocListPage({ kind }: { kind: DocKind }) {
           </button>
         </div>
       ) : (
-        <ListHeader kind={kind} status={status} setStatus={(v) => { setStatus(v); setSelected([]); }} />
+        <ListHeader kind={kind} status={status} setStatus={(v) => { setStatus(v); setSelected([]); }} rows={rows} />
       )}
       {empty ? (
         ui.lifecycle ? (
-          <Lifecycle title={ui.lifecycle.title} subtitle={ui.lifecycle.subtitle} steps={ui.lifecycle.steps} actions={<><button className="btn-primary" onClick={() => navigate(`${meta.path}/new`)}>{ui.lifecycle.cta}</button><button className="btn-secondary" onClick={() => navigate('/settings/import')}>Import {meta.plural}</button></>} />
+          <Lifecycle title={ui.lifecycle.title} subtitle={ui.lifecycle.subtitle} steps={ui.lifecycle.steps} actions={<><button className="btn-primary" onClick={() => navigate(`${meta.path}/new`)}>{ui.lifecycle.cta}</button><button className="btn-secondary" onClick={() => navigate(`/settings/import?kind=${kind}`)}>Import {meta.plural}</button></>} />
         ) : (
           <div className="flex flex-col items-center gap-3 py-20 text-center">
             <div className="text-lg font-semibold text-slate-800">No {meta.plural.toLowerCase()} yet</div>

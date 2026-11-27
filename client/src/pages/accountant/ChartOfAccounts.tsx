@@ -10,10 +10,22 @@ import { api, useAction, useApi } from '../../api';
 import { toast } from '../../lib/toast';
 import { Checkbox, Field, MenuItem, Modal, Spinner, clsx, useConfirm } from '../../components/ui';
 import { DetailHeader, ListHeader, MoreMenu, SplitList, Toolbar, ToolbarBtn, ToolbarMore, ViewPicker, csvOf, downloadText, useSelection } from '../../components/split';
+import { ExportMenu } from '../../components/ExportMenu';
+import { downloadRows } from '../../lib/export';
 import { AccountTypeSelect } from './common';
 
 type ARow = Account & { balance: number; parentName?: string; documents: number };
 type ADetail = ARow & { closingBalance: number; side: 'Dr' | 'Cr'; inUse: boolean; recent: { date: string; journalId: string; sourceType: string; sourceId?: string; type: string; details: string; debit: number; credit: number }[] };
+
+const ACCOUNT_EXPORT_COLUMNS = [
+  { header: 'Account Name', value: (a: ARow) => a.name },
+  { header: 'Account Code', value: (a: ARow) => a.code },
+  { header: 'Account Type', value: (a: ARow) => accountTypeLabel(a.subType) },
+  { header: 'Parent Account', value: (a: ARow) => a.parentName },
+  { header: 'Description', value: (a: ARow) => a.description },
+  { header: 'Status', value: (a: ARow) => a.active ? 'Active' : 'Inactive' },
+  { header: 'Balance', value: (a: ARow) => a.balance },
+];
 
 const BASE = '/accountant/chart-of-accounts';
 const VIEWS = [
@@ -58,21 +70,23 @@ function AccountList() {
   const runBulk = (action: string) => bulk.mutate({ ids: sel.selected, action }, { onSuccess: (r) => { r.errors.forEach((e) => toast.error(e)); sel.clear(); } });
   return (
     <div>
-      <ListHeader title={<ViewPicker value={view} onChange={setView} options={VIEWS} />}>
+      <ListHeader title={<ViewPicker value={view} onChange={(v) => { setView(v); sel.clear(); }} options={VIEWS} />}>
         <div className="relative">
           <Search size={14} className="absolute left-2 top-2.5 text-slate-400" />
-          <input className="input w-56 pl-7" placeholder="Search accounts" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input w-56 pl-7" placeholder="Search accounts" value={q} onChange={(e) => { setQ(e.target.value); sel.clear(); }} />
         </div>
         <button className="btn-primary" onClick={() => setModal(true)}>
           <Plus size={15} /> New
         </button>
         <MoreMenu>
           <MenuItem onClick={() => downloadText('chart-of-accounts.csv', csvOf([['Account Name', 'Account Code', 'Account Type', 'Parent Account', 'Description', 'Status', 'Balance'], ...rows.map((a) => [a.name, a.code, accountTypeLabel(a.subType), a.parentName, a.description, a.active ? 'Active' : 'Inactive', a.balance])]))}>Export Accounts (CSV)</MenuItem>
+          <MenuItem onClick={() => downloadRows('chart-of-accounts', rows, ACCOUNT_EXPORT_COLUMNS, 'xlsx')}>Export Accounts (Excel)</MenuItem>
         </MoreMenu>
       </ListHeader>
       {sel.selected.length > 0 && (
         <div className="flex items-center gap-2 border-b border-slate-100 bg-brand-50/40 px-5 py-2 text-[13px]">
           <span className="mr-2 text-slate-600">{sel.selected.length} selected</span>
+          <ExportMenu rows={rows.filter((a) => sel.selected.includes(a.id))} filename="chart-of-accounts" columns={ACCOUNT_EXPORT_COLUMNS} label="Export Selected" />
           <button className="btn-secondary btn-sm" onClick={() => runBulk('activate')}>
             Mark as Active
           </button>

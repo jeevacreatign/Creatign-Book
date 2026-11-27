@@ -13,9 +13,20 @@ import { AccountSelect, ContactPicker, Drawer, Dropdown, Field, MenuItem, Search
 import { DetailHeader, MoreMenu, TabStrip, useSelection } from '../../components/split';
 import { AccountIcon, subTypeLabel } from './Overview';
 import { BankTxnModal, EditBankTxn, entryLink, offsetFilter, offsetLabel, type BankAccountRow, type BookEntry } from './common';
+import { ExportMenu } from '../../components/ExportMenu';
 
 type Line = StatementLine & { ruleName?: string };
 type Tab = 'uncategorized' | 'categorized' | 'excluded' | 'all';
+
+const LINE_EXPORT_COLUMNS = [
+  { header: 'Date', value: (l: Line) => l.date },
+  { header: 'Description', value: (l: Line) => l.description },
+  { header: 'Payee', value: (l: Line) => l.payee },
+  { header: 'Reference', value: (l: Line) => l.reference },
+  { header: 'Status', value: (l: Line) => l.status },
+  { header: 'Deposit', value: (l: Line) => l.deposit },
+  { header: 'Withdrawal', value: (l: Line) => l.withdrawal },
+];
 
 const MONEY_OUT: { value: string; label: string }[] = [
   { value: 'expense', label: 'Expense' },
@@ -156,6 +167,7 @@ function LinesTab({ accountId, status, onOpen }: { accountId: string; status: Ex
   });
   const one = useAction((v: { id: string; action: string }) => api(`/banking/statement-lines/${v.id}/${v.action}`, { body: {} }), 'Transaction updated');
   const confirm = useConfirm();
+  const exportRows = sel.selected.length ? rows.filter((l) => sel.selected.includes(l.id)) : rows;
   if (isLoading) return <Spinner />;
   if (!rows.length)
     return (
@@ -202,9 +214,15 @@ function LinesTab({ accountId, status, onOpen }: { accountId: string; status: Ex
               Delete
             </button>
           )}
+          <ExportMenu rows={exportRows} filename={`bank-statement-${accountId}`} columns={LINE_EXPORT_COLUMNS} label="Export Selected" />
           <button className="ml-auto text-slate-500 hover:text-slate-700" onClick={sel.clear} aria-label="Clear selection">
             <X size={15} />
           </button>
+        </div>
+      )}
+      {!sel.selected.length && (
+        <div className="mb-2 flex justify-end">
+          <ExportMenu rows={rows} filename={`bank-statement-${accountId}`} columns={LINE_EXPORT_COLUMNS} />
         </div>
       )}
       <table className="table rounded-md border border-slate-200">
@@ -281,14 +299,17 @@ function BooksTab({ accountId }: { accountId: string }) {
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState('all');
   const [edit, setEdit] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<BookEntry[]>(`/banking/accounts/${accountId}/transactions${qs({ search, period })}`);
+  const allSelected = data.length > 0 && data.every((e) => selected.includes(e.journalId));
+  const exportRows = selected.length ? data.filter((e) => selected.includes(e.journalId)) : data;
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <div className="w-64">
-          <SearchBox value={search} onChange={setSearch} placeholder="Search transactions" />
+          <SearchBox value={search} onChange={(v) => { setSearch(v); setSelected([]); }} placeholder="Search transactions" />
         </div>
-        <select className="input w-auto" value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Period">
+        <select className="input w-auto" value={period} onChange={(e) => { setPeriod(e.target.value); setSelected([]); }} aria-label="Period">
           <option value="all">All dates</option>
           <option value="this_month">This Month</option>
           <option value="previous_month">Previous Month</option>
@@ -296,6 +317,19 @@ function BooksTab({ accountId }: { accountId: string }) {
           <option value="this_fiscal_year">This Fiscal Year</option>
           <option value="previous_fiscal_year">Previous Fiscal Year</option>
         </select>
+        <div className="ml-auto">
+          <ExportMenu rows={exportRows} filename={`bank-transactions-${accountId}`} label={selected.length ? 'Export Selected' : 'Export'} columns={[
+            { header: 'Date', value: (e) => e.date },
+            { header: 'Reference', value: (e) => e.number || e.reference },
+            { header: 'Type', value: (e) => e.type },
+            { header: 'Status', value: (e) => e.reconciled ? 'Reconciled' : e.statementLineId ? 'Matched' : 'Manually Added' },
+            { header: 'Contact', value: (e) => e.contact },
+            { header: 'Description', value: (e) => e.description },
+            { header: 'Deposit', value: (e) => e.deposit },
+            { header: 'Withdrawal', value: (e) => e.withdrawal },
+            { header: 'Running Balance', value: (e) => e.balance },
+          ]} />
+        </div>
       </div>
       {isLoading ? (
         <Spinner />
@@ -303,6 +337,9 @@ function BooksTab({ accountId }: { accountId: string }) {
         <table className="table rounded-md border border-slate-200">
           <thead>
             <tr>
+              <th className="w-8 pl-4">
+                <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : data.map((e) => e.journalId))} aria-label="Select all" />
+              </th>
               <th className="pl-4">Date</th>
               <th>Reference#</th>
               <th>Type</th>
@@ -314,7 +351,10 @@ function BooksTab({ accountId }: { accountId: string }) {
           </thead>
           <tbody>
             {data.map((e) => (
-              <tr key={e.journalId} className="row-link" onClick={() => (e.sourceType === 'bank_transaction' && e.sourceId ? setEdit(e.sourceId) : navigate(entryLink(e)))}>
+            <tr key={e.journalId} className={clsx('row-link', selected.includes(e.journalId) && 'bg-brand-50/50')} onClick={() => (e.sourceType === 'bank_transaction' && e.sourceId ? setEdit(e.sourceId) : navigate(entryLink(e)))}>
+              <td className="pl-4" onClick={(event) => event.stopPropagation()}>
+                <input type="checkbox" className="accent-brand-600" checked={selected.includes(e.journalId)} onChange={() => setSelected((s) => s.includes(e.journalId) ? s.filter((x) => x !== e.journalId) : [...s, e.journalId])} aria-label="Select transaction" />
+              </td>
                 <td className="whitespace-nowrap pl-4">{fmtDate(e.date)}</td>
                 <td>
                   <div className="font-medium text-brand-700">{e.number || e.reference || '-'}</div>
@@ -329,7 +369,7 @@ function BooksTab({ accountId }: { accountId: string }) {
             ))}
             {!data.length && (
               <tr>
-                <td colSpan={7} className="py-14 text-center text-slate-500">
+                <td colSpan={8} className="py-14 text-center text-slate-500">
                   No transactions{search ? ' match your search' : ' in this account yet'}.
                 </td>
               </tr>

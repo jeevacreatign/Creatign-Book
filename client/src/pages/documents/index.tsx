@@ -8,6 +8,7 @@ import { api, qs, useAction, useApi } from '../../api';
 import { toast } from '../../lib/toast';
 import { Checkbox, Drawer, Dropdown, Field, MenuItem, Modal, Radio, SearchBox, Select, Spinner, clsx, useConfirm } from '../../components/ui';
 import { ListHeader, useSelection } from '../../components/split';
+import { ExportMenu } from '../../components/ExportMenu';
 
 export interface DocLinkRow {
   type: string;
@@ -84,6 +85,7 @@ export default function Documents() {
   const { data: rows, isLoading } = useApi<DocRow[]>(`/documents${qs({ view, folderId, search, status })}`);
   const list = rows ?? [];
   const sel = useSelection(list.filter((r) => r.kind === 'inbox').map((r) => r.id));
+  const exportRows = sel.selected.length ? list.filter((r) => r.kind === 'inbox' && sel.selected.includes(r.id)) : list;
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [preview, setPreview] = useState<DocRow | null>(null);
@@ -204,11 +206,21 @@ export default function Documents() {
             </div>
           }
         >
+          <ExportMenu rows={exportRows} filename={`documents-${view}`} label={sel.selected.length ? 'Export Selected' : 'Export'} columns={[
+            { header: 'File Name', value: (d) => d.name },
+            { header: 'Kind', value: (d) => d.kind },
+            { header: 'Location', value: (d) => d.folderName || d.inbox || 'Attachment' },
+            { header: 'Status', value: (d) => d.status },
+            { header: 'Uploaded By', value: (d) => d.uploadedBy },
+            { header: 'Uploaded On', value: (d) => d.uploadedAt },
+            { header: 'Size (bytes)', value: (d) => d.size },
+            { header: 'Imported To Account', value: (d) => d.importedToAccountName },
+          ]} />
           <div className="w-60">
-            <SearchBox value={search} onChange={setSearch} placeholder="Search file name or transaction" />
+            <SearchBox value={search} onChange={(v) => { setSearch(v); sel.clear(); }} placeholder="Search file name or transaction" />
           </div>
           {view !== 'trash' && (
-            <select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
+            <select className="input w-40" value={status} onChange={(e) => { setStatus(e.target.value); sel.clear(); }} aria-label="Status">
               <option value="all">All</option>
               <option value="associated">Associated</option>
               <option value="unassociated">Unassociated</option>

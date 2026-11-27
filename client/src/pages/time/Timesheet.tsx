@@ -9,6 +9,9 @@ import type { Contact } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
 import { Dropdown, MenuItem, Modal, Select, Spinner, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle } from '../../components/shared';
+import { ExportMenu } from '../../components/ExportMenu';
+import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
+import { downloadRows } from '../../lib/export';
 import { BillingStatusText, FilterPill, HoursInput, LogEntryModal, openTimer, PeriodPill, useProjects, useUsers, type EntryRow } from './common';
 import { EntryRowActions } from './ProjectTabs';
 
@@ -34,16 +37,19 @@ function savePref(key: string, v: string) {
   }
 }
 
-function exportCsv(rows: EntryRow[]) {
-  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['Date', 'Project', 'Client', 'Task', 'User', 'Time', 'Hours', 'Billing Status', 'Rate', 'Amount', 'Notes'];
-  const body = rows.map((t) => [t.date, t.projectName, t.customerName, t.taskName, t.userName, fmtHours(t.hours), t.hours, t.billingStatusLabel, t.rate, t.amount, t.notes].map(esc).join(','));
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' }));
-  a.download = `timesheet-${today()}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+const TIMESHEET_EXPORT_COLUMNS = [
+  { header: 'Date', value: (t: EntryRow) => t.date },
+  { header: 'Project', value: (t: EntryRow) => t.projectName },
+  { header: 'Client', value: (t: EntryRow) => t.customerName },
+  { header: 'Task', value: (t: EntryRow) => t.taskName },
+  { header: 'User', value: (t: EntryRow) => t.userName },
+  { header: 'Time', value: (t: EntryRow) => fmtHours(t.hours) },
+  { header: 'Hours', value: (t: EntryRow) => t.hours },
+  { header: 'Billing Status', value: (t: EntryRow) => t.billingStatusLabel },
+  { header: 'Rate', value: (t: EntryRow) => t.rate },
+  { header: 'Amount', value: (t: EntryRow) => t.amount },
+  { header: 'Notes', value: (t: EntryRow) => t.notes },
+];
 
 interface Summary {
   count: number;
@@ -98,8 +104,55 @@ export default function Timesheet() {
   const confirm = useConfirm();
   const bulk = useAction((action: string) => api<{ done: number }>('/time-entries/bulk', { body: { action, ids: selected } }), (r) => `${r.done} entr${r.done === 1 ? 'y' : 'ies'} updated`);
   const all = data.length > 0 && data.filter((r) => !r.invoiced).every((r) => selected.includes(r.id));
+  const exportRows = selected.length ? data.filter((r) => selected.includes(r.id)) : data;
   const total = data.reduce((s, t) => s + t.hours, 0);
   const anyFilter = view !== 'all' || period !== 'all' || customerId || projectId || userId;
+  const importEntries = async (records: CsvImportRecord[]): Promise<CsvImportResult[]> => {
+    const results: CsvImportResult[] = [];
+    for (const record of records) {
+      const label = record.get('Project', 'Project Name') || `row ${record.rowNumber}`;
+      try {
+        const projectName = record.get('Project', 'Project Name');
+        if (!projectName) throw new Error('Project is required');
+        const clientName = record.get('Client', 'Client Name');
+        const project = projects.find((item) => item.id === projectName || (
+          item.name.toLowerCase() === projectName.toLowerCase() &&
+          (!clientName || item.customerName?.toLowerCase() === clientName.toLowerCase())
+        ));
+        if (!project) throw new Error(`Project "${projectName}" was not found`);
+        const dateText = record.get('Date');
+        if (!dateText) throw new Error('Date is required');
+        const dateMatch = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(dateText);
+        const date = dateMatch
+          ? `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`
+          : dateText;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00`))) throw new Error('Date must be YYYY-MM-DD or DD/MM/YYYY');
+        const hours = record.get('Hours', 'Time');
+        if (!hours) throw new Error('Hours is required');
+        const status = (record.get('Billing Status', 'Status') || '').toLowerCase().replace(/[\s_-]/g, '');
+        if (status === 'invoiced') throw new Error('Invoiced entries cannot be imported');
+        const billableText = (record.get('Billable') || '').toLowerCase();
+        const billable = status === 'nonbillable' ? false : billableText ? !/^(false|no|0|non.?billable)$/i.test(billableText) : true;
+        const taskName = record.get('Task', 'Task Name');
+        const userName = record.get('User', 'User Name');
+        const user = userName ? users.find((item) => item.id === userName || item.name.toLowerCase() === userName.toLowerCase() || item.email?.toLowerCase() === userName.toLowerCase()) : undefined;
+        if (userName && !user) throw new Error(`User "${userName}" was not found`);
+        await api('/time-entries', { body: {
+          projectId: project.id,
+          taskName,
+          userId: user?.id,
+          date,
+          hours,
+          billable,
+          notes: record.get('Notes'),
+        } });
+        results.push({ rowNumber: record.rowNumber, label: `${date} — ${project.name}`, success: true });
+      } catch (error) {
+        results.push({ rowNumber: record.rowNumber, label, success: false, message: error instanceof Error ? error.message : 'Import failed' });
+      }
+    }
+    return results;
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -111,9 +164,7 @@ export default function Timesheet() {
           <button className="btn-secondary btn-sm" onClick={() => bulk.mutate('non_billable', { onSuccess: () => setSelected([]) })}>
             Mark as Non-Billable
           </button>
-          <button className="btn-secondary btn-sm" onClick={() => exportCsv(data.filter((t) => selected.includes(t.id)))}>
-            <Download size={13} /> Export
-          </button>
+          <ExportMenu rows={exportRows} filename={`timesheet-${today()}`} columns={TIMESHEET_EXPORT_COLUMNS} label="Export Selected" />
           <button className="btn-secondary btn-sm text-red-600" onClick={() => confirm.ask('Delete entries', `Delete ${selected.length} time entr${selected.length === 1 ? 'y' : 'ies'}?`, () => bulk.mutate('delete', { onSuccess: () => setSelected([]) }), { danger: true, label: 'Delete' })}>
             <Trash2 size={13} /> Delete
           </button>
@@ -132,7 +183,7 @@ export default function Timesheet() {
             )}
           >
             {VIEWS.map((v) => (
-              <MenuItem key={v.value} onClick={() => setView(v.value)}>
+              <MenuItem key={v.value} onClick={() => { setView(v.value); setSelected([]); }}>
                 <span className={clsx(v.value === view && 'font-semibold text-brand-700')}>{v.label}</span>
               </MenuItem>
             ))}
@@ -142,16 +193,23 @@ export default function Timesheet() {
               <BarChart3 size={14} /> Summary
             </button>
             <div className="flex h-8 items-center rounded-full border border-slate-300 bg-slate-100 p-0.5">
-              <button className={clsx('flex h-full w-9 items-center justify-center rounded-full', layout === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500')} onClick={() => setLayout('list')} title="List view" aria-label="List view">
+              <button className={clsx('flex h-full w-9 items-center justify-center rounded-full', layout === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500')} onClick={() => { setLayout('list'); setSelected([]); }} title="List view" aria-label="List view">
                 <List size={15} />
               </button>
-              <button className={clsx('flex h-full w-9 items-center justify-center rounded-full', layout === 'calendar' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500')} onClick={() => setLayout('calendar')} title="Calendar view" aria-label="Calendar view">
+              <button className={clsx('flex h-full w-9 items-center justify-center rounded-full', layout === 'calendar' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500')} onClick={() => { setLayout('calendar'); setSelected([]); }} title="Calendar view" aria-label="Calendar view">
                 <CalendarDays size={15} />
               </button>
             </div>
             <button className="btn-primary" onClick={() => openTimer({ projectId: projectId || undefined })}>
               <Clock size={14} /> Start
             </button>
+            <CsvImportButton
+              title="Timesheet entries"
+              filename="timesheet"
+              headers={['Date', 'Project', 'Client', 'Task', 'User', 'Hours', 'Billing Status', 'Notes']}
+              instructions="Import one time entry per row. Project and optional User must match existing records, and the User must be assigned to that project. Hours accepts HH:MM or decimal hours. Invoiced entries cannot be imported."
+              onImport={importEntries}
+            />
             <div className="flex">
               <button className="btn-primary rounded-r-none" onClick={() => setNewOpen({})}>
                 <Plus size={15} /> New Log Entry
@@ -162,9 +220,8 @@ export default function Timesheet() {
               </Dropdown>
             </div>
             <Dropdown align="right" button={() => <button className="btn-icon" aria-label="More"><MoreHorizontal size={15} /></button>}>
-              <MenuItem icon={<Download size={13} />} onClick={() => exportCsv(data)}>
-                Export Timesheet
-              </MenuItem>
+              <MenuItem icon={<Download size={13} />} onClick={() => downloadRows(`timesheet-${today()}`, data, TIMESHEET_EXPORT_COLUMNS, 'csv')}>Export Timesheet (CSV)</MenuItem>
+              <MenuItem icon={<Download size={13} />} onClick={() => downloadRows(`timesheet-${today()}`, data, TIMESHEET_EXPORT_COLUMNS, 'xlsx')}>Export Timesheet (Excel)</MenuItem>
             </Dropdown>
           </div>
         </div>
@@ -172,13 +229,13 @@ export default function Timesheet() {
 
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-6 py-2.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">View by:</span>
-        {layout === 'list' && <PeriodPill value={period} onChange={setPeriod} custom={custom} setCustom={setCustom} />}
+        {layout === 'list' &&         <PeriodPill value={period} onChange={(v) => { setPeriod(v); setSelected([]); }} custom={custom} setCustom={(v) => { setCustom(v); setSelected([]); }} />}
         <span className="mx-1 h-5 w-px bg-slate-200" />
-        <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={customerId} onChange={(v) => { setCustomerId(v); setProjectId(''); }} placeholder="Select client" options={[{ value: '', label: 'All clients' }, ...customers.map((c) => ({ value: c.id, label: c.displayName }))]} />
-        <FilterPill icon={<Briefcase size={13} className="text-slate-400" />} value={projectId} onChange={setProjectId} placeholder="Select a project" options={[{ value: '', label: 'All projects' }, ...projects.filter((p) => !customerId || p.customerId === customerId).map((p) => ({ value: p.id, label: p.name }))]} />
-        <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={userId} onChange={setUserId} placeholder="Select user" options={[{ value: '', label: 'All users' }, ...users.map((u) => ({ value: u.id, label: u.name }))]} />
+        <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={customerId} onChange={(v) => { setCustomerId(v); setProjectId(''); setSelected([]); }} placeholder="Select client" options={[{ value: '', label: 'All clients' }, ...customers.map((c) => ({ value: c.id, label: c.displayName }))]} />
+        <FilterPill icon={<Briefcase size={13} className="text-slate-400" />} value={projectId} onChange={(v) => { setProjectId(v); setSelected([]); }} placeholder="Select a project" options={[{ value: '', label: 'All projects' }, ...projects.filter((p) => !customerId || p.customerId === customerId).map((p) => ({ value: p.id, label: p.name }))]} />
+        <FilterPill icon={<UserIcon size={13} className="text-slate-400" />} value={userId} onChange={(v) => { setUserId(v); setSelected([]); }} placeholder="Select user" options={[{ value: '', label: 'All users' }, ...users.map((u) => ({ value: u.id, label: u.name }))]} />
         {anyFilter && (
-          <button className="ml-1 text-[13px] text-brand-600 hover:underline" onClick={() => { setView('all'); setPeriod('all'); setCustomerId(''); setProjectId(''); setUserId(''); }}>
+          <button className="ml-1 text-[13px] text-brand-600 hover:underline" onClick={() => { setView('all'); setPeriod('all'); setCustomerId(''); setProjectId(''); setUserId(''); setSelected([]); }}>
             Clear filters
           </button>
         )}

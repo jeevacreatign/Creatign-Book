@@ -8,22 +8,23 @@ import { useBoot, isCashLike } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { AccountSelect, Checkbox, ContactPicker, DateInput, Dropdown, Field, FormFooter, MenuItem, MoneyInput, PageHeader, Radio, SearchBox, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 import { Lifecycle } from '../../components/shared';
+import { ExportMenu } from '../../components/ExportMenu';
 import { ExpenseSplitView, ViewPicker, useExpenseView, type ExpenseRow as Row } from './ExpenseDetail';
 import { ProjectPicker, ReceiptDrop, ReportingTags, expenseTaxPreview } from './parts';
 import { GstFields, TaxRows, TaxSelect } from '../../components/gst';
 import { stateFromGstin } from '@shared/gst';
+import { downloadRows } from '../../lib/export';
 
-function exportCsv(rows: Row[]) {
-  const head = ['Date', 'Expense Account', 'Reference#', 'Supplier Name', 'Paid Through', 'Client Name', 'Status', 'Amount'];
-  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const body = rows.map((e) => [e.date, e.isMileage ? 'Mileage' : e.accountName, e.invoiceNumber, e.vendorName, e.paidThroughName, e.customerName, e.status, e.amount].map(esc).join(','));
-  const blob = new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `expenses-${today()}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+const EXPENSE_EXPORT_COLUMNS = [
+  { header: 'Date', value: (e: Row) => e.date },
+  { header: 'Expense Account', value: (e: Row) => e.isMileage ? 'Mileage' : e.accountName },
+  { header: 'Reference#', value: (e: Row) => e.invoiceNumber },
+  { header: 'Supplier Name', value: (e: Row) => e.vendorName },
+  { header: 'Paid Through', value: (e: Row) => e.paidThroughName },
+  { header: 'Client Name', value: (e: Row) => e.customerName },
+  { header: 'Status', value: (e: Row) => e.status },
+  { header: 'Amount', value: (e: Row) => e.amount },
+];
 
 function ExpenseList() {
   const navigate = useNavigate();
@@ -36,6 +37,7 @@ function ExpenseList() {
   const toInvoice = useAction((id: string) => api<{ id: string }>(`/expenses/${id}/convert-to-invoice`, { body: {} }), 'Draft invoice created');
   const bulkDelete = useAction((ids: string[]) => api<{ deleted: number }>('/expenses/bulk-delete', { body: { ids } }), (r) => `${r.deleted} expense(s) deleted`);
   const allChecked = data.length > 0 && data.every((e) => selected.includes(e.id));
+  const exportRows = selected.length ? data.filter((e) => selected.includes(e.id)) : data;
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const total = data.reduce((s, e) => s + e.amount, 0);
   return (
@@ -49,9 +51,7 @@ function ExpenseList() {
             >
               <Trash2 size={13} /> Delete
             </button>
-            <button className="btn-secondary btn-sm" onClick={() => exportCsv(data.filter((e) => selected.includes(e.id)))}>
-              <Download size={13} /> Export Selected
-            </button>
+            <ExportMenu rows={exportRows} filename={`expenses-${today()}`} columns={EXPENSE_EXPORT_COLUMNS} label="Export Selected" />
             <span className="text-[13px] text-slate-600">{selected.length} selected</span>
           </div>
           <button className="btn-ghost w-8 px-0" aria-label="Clear selection" onClick={() => setSelected([])}>
@@ -79,9 +79,8 @@ function ExpenseList() {
               <MenuItem onClick={() => navigate('/purchases/expenses/new?tab=bulk')}>Bulk Add Expenses</MenuItem>
               <MenuItem onClick={() => navigate('/purchases/expenses/new?tab=mileage')}>Record Mileage</MenuItem>
               <MenuItem onClick={() => navigate('/settings/import')}>Import Expenses</MenuItem>
-              <MenuItem icon={<Download size={13} />} onClick={() => exportCsv(data)}>
-                Export Expenses
-              </MenuItem>
+              <MenuItem icon={<Download size={13} />} onClick={() => downloadRows(`expenses-${today()}`, data, EXPENSE_EXPORT_COLUMNS, 'csv')}>Export Expenses (CSV)</MenuItem>
+              <MenuItem icon={<Download size={13} />} onClick={() => downloadRows(`expenses-${today()}`, data, EXPENSE_EXPORT_COLUMNS, 'xlsx')}>Export Expenses (Excel)</MenuItem>
             </Dropdown>
           </div>
         </div>

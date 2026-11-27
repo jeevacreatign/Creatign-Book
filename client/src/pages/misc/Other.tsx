@@ -3,9 +3,12 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
 import { Wallet, CreditCard, Download, FileText, Upload } from 'lucide-react';
 import { APPROVAL_KINDS } from '@shared/approval';
+import { parseDelimited } from '@shared/bankImport';
+import { csvField, mapContactImportRow } from '@shared/contactImport';
 import { DOC_META } from '@shared/docmeta';
 import { fmtDate, fmtDateTime, money } from '@shared/format';
-import type { Attachment, Contact, Organization, PaymentMade, PaymentReceived, TxnDoc } from '@shared/types';
+import type { Account, Attachment, Contact, DocKind, Item, Organization, PaymentMade, PaymentReceived, TxnDoc } from '@shared/types';
+import { documentImportHeaders, parseDocumentImport } from '@shared/documentImport';
 import { api, qs, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { toast } from '../../lib/toast';
@@ -14,6 +17,7 @@ import { DocumentPreview, ReceiptPreview } from '../../components/DocumentPrevie
 import { TemplatesSettings, useDocTemplate } from '../../components/pdf/Customize';
 import type { PdfTemplate } from '@shared/pdfTemplate';
 import { StatementView } from '../contacts/Contacts';
+import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
 import EmailSettings from '../settings/Emails';
 import type { ExpenseDetailData } from '../expenses/ExpenseDetail';
 import PortalSettingsPage from '../settings/Portal';
@@ -163,40 +167,191 @@ function Features() {
 }
 
 function ImportData() {
-  const [kind, setKind] = useState<'items' | 'customer' | 'vendor'>('items');
+  const [searchParams] = useSearchParams();
+  const requestedKind = searchParams.get('kind');
+  const initialKind = requestedKind && Object.prototype.hasOwnProperty.call(DOC_META, requestedKind) ? requestedKind as DocKind : 'items';
+  const [kind, setKind] = useState<'items' | 'customer' | 'vendor' | DocKind>(initialKind);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
-  async function run(file: File) {
-    setBusy(true);
-    const text = await file.text();
-    const [head, ...rows] = text.trim().split(/\r?\n/).map((l) => l.split(',').map((c) => c.replace(/^"|"$/g, '').trim()));
-    const idx = (n: string) => head.findIndex((h) => h.toLowerCase() === n.toLowerCase());
-    const out: string[] = [];
-    for (const r of rows) {
-      const get = (n: string) => (idx(n) >= 0 ? r[idx(n)] : undefined);
+  async function importDocuments(documentKind: DocKind, records: CsvImportRecord[]): Promise<CsvImportResult[]> {
+    if (!records.length) return [];
+    const { documents, errors } = parseDocumentImport(documentKind, records[0].headers, records.map((record) => record.values));
+    const meta = DOC_META[documentKind];
+    const contactKind = meta.side === 'sales' ? 'customer' : 'vendor';
+    const results: CsvImportResult[] = errors.map((error) => ({
+      rowNumber: error.rowNumber,
+      label: meta.label,
+      success: false,
+      message: error.message,
+    }));
+    const [contacts, items, accounts, existingDocuments] = await Promise.all([
+      api<Contact[]>(`/contacts?kind=${contactKind}&status=all`),
+      api<Item[]>('/items'),
+      api<Account[]>('/accounts'),
+      api<TxnDoc[]>(`/docs?kind=${documentKind}&status=all`),
+    ]);
+    const duplicateKey = (number: string, contactId?: string) => documentKind === 'bill'
+      ? `${number.toLowerCase()}|${contactId || ''}`
+      : number.toLowerCase();
+    const existingNumbers = new Set(existingDocuments.map((document) => duplicateKey(document.number, document.contactId)));
+    for (const document of documents) {
+      const label = meta.recurring ? `Profile ${document.profileName || document.number}` : `${meta.label} ${document.number}`;
       try {
-        if (kind === 'items') await api('/items', { body: { name: get('Name'), type: (get('Type') || 'goods').toLowerCase(), unit: get('Unit'), sellingPrice: Number(get('Rate') || get('Selling Price') || 0), costPrice: Number(get('Purchase Rate') || get('Cost Price') || 0), salesDescription: get('Description'), purchaseDescription: get('Purchase Description') } });
-        else await api('/contacts', { body: { kind, displayName: get('Display Name') || get('Name'), companyName: get('Company Name'), email: get('Email'), workPhone: get('Phone') || get('Work Phone') } });
-        out.push(`✓ ${r[0]}`);
-      } catch (e) {
-        out.push(`✗ ${r[0]}: ${(e as Error).message}`);
+        if (document.error) throw new Error(document.error);
+        const contact = contacts.find((entry) =>
+          entry.displayName.toLowerCase() === document.customerName.toLowerCase()
+          || entry.companyName?.toLowerCase() === document.customerName.toLowerCase(),
+        );
+        if (!contact) throw new Error(`${meta.side === 'sales' ? 'Customer' : 'Supplier'} "${document.customerName}" was not found; import the contact first`);
+        const key = duplicateKey(document.number, contact.id);
+        if (existingNumbers.has(key)) throw new Error(`${meta.numberLabel} ${document.number} already exists`);
+        const unmatchedAccounts: string[] = [];
+        const lineItems = document.lineItems.map((line) => {
+          const item = items.find((entry) => entry.name.toLowerCase() === line.itemName.toLowerCase());
+          const accountName = line.accountName?.toLowerCase();
+          const account = accountName ? accounts.find((entry) => entry.name.toLowerCase() === accountName) : undefined;
+          if (line.accountName && !account) unmatchedAccounts.push(line.accountName);
+          return {
+            itemId: item?.id,
+            name: line.itemName,
+            description: line.description,
+            quantity: line.quantity,
+            rate: line.rate,
+            unit: line.unit,
+            discountPercent: line.discountPercent,
+            taxId: line.taxId ?? '',
+            hsnSac: line.hsnSac,
+            accountId: account?.id,
+          };
+        });
+        const imported = await api<TxnDoc>('/docs', {
+          body: {
+            kind: documentKind,
+            mode: 'draft',
+            number: document.number,
+            profileName: document.profileName,
+            date: document.date,
+            startOn: document.startOn || document.date,
+            endsOn: document.endsOn,
+            neverExpires: document.neverExpires,
+            repeatEvery: document.repeatEvery,
+            status: meta.recurring ? 'stopped' : 'draft',
+            dueDate: document.dueDate,
+            paymentTerms: document.paymentTerms,
+            expiryDate: document.expiryDate,
+            expectedShipmentDate: document.expectedShipmentDate,
+            deliveryDate: document.deliveryDate,
+            referenceNumber: document.referenceNumber,
+            orderNumber: document.orderNumber,
+            subject: document.subject,
+            projectName: document.projectName,
+            salesperson: document.salesperson,
+            deliveryMethod: document.deliveryMethod,
+            shipmentPreference: document.shipmentPreference,
+            challanType: document.challanType,
+            customerNotes: document.customerNotes,
+            terms: document.terms,
+            discountPercent: document.discountPercent,
+            tdsRate: document.tdsRate,
+            tcsRate: document.tcsRate,
+            adjustment: document.adjustment,
+            adjustmentLabel: document.adjustmentLabel,
+            taxInclusive: document.taxInclusive,
+            contactId: contact.id,
+            lineItems,
+          },
+        });
+        existingNumbers.add(key);
+        const warnings: string[] = [];
+        if (document.sourceStatus && document.sourceStatus.toLowerCase() !== 'draft') {
+          warnings.push(`Source status "${document.sourceStatus}" was imported as ${meta.recurring ? 'Stopped' : 'Draft'}`);
+        }
+        if (document.sourceTotal !== undefined && Math.abs(imported.total - document.sourceTotal) >= 0.01) {
+          warnings.push(`Source total ${document.sourceTotal.toFixed(2)} differs from imported total ${imported.total.toFixed(2)}`);
+        }
+        if (unmatchedAccounts.length) warnings.push(`Account(s) not found; using document defaults: ${[...new Set(unmatchedAccounts)].join(', ')}`);
+        if (meta.recurring) warnings.push('Schedule imported as Stopped; review and activate it manually when ready');
+        results.push({ rowNumber: document.rowNumber, label, success: true, message: warnings.join('; ') || undefined });
+      } catch (error) {
+        results.push({
+          rowNumber: document.rowNumber,
+          label,
+          success: false,
+          message: error instanceof Error ? error.message : `Could not import ${meta.label.toLowerCase()}`,
+        });
       }
     }
-    setLog(out);
-    setBusy(false);
-    toast.success('Import finished');
+    return results.sort((a, b) => a.rowNumber - b.rowNumber);
+  }
+  async function run(file: File) {
+    setBusy(true);
+    setLog([]);
+    try {
+      const text = await file.text();
+      const [head, ...rows] = parseDelimited(text);
+      if (!head?.length || !rows.length) throw new Error('The CSV must include a header row and at least one data row.');
+      const out: string[] = [];
+      const existingContacts = kind === 'customer' || kind === 'vendor' ? await api<Contact[]>(`/contacts?kind=${kind}&status=all`) : [];
+      for (const r of rows) {
+        const get = (n: string, ...aliases: string[]) => csvField(head, r, n, ...aliases);
+        const label = get('Display Name', 'Contact Name', 'Name') || r[0] || 'Row';
+        try {
+          if (kind === 'items') {
+            await api('/items', { body: { name: get('Name'), type: (get('Type') || 'goods').toLowerCase(), unit: get('Unit'), sellingPrice: Number(get('Rate') || get('Selling Price') || 0), costPrice: Number(get('Purchase Rate') || get('Cost Price') || 0), salesDescription: get('Description'), purchaseDescription: get('Purchase Description') } });
+          } else if (kind === 'customer' || kind === 'vendor') {
+            const contact = mapContactImportRow(kind, head, r);
+            if (!contact.displayName) throw new Error('Display Name (or Contact Name) is required');
+            const existing = existingContacts.find((item) => item.displayName.toLowerCase() === contact.displayName?.toLowerCase());
+            const saved = existing
+              ? await api<Contact>(`/contacts/${existing.id}`, { method: 'PUT', body: contact })
+              : await api<Contact>('/contacts', { body: contact });
+            if (!existing) existingContacts.push(saved);
+            out.push(`✓ ${existing ? 'Updated' : 'Imported'} ${contact.displayName}`);
+            continue;
+          } else throw new Error('Choose a document type to use the document CSV importer');
+          out.push(`✓ Imported ${label}`);
+        } catch (e) {
+          out.push(`✗ ${label}: ${(e as Error).message}`);
+        }
+      }
+      setLog(out);
+      const failed = out.filter((entry) => entry.startsWith('✗')).length;
+      const succeeded = out.length - failed;
+      if (failed) toast.error(`Import finished: ${succeeded} succeeded, ${failed} failed. See the row report.`);
+      else toast.success(`Imported ${succeeded} record(s).`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <div className="max-w-2xl space-y-4">
-      <div className="text-slate-600">Import a CSV file. The first row must contain column headers.</div>
+      <div className="text-slate-600">
+        {Object.prototype.hasOwnProperty.call(DOC_META, kind)
+          ? 'Import one row per document line from a CSV. Matching document numbers are grouped; the related customer or supplier must already exist.'
+          : 'Import a CSV file with column headers in the first row. Contacts with a matching display name are updated; blank CSV fields leave existing details unchanged. Portal status imports the enabled flag, not portal users or logins.'}
+      </div>
       <Field label="Import">
-        <Select className="max-w-xs" value={kind} onChange={(e) => setKind(e.target.value as 'items')} options={[{ value: 'items', label: 'Items' }, { value: 'customer', label: 'Clients' }, { value: 'vendor', label: 'Suppliers' }]} />
+        <Select className="max-w-xs" value={kind} onChange={(e) => setKind(e.target.value as 'items' | 'customer' | 'vendor' | DocKind)} options={[{ value: 'items', label: 'Items' }, { value: 'customer', label: 'Clients' }, { value: 'vendor', label: 'Suppliers' }, ...Object.values(DOC_META).map((meta) => ({ value: meta.kind, label: meta.plural }))]} />
       </Field>
-      <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">Columns: {kind === 'items' ? 'Name, Type, Unit, Rate, Purchase Rate, Description, Purchase Description' : 'Display Name, Company Name, Email, Phone'}</div>
-      <label className="btn-primary cursor-pointer">
-        <Upload size={14} /> {busy ? 'Importing…' : 'Choose CSV file'}
-        <input type="file" accept=".csv" hidden onChange={(e) => e.target.files?.[0] && run(e.target.files[0])} />
-      </label>
+      {Object.prototype.hasOwnProperty.call(DOC_META, kind) ? (
+        <CsvImportButton
+          title={DOC_META[kind as DocKind].plural}
+          filename={DOC_META[kind as DocKind].plural.toLowerCase().replace(/ /g, '-')}
+          headers={documentImportHeaders(kind as DocKind)}
+          instructions={`Use one row per item line; lines with the same document number are grouped. The ${DOC_META[kind as DocKind].side === 'sales' ? 'customer' : 'supplier'} must already exist. ${DOC_META[kind as DocKind].recurring ? 'Schedules are imported as Stopped; activate them only after review.' : 'Documents are imported as Draft and are not sent, approved or posted automatically.'}`}
+          onImport={(records) => importDocuments(kind as DocKind, records)}
+        />
+      ) : (
+        <>
+          <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">Columns: {kind === 'items' ? 'Name, Type, Unit, Rate, Purchase Rate, Description, Purchase Description' : 'Contact Name, Company Name, Email/EmailID, Phone, Mobile/MobilePhone, Customer Type, Currency Code, Payment Terms, Opening Balance, PAN, GSTIN, Website, Billing and Shipping address fields, Contact Person fields, Portal Status, Notes'}</div>
+          <label className="btn-primary cursor-pointer">
+            <Upload size={14} /> {busy ? 'Importing…' : 'Choose CSV file'}
+            <input type="file" accept=".csv" hidden onChange={(e) => e.target.files?.[0] && run(e.target.files[0])} />
+          </label>
+        </>
+      )}
       {log.length > 0 && <pre className="rounded-md border border-slate-200 p-3 text-xs">{log.join('\n')}</pre>}
     </div>
   );

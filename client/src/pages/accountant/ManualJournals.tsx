@@ -12,7 +12,10 @@ import { useBoot, useOrg } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { DateInput, Dropdown, Field, FormFooter, MenuItem, Modal, Radio, Select, Spinner, Status, clsx, useConfirm } from '../../components/ui';
 import { Attachments } from '../../components/shared';
-import { DetailHeader, ListHeader, MoreMenu, SplitList, TabStrip, Toolbar, ToolbarBtn, ToolbarMore, ViewPicker, csvOf, downloadText, useSelection } from '../../components/split';
+import { DetailHeader, ListHeader, MoreMenu, SplitList, TabStrip, Toolbar, ToolbarBtn, ToolbarMore, ViewPicker, useSelection } from '../../components/split';
+import { ExportMenu } from '../../components/ExportMenu';
+import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
+import { downloadRows } from '../../lib/export';
 import { AnyContactPicker, JournalLinesEditor, lineTotals, type DraftLine } from './common';
 
 type JRow = Journal & { amount: number; contactNames: string[] };
@@ -66,11 +69,35 @@ function PeriodFilter({ value, onChange }: { value: string; onChange: (v: string
   );
 }
 
-function exportJournals(rows: JRow[], accounts: { id: string; name: string }[]) {
+type JournalLineExport = { date: string; number: string; reference?: string; status: string; notes?: string; reportingMethod: string; account: string; description?: string; debit: number | ''; credit: number | '' };
+
+const JOURNAL_EXPORT_COLUMNS = [
+  { header: 'Journal Date', value: (r: JournalLineExport) => r.date },
+  { header: 'Journal Number', value: (r: JournalLineExport) => r.number },
+  { header: 'Reference Number', value: (r: JournalLineExport) => r.reference },
+  { header: 'Status', value: (r: JournalLineExport) => r.status },
+  { header: 'Notes', value: (r: JournalLineExport) => r.notes },
+  { header: 'Reporting Method', value: (r: JournalLineExport) => r.reportingMethod },
+  { header: 'Account', value: (r: JournalLineExport) => r.account },
+  { header: 'Description', value: (r: JournalLineExport) => r.description },
+  { header: 'Debit', value: (r: JournalLineExport) => r.debit },
+  { header: 'Credit', value: (r: JournalLineExport) => r.credit },
+];
+
+function journalExportRows(rows: JRow[], accounts: { id: string; name: string }[]): JournalLineExport[] {
   const name = (id: string) => accounts.find((a) => a.id === id)?.name ?? id;
-  const out: (string | number | undefined)[][] = [['Journal Date', 'Journal Number', 'Reference Number', 'Status', 'Notes', 'Reporting Method', 'Account', 'Description', 'Debit', 'Credit']];
-  for (const j of rows) for (const l of j.lines) out.push([j.date, j.number, j.reference, j.status, j.notes, reportingMethodLabel(j.reportingMethod), name(l.accountId), l.description, l.debit || '', l.credit || '']);
-  downloadText(`manual-journals-${today()}.csv`, csvOf(out));
+  return rows.flatMap((j) => j.lines.map((l) => ({
+    date: j.date,
+    number: j.number,
+    reference: j.reference,
+    status: j.status || 'published',
+    notes: j.notes,
+    reportingMethod: reportingMethodLabel(j.reportingMethod),
+    account: name(l.accountId),
+    description: l.description,
+    debit: l.debit || '',
+    credit: l.credit || '',
+  })));
 }
 
 function JournalList() {
@@ -80,23 +107,109 @@ function JournalList() {
   const [period, setPeriod] = useState('all');
   const { data = [], isLoading } = useJournals(status, period);
   const sel = useSelection(data.map((j) => j.id));
+  const selectedRows = journalExportRows(data.filter((j) => sel.selected.includes(j.id)), accounts);
   const confirm = useConfirm();
   const del = useAction((ids: string[]) => api('/manual-journals/bulk-delete', { body: { ids } }), 'Journals deleted');
+  const importJournals = async (records: CsvImportRecord[]): Promise<CsvImportResult[]> => {
+    type ImportedJournal = { key: string; rowNumber: number; date: string; reference?: string; notes?: string; status: 'draft' | 'published'; reportingMethod: ReportingMethod; lines: { accountId: string; description?: string; debit: number; credit: number }[]; invalid?: string };
+    const groups = new Map<string, ImportedJournal>();
+    const results: CsvImportResult[] = [];
+    for (const record of records) {
+      const key = record.get('Journal Group', 'Journal Number', 'Group');
+      if (!key) {
+        results.push({ rowNumber: record.rowNumber, label: 'Journal', success: false, message: 'Journal Group (or Journal Number) is required to group journal lines' });
+        continue;
+      }
+      const existing = groups.get(key);
+      const row = existing ?? {
+        key,
+        rowNumber: record.rowNumber,
+        date: '',
+        reference: undefined,
+        notes: undefined,
+        status: 'published' as const,
+        reportingMethod: 'accrual_and_cash' as ReportingMethod,
+        lines: [],
+      };
+      try {
+        const dateText = record.get('Journal Date', 'Date');
+        if (!dateText) throw new Error('Journal Date is required');
+        const dateMatch = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(dateText);
+        const date = dateMatch ? `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}` : dateText;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00`))) throw new Error('Date must be YYYY-MM-DD or DD/MM/YYYY');
+        const notes = record.get('Notes');
+        const statusText = (record.get('Status') || 'published').toLowerCase();
+        if (!['draft', 'published'].includes(statusText)) throw new Error('Status must be Draft or Published');
+        const methodText = (record.get('Reporting Method') || '').toLowerCase();
+        const reportingMethod: ReportingMethod = methodText === 'accrual_only' || methodText === 'accrual only' ? 'accrual_only'
+          : methodText === 'cash_only' || methodText === 'cash only' ? 'cash_only'
+            : methodText === 'accrual_and_cash' || methodText === 'accrual and cash' || !methodText ? 'accrual_and_cash'
+              : (() => { throw new Error(`Unknown Reporting Method "${methodText}"`); })();
+        if (existing && (existing.date !== date || existing.notes !== notes || existing.status !== statusText || existing.reportingMethod !== reportingMethod)) {
+          throw new Error('Rows in the same journal group must use matching date, notes, status, and reporting method');
+        }
+        const accountText = record.get('Account', 'Account Name', 'Account ID');
+        const account = accounts.find((item) => item.id === accountText || item.name.toLowerCase() === accountText?.toLowerCase());
+        if (!account) throw new Error(`Account "${accountText || ''}" was not found`);
+        const parseAmount = (value: string | undefined) => value ? Number(value.replace(/[^\d.-]/g, '')) : 0;
+        const debit = parseAmount(record.get('Debit'));
+        const credit = parseAmount(record.get('Credit'));
+        if (!Number.isFinite(debit) || !Number.isFinite(credit) || debit < 0 || credit < 0 || (debit > 0 && credit > 0) || !(debit || credit)) {
+          throw new Error('Each line needs a non-negative Debit or Credit amount (not both)');
+        }
+        if (!existing) Object.assign(row, { date, reference: record.get('Reference Number', 'Reference'), notes, status: statusText as 'draft' | 'published', reportingMethod });
+        row.lines.push({ accountId: account.id, description: record.get('Description'), debit, credit });
+        groups.set(key, row);
+      } catch (error) {
+        row.invalid = error instanceof Error ? error.message : 'Import failed';
+        groups.set(key, row);
+      }
+    }
+    for (const group of groups.values()) {
+      if (group.invalid) {
+        results.push({ rowNumber: group.rowNumber, label: group.key, success: false, message: group.invalid });
+        continue;
+      }
+      try {
+        await api('/manual-journals', { body: {
+          date: group.date,
+          reference: group.reference,
+          notes: group.notes,
+          status: group.status,
+          reportingMethod: group.reportingMethod,
+          lines: group.lines,
+        } });
+        results.push({ rowNumber: group.rowNumber, label: group.key, success: true });
+      } catch (error) {
+        results.push({ rowNumber: group.rowNumber, label: group.key, success: false, message: error instanceof Error ? error.message : 'Import failed' });
+      }
+    }
+    return results;
+  };
   return (
     <div>
-      <ListHeader title={<ViewPicker value={status} onChange={setStatus} options={VIEWS} />}>
+      <ListHeader title={<ViewPicker value={status} onChange={(v) => { setStatus(v); sel.clear(); }} options={VIEWS} />}>
+        <CsvImportButton
+          title="Journal Vouchers"
+          filename="journal-vouchers"
+          headers={['Journal Group', 'Journal Date', 'Reference Number', 'Status', 'Notes', 'Reporting Method', 'Account', 'Description', 'Debit', 'Credit']}
+          instructions="Import one journal line per row. Repeat the same Journal Group on every line of a voucher. Account must match an existing account name or ID; every group must balance. Journal Number from an exported file is accepted as the group key."
+          onImport={importJournals}
+        />
         <NewButton />
         <MoreMenu>
           <MenuItem onClick={() => navigate(`${BASE}/templates`)}>Manage Templates</MenuItem>
           <MenuItem onClick={() => navigate('/accountant/recurring-journals')}>Voucher Schedules</MenuItem>
-          <MenuItem onClick={() => exportJournals(data, accounts)}>Export Journals (CSV)</MenuItem>
+          <MenuItem onClick={() => downloadRows('manual-journals', journalExportRows(data, accounts), JOURNAL_EXPORT_COLUMNS, 'csv')}>Export Journals (CSV)</MenuItem>
+          <MenuItem onClick={() => downloadRows('manual-journals', journalExportRows(data, accounts), JOURNAL_EXPORT_COLUMNS, 'xlsx')}>Export Journals (Excel)</MenuItem>
         </MoreMenu>
       </ListHeader>
       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-2.5">
-        <PeriodFilter value={period} onChange={setPeriod} />
+        <PeriodFilter value={period} onChange={(v) => { setPeriod(v); sel.clear(); }} />
         {sel.selected.length > 0 && (
           <div className="flex items-center gap-2 text-[13px]">
             <span className="text-slate-500">{sel.selected.length} selected</span>
+            <ExportMenu rows={selectedRows} filename="manual-journals" columns={JOURNAL_EXPORT_COLUMNS} label="Export Selected" />
             <button className="btn-secondary btn-sm text-red-600" onClick={() => confirm.ask('Delete journals', `Delete ${sel.selected.length} journal(s)? This cannot be undone.`, () => del.mutate(sel.selected, { onSuccess: sel.clear }), { danger: true, label: 'Delete' })}>
               <Trash2 size={13} /> Delete
             </button>

@@ -12,6 +12,7 @@ import { Dropdown, KV, MenuItem, Modal, SearchBox, Select, Spinner, Status, Tabs
 import { Attachments, Comments, EmailModal, MailLog, Timeline } from '../../components/shared';
 import { PortalAccessModal, PortalStatusBlock } from '../../components/portal/PaymentNotices';
 import { AddressBlock } from '../../components/DocumentPreview';
+import { ExportMenu } from '../../components/ExportMenu';
 import { ContactForm } from './ContactForm';
 
 type Row = Contact & { outstanding: number; unusedCredits: number };
@@ -21,6 +22,7 @@ function ContactList({ kind }: { kind: ContactKind }) {
   const navigate = useNavigate();
   const [status, setStatus] = useState('active');
   const [q, setQ] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<Row[]>(`/contacts${qs({ kind, status, q })}`);
   const label = kind === 'customer' ? 'Clients' : 'Suppliers';
   const views = [
@@ -30,17 +32,32 @@ function ContactList({ kind }: { kind: ContactKind }) {
   ];
   if (isLoading) return <Spinner />;
   const empty = !data.length && status === 'active' && !q;
+  const allSelected = data.length > 0 && data.every((c) => selected.includes(c.id));
+  const exportRows = selected.length ? data.filter((c) => selected.includes(c.id)) : data;
   return (
     <div>
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
         <Dropdown button={() => <button className="flex items-center gap-1 text-[15px] font-semibold">{views.find((v) => v.value === status)?.label} <ChevronDown size={15} className="text-brand-600" /></button>}>
           {views.map((v) => (
-            <MenuItem key={v.value} onClick={() => setStatus(v.value)}>
+            <MenuItem key={v.value} onClick={() => { setStatus(v.value); setSelected([]); }}>
               {v.label}
             </MenuItem>
           ))}
         </Dropdown>
         <div className="flex gap-2">
+          <ExportMenu
+            rows={exportRows}
+            filename={kind === 'customer' ? 'clients' : 'suppliers'}
+            label={selected.length ? 'Export Selected' : 'Export'}
+            columns={[
+              { header: 'Name', value: (c) => c.displayName },
+              { header: 'Company Name', value: (c) => c.companyName },
+              { header: 'Email', value: (c) => c.email },
+              { header: 'Work Phone', value: (c) => c.workPhone },
+              { header: kind === 'customer' ? 'Receivables (BCY)' : 'Payables (BCY)', value: (c) => c.outstanding },
+              { header: 'Unused Credits (BCY)', value: (c) => c.unusedCredits },
+            ]}
+          />
           <button className="btn-primary" onClick={() => navigate(`${basePath(kind)}/new`)}>
             <Plus size={15} /> New
           </button>
@@ -66,12 +83,15 @@ function ContactList({ kind }: { kind: ContactKind }) {
         <>
           <div className="px-5 py-3">
             <div className="w-72">
-              <SearchBox value={q} onChange={setQ} placeholder={`Search ${label.toLowerCase()}`} />
+              <SearchBox value={q} onChange={(v) => { setQ(v); setSelected([]); }} placeholder={`Search ${label.toLowerCase()}`} />
             </div>
           </div>
           <table className="table">
             <thead>
               <tr>
+                <th className="w-8 pl-4">
+                  <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : data.map((c) => c.id))} aria-label="Select all" />
+                </th>
                 <th>Name</th>
                 <th>Company Name</th>
                 <th>Email</th>
@@ -82,7 +102,10 @@ function ContactList({ kind }: { kind: ContactKind }) {
             </thead>
             <tbody>
               {data.map((c) => (
-                <tr key={c.id} className="row-link" onClick={() => navigate(`${basePath(kind)}/${c.id}`)}>
+                <tr key={c.id} className={clsx('row-link', selected.includes(c.id) && 'bg-brand-50/50')} onClick={() => navigate(`${basePath(kind)}/${c.id}`)}>
+                  <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" className="accent-brand-600" checked={selected.includes(c.id)} onChange={() => setSelected((s) => s.includes(c.id) ? s.filter((x) => x !== c.id) : [...s, c.id])} aria-label={`Select ${c.displayName}`} />
+                  </td>
                   <td className="font-medium text-brand-600">{c.displayName}</td>
                   <td>{c.companyName}</td>
                   <td>{c.email}</td>
@@ -93,7 +116,7 @@ function ContactList({ kind }: { kind: ContactKind }) {
               ))}
               {!data.length && (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-slate-400">
+                  <td colSpan={7} className="py-10 text-center text-slate-400">
                     No {label.toLowerCase()} found.
                   </td>
                 </tr>

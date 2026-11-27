@@ -8,6 +8,7 @@ import { UNITS, type Contact, type DocKind, type Item } from '@shared/types';
 import { api, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { toast } from '../../lib/toast';
+import { ExportMenu } from '../../components/ExportMenu';
 import { AccountSelect, Checkbox, Combo, Dropdown, Field, FormFooter, KV, MenuItem, MoneyInput, PageHeader, Radio, SearchBox, Select, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 
 type ItemDetail = Item & { usage: { id: string; kind: DocKind; number: string; date: string; status: string; contact: string; total: number }[] };
@@ -17,8 +18,11 @@ function ItemList() {
   const { accounts } = useBoot();
   const [status, setStatus] = useState('active');
   const [q, setQ] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<Item[]>(`/items?status=${status}&q=${encodeURIComponent(q)}`);
   const acct = (id: string) => accounts.find((a) => a.id === id)?.name;
+  const allSelected = data.length > 0 && data.every((i) => selected.includes(i.id));
+  const exportRows = selected.length ? data.filter((i) => selected.includes(i.id)) : data;
   const views = [
     { value: 'all', label: 'All Products & Services' },
     { value: 'active', label: 'Active Items' },
@@ -29,18 +33,34 @@ function ItemList() {
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
         <Dropdown button={() => <button className="flex items-center gap-1 text-[15px] font-semibold">{views.find((v) => v.value === status)?.label} <ChevronDown size={15} className="text-brand-600" /></button>}>
           {views.map((v) => (
-            <MenuItem key={v.value} onClick={() => setStatus(v.value)}>
+            <MenuItem key={v.value} onClick={() => { setStatus(v.value); setSelected([]); }}>
               {v.label}
             </MenuItem>
           ))}
         </Dropdown>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            rows={exportRows}
+            filename="products-and-services"
+            label={selected.length ? 'Export Selected' : 'Export'}
+            columns={[
+              { header: 'Name', value: (i) => i.name },
+              { header: 'Type', value: (i) => i.type },
+              { header: 'Purchase Description', value: (i) => i.purchaseDescription },
+              { header: 'Purchase Rate', value: (i) => i.purchasable ? i.costPrice : '' },
+              { header: 'Description', value: (i) => i.salesDescription },
+              { header: 'Rate', value: (i) => i.sellable ? i.sellingPrice : '' },
+              { header: 'Usage Unit', value: (i) => i.unit },
+            ]}
+          />
         <button className="btn-primary" onClick={() => navigate('/items/new')}>
           <Plus size={15} /> New
         </button>
+        </div>
       </div>
       <div className="px-5 py-3">
         <div className="w-72">
-          <SearchBox value={q} onChange={setQ} placeholder="Search items" />
+          <SearchBox value={q} onChange={(v) => { setQ(v); setSelected([]); }} placeholder="Search items" />
         </div>
       </div>
       {isLoading ? (
@@ -49,6 +69,9 @@ function ItemList() {
         <table className="table">
           <thead>
             <tr>
+              <th className="w-8 pl-4">
+                <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : data.map((i) => i.id))} aria-label="Select all" />
+              </th>
               <th>Name</th>
               <th>Purchase Description</th>
               <th className="text-right">Purchase Rate</th>
@@ -59,7 +82,10 @@ function ItemList() {
           </thead>
           <tbody>
             {data.map((i) => (
-              <tr key={i.id} className="row-link" onClick={() => navigate(`/items/${i.id}`)}>
+            <tr key={i.id} className={clsx('row-link', selected.includes(i.id) && 'bg-brand-50/50')} onClick={() => navigate(`/items/${i.id}`)}>
+              <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+                <input type="checkbox" className="accent-brand-600" checked={selected.includes(i.id)} onChange={() => setSelected((s) => s.includes(i.id) ? s.filter((x) => x !== i.id) : [...s, i.id])} aria-label={`Select ${i.name}`} />
+              </td>
                 <td>
                   <div className="font-medium text-brand-600">{i.name}</div>
                   <div className="text-xxs uppercase text-slate-400">{i.type}</div>
@@ -73,7 +99,7 @@ function ItemList() {
             ))}
             {!data.length && (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-slate-400">
+                <td colSpan={7} className="py-12 text-center text-slate-400">
                   No items yet. <Link to="/items/new" className="link">Create your first item</Link>.
                 </td>
               </tr>

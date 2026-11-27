@@ -8,8 +8,10 @@ import type { RecurringJournal, RepeatEvery, ReportingMethod } from '@shared/typ
 import { api, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { toast } from '../../lib/toast';
-import { Checkbox, DateInput, Field, FormFooter, Radio, Spinner, Status, useConfirm } from '../../components/ui';
+import { Checkbox, DateInput, Field, FormFooter, Radio, Spinner, Status, clsx, useConfirm } from '../../components/ui';
 import { DetailHeader, Detail, ListHeader, Toolbar, ToolbarBtn } from '../../components/split';
+import { ExportMenu } from '../../components/ExportMenu';
+import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
 import { RepeatSelect } from '../expenses/parts';
 import { JournalLinesEditor, lineTotals, type DraftLine } from './common';
 
@@ -19,10 +21,121 @@ type RDetail = Omit<RecurringJournal, 'lines'> & { amount: number; lines: (Recur
 
 function List() {
   const navigate = useNavigate();
+  const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<RRow[]>('/recurring-journals');
+  const { accounts } = useBoot();
+  const allSelected = data.length > 0 && data.every((r) => selected.includes(r.id));
+  const exportRows = selected.length ? data.filter((r) => selected.includes(r.id)) : data;
+  const importSchedules = async (records: CsvImportRecord[]): Promise<CsvImportResult[]> => {
+    type ImportedSchedule = { key: string; rowNumber: number; repeatEvery: RepeatEvery; startOn: string; endsOn?: string; neverExpires: boolean; reference?: string; notes?: string; reportingMethod: ReportingMethod; lines: { accountId: string; description?: string; debit: number; credit: number }[]; status: string; invalid?: string };
+    const groups = new Map<string, ImportedSchedule>();
+    const results: CsvImportResult[] = [];
+    for (const record of records) {
+      const key = record.get('Profile Name', 'Name');
+      if (!key) {
+        results.push({ rowNumber: record.rowNumber, label: 'Voucher Schedule', success: false, message: 'Profile Name is required' });
+        continue;
+      }
+      const existing = groups.get(key);
+      const row = existing ?? {
+        key,
+        rowNumber: record.rowNumber,
+        repeatEvery: { n: 1, unit: 'month' as const },
+        startOn: '',
+        neverExpires: true,
+        reportingMethod: 'accrual_and_cash' as ReportingMethod,
+        lines: [],
+        status: 'active',
+      };
+      try {
+        const frequency = (record.get('Repeat Every', 'Frequency') || 'Monthly').trim().toLowerCase();
+        const frequencyMatch = /^(?:every\s+)?(\d+)?\s*(daily|day|days|weekly|week|weeks|monthly|month|months|yearly|year|years)$/.exec(frequency);
+        if (!frequencyMatch) throw new Error('Frequency must be Daily, Weekly, Monthly, Yearly, or Every N units');
+        const unit = /^(daily|day|days)$/.test(frequencyMatch[2]) ? 'day' : /^(weekly|week|weeks)$/.test(frequencyMatch[2]) ? 'week' : /^(yearly|year|years)$/.test(frequencyMatch[2]) ? 'year' : 'month';
+        const repeatEvery: RepeatEvery = { n: Number(frequencyMatch[1] || 1), unit };
+        if (repeatEvery.n < 1) throw new Error('Repeat interval must be at least 1');
+        const dateValue = (value: string | undefined) => {
+          if (!value) return '';
+          const match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value);
+          return match ? `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}` : value;
+        };
+        const startOn = dateValue(record.get('Start On', 'Start Date'));
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(startOn) || Number.isNaN(Date.parse(`${startOn}T00:00:00`))) throw new Error('Start On must be YYYY-MM-DD or DD/MM/YYYY');
+        const endsOn = dateValue(record.get('Ends On', 'End Date')) || undefined;
+        const neverValue = (record.get('Never Expires') || '').toLowerCase();
+        const neverExpires = neverValue ? !/^(false|no|0|n)$/i.test(neverValue) : !endsOn;
+        const notes = record.get('Notes');
+        if (!notes) throw new Error('Notes are required');
+        const status = (record.get('Status') || 'active').toLowerCase();
+        if (!['active', 'stopped'].includes(status)) throw new Error('Status must be Active or Stopped');
+        const methodText = (record.get('Reporting Method') || '').toLowerCase();
+        const reportingMethod: ReportingMethod = methodText === 'accrual_only' || methodText === 'accrual only' ? 'accrual_only'
+          : methodText === 'cash_only' || methodText === 'cash only' ? 'cash_only'
+            : methodText === 'accrual_and_cash' || methodText === 'accrual and cash' || !methodText ? 'accrual_and_cash'
+              : (() => { throw new Error(`Unknown Reporting Method "${methodText}"`); })();
+        if (existing && (existing.repeatEvery.n !== repeatEvery.n || existing.repeatEvery.unit !== repeatEvery.unit || existing.startOn !== startOn || existing.endsOn !== endsOn || existing.notes !== notes || existing.neverExpires !== neverExpires || existing.reportingMethod !== reportingMethod)) {
+          throw new Error('Rows in the same profile must use matching schedule details');
+        }
+        const accountText = record.get('Account', 'Account Name', 'Account ID');
+        const account = accounts.find((item) => item.id === accountText || item.name.toLowerCase() === accountText?.toLowerCase());
+        if (!account) throw new Error(`Account "${accountText || ''}" was not found`);
+        const amount = (value: string | undefined) => value ? Number(value.replace(/[^\d.-]/g, '')) : 0;
+        const debit = amount(record.get('Debit'));
+        const credit = amount(record.get('Credit'));
+        if (!Number.isFinite(debit) || !Number.isFinite(credit) || debit < 0 || credit < 0 || (debit > 0 && credit > 0) || !(debit || credit)) {
+          throw new Error('Each line needs a non-negative Debit or Credit amount (not both)');
+        }
+        if (!existing) Object.assign(row, { repeatEvery, startOn, endsOn, neverExpires, reference: record.get('Reference Number', 'Reference'), notes, reportingMethod, status });
+        row.lines.push({ accountId: account.id, description: record.get('Description'), debit, credit });
+        groups.set(key, row);
+      } catch (error) {
+        row.invalid = error instanceof Error ? error.message : 'Import failed';
+        groups.set(key, row);
+      }
+    }
+    for (const group of groups.values()) {
+      if (group.invalid) {
+        results.push({ rowNumber: group.rowNumber, label: group.key, success: false, message: group.invalid });
+        continue;
+      }
+      try {
+        const created = await api<RecurringJournal>('/recurring-journals', { body: {
+          profileName: group.key,
+          repeatEvery: group.repeatEvery,
+          startOn: group.startOn,
+          endsOn: group.endsOn,
+          neverExpires: group.neverExpires,
+          reference: group.reference,
+          notes: group.notes,
+          reportingMethod: group.reportingMethod,
+          lines: group.lines,
+        } });
+        if (group.status === 'stopped') await api(`/recurring-journals/${created.id}/actions/stop`, { body: {} });
+        results.push({ rowNumber: group.rowNumber, label: group.key, success: true });
+      } catch (error) {
+        results.push({ rowNumber: group.rowNumber, label: group.key, success: false, message: error instanceof Error ? error.message : 'Import failed' });
+      }
+    }
+    return results;
+  };
   return (
     <div>
       <ListHeader title={<h1 className="text-[19px]">Voucher Schedules</h1>}>
+        <CsvImportButton
+          title="Voucher Schedules"
+          filename="voucher-schedules"
+          headers={['Profile Name', 'Repeat Every', 'Start On', 'Ends On', 'Never Expires', 'Reference Number', 'Notes', 'Reporting Method', 'Status', 'Account', 'Description', 'Debit', 'Credit']}
+          instructions="Import one journal line per row. Repeat Profile Name for each line in a schedule. Account must match an existing account name or ID; every profile must balance. Frequency accepts Daily, Weekly, Monthly, Yearly, or Every N units."
+          onImport={importSchedules}
+        />
+        <ExportMenu rows={exportRows} filename="voucher-schedules" label={selected.length ? 'Export Selected' : 'Export'} columns={[
+          { header: 'Profile Name', value: (r) => r.profileName },
+          { header: 'Frequency', value: (r) => frequencyLabel(r.repeatEvery) },
+          { header: 'Last Journal Date', value: (r) => r.lastGeneratedDate },
+          { header: 'Next Journal Date', value: (r) => r.status === 'active' ? r.nextDate : '' },
+          { header: 'Status', value: (r) => r.status },
+          { header: 'Amount', value: (r) => r.amount },
+        ]} />
         <button className="btn-primary" onClick={() => navigate(`${BASE}/new`)}>
           <Plus size={15} /> New
         </button>
@@ -33,6 +146,9 @@ function List() {
         <table className="table">
           <thead>
             <tr>
+              <th className="w-8 pl-4">
+                <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : data.map((r) => r.id))} aria-label="Select all" />
+              </th>
               <th className="pl-5">Profile Name</th>
               <th>Frequency</th>
               <th>Last Journal Date</th>
@@ -43,7 +159,10 @@ function List() {
           </thead>
           <tbody>
             {data.map((r) => (
-              <tr key={r.id} className="row-link" onClick={() => navigate(`${BASE}/${r.id}`)}>
+            <tr key={r.id} className={clsx('row-link', selected.includes(r.id) && 'bg-brand-50/50')} onClick={() => navigate(`${BASE}/${r.id}`)}>
+              <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+                <input type="checkbox" className="accent-brand-600" checked={selected.includes(r.id)} onChange={() => setSelected((s) => s.includes(r.id) ? s.filter((x) => x !== r.id) : [...s, r.id])} aria-label={`Select ${r.profileName}`} />
+              </td>
                 <td className="pl-5 font-medium text-brand-600">{r.profileName}</td>
                 <td>{frequencyLabel(r.repeatEvery)}</td>
                 <td>{fmtDate(r.lastGeneratedDate) || '-'}</td>
@@ -56,7 +175,7 @@ function List() {
             ))}
             {!data.length && (
               <tr>
-                <td colSpan={6} className="py-16 text-center text-slate-500">
+                <td colSpan={7} className="py-16 text-center text-slate-500">
                   No recurring journals. Automate entries you post every period, such as depreciation or accrued rent.
                 </td>
               </tr>

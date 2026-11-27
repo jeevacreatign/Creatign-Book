@@ -7,6 +7,7 @@ import { fmtDate, money } from '@shared/format';
 import { api, qs, useAction, useApi } from '../../api';
 import { Dropdown, MenuItem, Spinner, clsx, useConfirm } from '../../components/ui';
 import { ListHeader, MoreMenu, ViewPicker } from '../../components/split';
+import { ExportMenu } from '../../components/ExportMenu';
 import type { BankAccountRow } from './common';
 
 const SERIES = '#2a78d6';
@@ -44,17 +45,30 @@ export default function Overview() {
   const [period, setPeriod] = useState('last_30_days');
   const [chartAcc, setChartAcc] = useState('');
   const [view, setView] = useState<'active' | 'inactive' | 'all'>('active');
+  const [selected, setSelected] = useState<string[]>([]);
   const { data, isLoading } = useApi<OverviewData>(`/banking/overview${qs({ period, accountId: chartAcc })}`);
   const setActive = useAction((v: { id: string; active: boolean }) => api(`/accounts/bulk`, { body: { ids: [v.id], action: v.active ? 'activate' : 'deactivate' } }), 'Account updated');
   const del = useAction((id: string) => api(`/accounts/${id}`, { method: 'DELETE' }), 'Account deleted');
   const confirm = useConfirm();
   if (isLoading || !data) return <Spinner />;
   const rows = data.accounts.filter((a) => (view === 'all' ? true : view === 'active' ? a.active !== false : a.active === false));
+  const allSelected = rows.length > 0 && rows.every((a) => selected.includes(a.id));
+  const exportRows = selected.length ? rows.filter((a) => selected.includes(a.id)) : rows;
   const axis = { fontSize: 11, fill: '#64748b' };
   const last = data.series[data.series.length - 1]?.balance ?? 0;
   return (
     <div>
       <ListHeader title={<h1 className="text-[19px]">Cash &amp; Bank</h1>}>
+        <ExportMenu rows={exportRows} filename="bank-accounts" label={selected.length ? 'Export Selected' : 'Export'} columns={[
+          { header: 'Account Name', value: (a) => a.name },
+          { header: 'Account Type', value: (a) => subTypeLabel(a.subType) },
+          { header: 'Bank Name', value: (a) => a.bankName },
+          { header: 'Account Number (last 4)', value: (a) => a.accountNumber ? a.accountNumber.slice(-4) : '' },
+          { header: 'Uncategorized', value: (a) => a.uncategorized },
+          { header: 'Amount in Bank', value: (a) => a.statementBalance },
+          { header: 'Amount in Creatign Ledger', value: (a) => a.booksBalance },
+          { header: 'Status', value: (a) => a.active === false ? 'Inactive' : 'Active' },
+        ]} />
         <button className="btn-secondary" onClick={() => navigate('/banking/import')}>
           <Upload size={14} /> Import Statement
         </button>
@@ -126,11 +140,14 @@ export default function Overview() {
 
       <div className="px-5 pb-8">
         <div className="mb-2 flex items-center justify-between">
-          <ViewPicker compact value={view} onChange={setView} options={[{ value: 'active', label: 'Active Accounts' }, { value: 'inactive', label: 'Inactive Accounts' }, { value: 'all', label: 'All Accounts' }]} />
+          <ViewPicker compact value={view} onChange={(v) => { setView(v as 'active' | 'inactive' | 'all'); setSelected([]); }} options={[{ value: 'active', label: 'Active Accounts' }, { value: 'inactive', label: 'Inactive Accounts' }, { value: 'all', label: 'All Accounts' }]} />
         </div>
         <table className="table rounded-md border border-slate-200">
           <thead>
             <tr>
+              <th className="w-8 pl-4">
+                <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : rows.map((a) => a.id))} aria-label="Select all" />
+              </th>
               <th className="pl-4">Account Details</th>
               <th>Uncategorized</th>
               <th className="text-right">Amount in Bank</th>
@@ -140,7 +157,10 @@ export default function Overview() {
           </thead>
           <tbody>
             {rows.map((a) => (
-              <tr key={a.id} className="row-link" onClick={() => navigate(`/banking/${a.id}`)}>
+              <tr key={a.id} className={clsx('row-link', selected.includes(a.id) && 'bg-brand-50/50')} onClick={() => navigate(`/banking/${a.id}`)}>
+                <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" className="accent-brand-600" checked={selected.includes(a.id)} onChange={() => setSelected((s) => s.includes(a.id) ? s.filter((x) => x !== a.id) : [...s, a.id])} aria-label={`Select ${a.name}`} />
+                </td>
                 <td className="pl-4">
                   <div className="flex items-center gap-3">
                     <span className={clsx('flex h-8 w-8 items-center justify-center rounded-full', a.subType === 'credit_card' ? 'bg-violet-50 text-violet-600' : a.subType === 'cash' ? 'bg-emerald-50 text-emerald-600' : 'bg-brand-50 text-brand-600')}>
@@ -176,7 +196,7 @@ export default function Overview() {
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={5} className="py-14 text-center text-slate-500">
+                <td colSpan={6} className="py-14 text-center text-slate-500">
                   No accounts here. <Link className="link" to="/banking/new">Add a bank or credit card</Link> to get started.
                 </td>
               </tr>

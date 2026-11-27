@@ -3,11 +3,14 @@ import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 're
 import { ChevronDown, FileText, Mail, MoreHorizontal, Pencil, Plus, Printer, X, Lock, Unlock, Ban, Trash2, BookOpen, MessageSquare } from 'lucide-react';
 import { fmtDate, money, num, today, round2 } from '@shared/format';
 import { PAYMENT_MODES, type Contact, type Journal, type PaymentReceived, type TxnDoc } from '@shared/types';
+import { parsePaymentImportRows } from '@shared/paymentImport';
 import { api, qs, useAction, useApi } from '../../api';
 import { useBoot, isCashLike } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { AccountSelect, Checkbox, ContactPicker, DateInput, Dropdown, Field, FormFooter, MenuItem, Modal, MoneyInput, PageHeader, Radio, SearchBox, Select, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 import { Attachments, EmailModal, JournalTable, Timeline } from '../../components/shared';
+import { ExportMenu } from '../../components/ExportMenu';
+import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
 import { ReceiptPreview } from '../../components/DocumentPreview';
 import { useDocTemplate, useTemplates } from '../../components/pdf/Customize';
 
@@ -16,16 +19,108 @@ type Detail = PaymentReceived & { contactName: string; contact?: Contact; invoic
 
 function List() {
   const navigate = useNavigate();
+  const { accounts } = useBoot();
   const [q, setQ] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<Row[]>(`/payments-received${qs({ q })}`);
+  async function importPayments(records: CsvImportRecord[]): Promise<CsvImportResult[]> {
+    const parsed = parsePaymentImportRows(records);
+    const results: CsvImportResult[] = parsed.errors.map((error) => ({
+      rowNumber: error.rowNumber,
+      label: error.label,
+      success: false,
+      message: error.message,
+    }));
+    if (!parsed.groups.length) return results;
+    const [contacts, invoices] = await Promise.all([
+      api<Contact[]>('/contacts?kind=customer&status=all'),
+      api<TxnDoc[]>('/docs?kind=invoice'),
+    ]);
+    const normalize = (value: string) => value.trim().toLowerCase();
+    const matchOne = <T,>(items: T[], value: string, getName: (item: T) => string) => {
+      const matches = items.filter((item) => normalize(getName(item)) === normalize(value));
+      if (matches.length > 1) throw new Error(`"${value}" matches more than one record`);
+      if (!matches.length) throw new Error(`"${value}" was not found`);
+      return matches[0];
+    };
+    for (const group of parsed.groups) {
+      try {
+        const contact = matchOne(contacts, group.customerName, (item) => item.displayName);
+        const depositAccount = matchOne(
+          accounts.filter((account) => account.active && isCashLike(account)),
+          group.depositTo,
+          (item) => item.name,
+        );
+        const allocations = group.allocations.map((allocation) => {
+          const invoicesForClient = invoices.filter((invoice) => invoice.contactId === contact.id);
+          const invoice = matchOne(invoicesForClient, allocation.invoiceNumber, (item) => item.number);
+          return { docId: invoice.id, amount: allocation.amount };
+        });
+        await api<PaymentReceived>('/payments-received', {
+          body: {
+            number: group.number,
+            contactId: contact.id,
+            date: group.date,
+            mode: group.mode,
+            depositToAccountId: depositAccount.id,
+            amount: group.amount,
+            bankCharges: group.bankCharges,
+            referenceNumber: group.referenceNumber,
+            tdsDeducted: group.tdsDeducted,
+            tdsAmount: group.tdsAmount,
+            allocations,
+            notes: group.notes,
+            status: 'draft',
+            sendThankYou: false,
+          },
+        });
+        results.push({
+          rowNumber: group.rowNumber,
+          label: group.number ?? group.customerName,
+          success: true,
+          message: 'Saved as Draft; review and mark it Paid to update invoice balances and accounting.',
+        });
+      } catch (error) {
+        results.push({
+          rowNumber: group.rowNumber,
+          label: group.number ?? group.customerName,
+          success: false,
+          message: error instanceof Error ? error.message : 'Import failed',
+        });
+      }
+    }
+    return results.sort((a, b) => a.rowNumber - b.rowNumber);
+  }
   if (isLoading) return <Spinner />;
+  const allSelected = data.length > 0 && data.every((p) => selected.includes(p.id));
+  const exportRows = selected.length ? data.filter((p) => selected.includes(p.id)) : data;
   return (
     <div>
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
         <div className="text-[15px] font-semibold">All Received Payments</div>
-        <button className="btn-primary" onClick={() => navigate('/sales/payments-received/new')}>
-          <Plus size={15} /> New
-        </button>
+        <div className="flex items-center gap-2">
+          <CsvImportButton
+            title="Client Payments"
+            filename="client-payments"
+            headers={['Payment Number', 'Date', 'Customer Name', 'Payment Mode', 'Deposit To', 'Amount', 'Reference Number', 'Invoice Number', 'Amount Applied', 'Bank Charges', 'Tax Deducted', 'TDS Amount', 'Notes']}
+            instructions="Import one row per payment, or repeat the Payment Number for payments allocated across invoices. Client, Deposit To account and Invoice Number must match existing records. For multiple invoices, provide Amount Applied on each invoice row. Imported payments are saved as Draft and do not update invoice balances until marked Paid."
+            onImport={importPayments}
+          />
+          <ExportMenu rows={exportRows} filename="received-payments" label={selected.length ? 'Export Selected' : 'Export'} columns={[
+            { header: 'Date', value: (p) => p.date },
+            { header: 'Payment #', value: (p) => p.number },
+            { header: 'Reference Number', value: (p) => p.referenceNumber },
+            { header: 'Client Name', value: (p) => p.contactName },
+            { header: 'Invoice#', value: (p) => p.invoiceNumbers.join(', ') },
+            { header: 'Mode', value: (p) => p.mode },
+            { header: 'Status', value: (p) => p.status },
+            { header: 'Amount', value: (p) => p.amount },
+            { header: 'Unused Amount', value: (p) => p.unusedAmount },
+          ]} />
+          <button className="btn-primary" onClick={() => navigate('/sales/payments-received/new')}>
+            <Plus size={15} /> New
+          </button>
+        </div>
       </div>
       {!data.length && !q ? (
         <div className="flex flex-col items-center gap-3 py-20 text-center">
@@ -39,12 +134,15 @@ function List() {
         <>
           <div className="px-5 py-3">
             <div className="w-72">
-              <SearchBox value={q} onChange={setQ} placeholder="Search payments" />
+              <SearchBox value={q} onChange={(v) => { setQ(v); setSelected([]); }} placeholder="Search payments" />
             </div>
           </div>
           <table className="table">
             <thead>
               <tr>
+                <th className="w-8 pl-4">
+                  <input type="checkbox" className="accent-brand-600" checked={allSelected} onChange={() => setSelected(allSelected ? [] : data.map((p) => p.id))} aria-label="Select all" />
+                </th>
                 <th>Date</th>
                 <th>Payment #</th>
                 <th>Reference Number</th>
@@ -58,7 +156,10 @@ function List() {
             </thead>
             <tbody>
               {data.map((p) => (
-                <tr key={p.id} className="row-link" onClick={() => navigate(`/sales/payments-received/${p.id}`)}>
+                <tr key={p.id} className={clsx('row-link', selected.includes(p.id) && 'bg-brand-50/50')} onClick={() => navigate(`/sales/payments-received/${p.id}`)}>
+                  <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" className="accent-brand-600" checked={selected.includes(p.id)} onChange={() => setSelected((s) => s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id])} aria-label={`Select payment ${p.number}`} />
+                  </td>
                   <td>{fmtDate(p.date)}</td>
                   <td className="text-brand-600">{p.number}</td>
                   <td>{p.referenceNumber}</td>
