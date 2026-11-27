@@ -5,6 +5,7 @@ import path from 'node:path';
 import { DOC_META } from '../shared/docmeta';
 import { builtInEmailTemplates, fillPlaceholders, templateKindForDoc, templateKindMeta, type EmailTemplate, type EmailTemplateKind } from '../shared/email';
 import { daysBetween, fmtDate, money, today } from '../shared/format';
+import { moneyIn } from '../shared/currency';
 import { resolveTemplate } from '../shared/pdfTemplate';
 import { portalSettings } from '../shared/portal';
 import type { Attachment, Contact, Database, Mail, PaymentMade, PaymentReceived, ShareLink, TxnDoc } from '../shared/types';
@@ -119,8 +120,9 @@ export function placeholderValues(r: Resolved, extra: Record<string, string | un
       DueDate: d.dueDate ? fmtDate(d.dueDate) : fmtDate(d.date),
       ExpiryDate: d.expiryDate ? fmtDate(d.expiryDate) : '-',
       ReferenceNumber: d.referenceNumber || '-',
-      Total: money(d.total),
-      BalanceDue: money(d.balance),
+      Total: moneyIn(d.total, d.currencyCode),
+      BalanceDue: moneyIn(d.balance, d.currencyCode),
+      CurrencyCode: d.currencyCode || 'INR',
       DaysOverdue: d.dueDate && d.dueDate < today() ? String(daysBetween(d.dueDate, today())) : '0',
     });
   }
@@ -129,14 +131,14 @@ export function placeholderValues(r: Resolved, extra: Record<string, string | un
     const docs = p.allocations.map((a) => db.docs.find((x) => x.id === a.docId)?.number).filter(Boolean);
     Object.assign(v, {
       PaymentNumber: p.number,
-      PaymentAmount: money(p.amount),
+      PaymentAmount: moneyIn(p.amount, p.currencyCode),
       PaymentDate: fmtDate(p.date),
       PaymentMode: p.mode,
       PaymentReference: p.referenceNumber || '-',
       InvoiceNumbers: docs.length ? docs.join(', ') : 'Advance payment',
     });
   }
-  if (r.statement) Object.assign(v, { StatementFrom: fmtDate(r.statement.from), StatementTo: fmtDate(r.statement.to), ClosingBalance: money(r.statement.closing) });
+  if (r.statement) Object.assign(v, { StatementFrom: fmtDate(r.statement.from), StatementTo: fmtDate(r.statement.to), ClosingBalance: moneyIn(r.statement.closing, r.statement.currencyCode) });
   return { ...v, ...extra };
 }
 
@@ -212,19 +214,19 @@ export function cardFor(r: Resolved): EmailCard | undefined {
     if (d.referenceNumber) rows.push(['Reference', d.referenceNumber]);
     const invoiceDue = d.kind === 'invoice' && d.balance > 0;
     const overdue = invoiceDue && !!d.dueDate && d.dueDate < today();
-    if (invoiceDue && d.balance !== d.total) rows.push(['Invoice Total', money(d.total)]);
+    if (invoiceDue && d.balance !== d.total) rows.push(['Invoice Total', moneyIn(d.total, d.currencyCode)]);
     return {
       title: meta.label,
       number: d.number,
       amountLabel: d.kind === 'invoice' ? (d.balance > 0 ? 'Balance Due' : 'Amount Paid') : d.kind === 'credit_note' ? 'Credit Amount' : 'Amount',
-      amount: money(d.kind === 'invoice' && d.balance > 0 ? d.balance : d.total),
+      amount: moneyIn(d.kind === 'invoice' && d.balance > 0 ? d.balance : d.total, d.currencyCode),
       rows,
       status: overdue ? { label: `Overdue by ${daysBetween(d.dueDate!, today())} days`, tone: 'red' } : d.kind === 'invoice' && d.balance <= 0 && d.status === 'paid' ? { label: 'Paid', tone: 'green' } : undefined,
     };
   }
   const p = r.payment || r.paymentMade;
-  if (p) return { title: r.payment ? 'Payment Receipt' : 'Payment', number: `#${p.number}`, amountLabel: 'Amount', amount: money(p.amount), rows: [['Payment Date', fmtDate(p.date)], ['Payment Mode', p.mode], ...(p.referenceNumber ? [['Reference', p.referenceNumber] as [string, string]] : [])] };
-  if (r.statement) return { title: 'Statement of Accounts', number: `${fmtDate(r.statement.from)} - ${fmtDate(r.statement.to)}`, amountLabel: 'Balance Due', amount: money(r.statement.closing), rows: [['Invoiced', money(r.statement.invoiced)], ['Paid', money(r.statement.paid)]] };
+  if (p) return { title: r.payment ? 'Payment Receipt' : 'Payment', number: `#${p.number}`, amountLabel: 'Amount', amount: moneyIn(p.amount, p.currencyCode), rows: [['Payment Date', fmtDate(p.date)], ['Payment Mode', p.mode], ...(p.referenceNumber ? [['Reference', p.referenceNumber] as [string, string]] : [])] };
+  if (r.statement) return { title: 'Statement of Accounts', number: `${fmtDate(r.statement.from)} - ${fmtDate(r.statement.to)}`, amountLabel: 'Balance Due', amount: moneyIn(r.statement.closing, r.statement.currencyCode), rows: [['Invoiced', moneyIn(r.statement.invoiced, r.statement.currencyCode)], ['Paid', moneyIn(r.statement.paid, r.statement.currencyCode)]] };
   return undefined;
 }
 

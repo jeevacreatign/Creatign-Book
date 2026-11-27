@@ -1,4 +1,5 @@
 // Dashboard, statements and financial reports, all derived from documents and the ledger.
+import { baseView } from './fx';
 import { isUnposted } from '../shared/approval';
 import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { daysBetween, monthsIn, periodRange, round2, today, type PeriodKey } from '../shared/format';
@@ -59,7 +60,7 @@ function openBills(db: Database) {
 // --------------------------------------------------------------- dashboard
 
 export function dashboard(params: { cashPeriod?: PeriodKey; incomePeriod?: PeriodKey; expensePeriod?: PeriodKey; basis?: 'accrual' | 'cash' }) {
-  const db = getDb();
+  const db = baseView(getDb());
   const fy = db.organization.fiscalYearStartMonth;
   const accs = accountMap(db);
 
@@ -267,7 +268,7 @@ export function statement(c: Contact, from: string, to: string, filter: 'all' | 
   });
   const invoiced = sum(rows.map((r) => r.amount));
   const paid = sum(rows.map((r) => r.payment));
-  return { contact: { id: c.id, displayName: c.displayName, billingAddress: c.billingAddress, email: c.email }, from, to, opening: round2(opening), invoiced, paid, closing: bal, rows: withBal, summary: contactSummary(c) };
+  return { contact: { id: c.id, displayName: c.displayName, billingAddress: c.billingAddress, email: c.email }, currencyCode: c.currencyCode || 'INR', from, to, opening: round2(opening), invoiced, paid, closing: bal, rows: withBal, summary: contactSummary(c) };
 }
 
 // --------------------------------------------------------------- financial reports
@@ -287,7 +288,7 @@ function balancesBy(db: Database, r: { from?: string; to: string }, basis: Basis
 }
 
 export function profitAndLoss(from: string, to: string, basis: Basis = 'accrual') {
-  const db = getDb();
+  const db = baseView(getDb());
   const b = balancesBy(db, { from, to }, basis);
   const section = (pred: (a: Account) => boolean, normal: 'credit' | 'debit') =>
     db.accounts
@@ -310,7 +311,7 @@ export function profitAndLoss(from: string, to: string, basis: Basis = 'accrual'
 }
 
 export function balanceSheet(asOf: string, basis: Basis = 'accrual') {
-  const db = getDb();
+  const db = baseView(getDb());
   const b = balancesBy(db, { to: asOf }, basis);
   const rows = (type: Account['type']) =>
     db.accounts
@@ -330,7 +331,7 @@ export function balanceSheet(asOf: string, basis: Basis = 'accrual') {
 }
 
 export function trialBalance(asOf: string, basis: Basis = 'accrual') {
-  const db = getDb();
+  const db = baseView(getDb());
   const b = balancesBy(db, { to: asOf }, basis);
   const rows = db.accounts
     .map((a) => {
@@ -343,7 +344,7 @@ export function trialBalance(asOf: string, basis: Basis = 'accrual') {
 }
 
 export function generalLedger(from: string, to: string, accountId?: string) {
-  const db = getDb();
+  const db = baseView(getDb());
   const accs = accountMap(db);
   const ids = accountId ? [accountId] : db.accounts.map((a) => a.id);
   const out = ids
@@ -365,7 +366,7 @@ export function generalLedger(from: string, to: string, accountId?: string) {
 }
 
 export function agingReport(kind: 'receivables' | 'payables') {
-  const db = getDb();
+  const db = baseView(getDb());
   const docs = kind === 'receivables' ? openInvoices(db) : openBills(db);
   const byContact = new Map<string, typeof docs>();
   for (const d of docs) byContact.set(d.contactId, [...(byContact.get(d.contactId) || []), d]);
@@ -374,7 +375,7 @@ export function agingReport(kind: 'receivables' | 'payables') {
 }
 
 export function salesByCustomer(from: string, to: string) {
-  const db = getDb();
+  const db = baseView(getDb());
   const m = new Map<string, { count: number; sales: number }>();
   for (const d of db.docs) if (d.kind === 'invoice' && d.status !== 'void' && !isUnposted(d.status) && d.date >= from && d.date <= to) {
     const cur = m.get(d.contactId) || { count: 0, sales: 0 };
@@ -386,7 +387,7 @@ export function salesByCustomer(from: string, to: string) {
 }
 
 export function salesByItem(from: string, to: string) {
-  const db = getDb();
+  const db = baseView(getDb());
   const m = new Map<string, { qty: number; amount: number }>();
   for (const d of db.docs) if (d.kind === 'invoice' && d.status !== 'void' && !isUnposted(d.status) && d.date >= from && d.date <= to)
     for (const l of d.lineItems) {
@@ -400,7 +401,7 @@ export function salesByItem(from: string, to: string) {
 }
 
 export function expensesByCategory(from: string, to: string) {
-  const db = getDb();
+  const db = baseView(getDb());
   const accs = accountMap(db);
   const m = new Map<string, number>();
   for (const j of db.journals) if (j.date >= from && j.date <= to)
@@ -409,12 +410,18 @@ export function expensesByCategory(from: string, to: string) {
 }
 
 export function contactBalances(kind: 'customer' | 'vendor') {
-  const db = getDb();
-  return { rows: db.contacts.filter((c) => c.kind === kind).map((c) => ({ contactId: c.id, name: c.displayName, ...contactSummary(c) })) };
+  const db = baseView(getDb());
+  // INR at each transaction's own rate; the contact's own currency is kept alongside
+  return {
+    rows: db.contacts.filter((c) => c.kind === kind).map((c) => {
+      const s = contactSummary(c);
+      return { contactId: c.id, name: c.displayName, currencyCode: s.currencyCode, fcyOutstanding: s.outstanding, fcyUnusedCredits: s.unusedCredits, outstanding: s.baseOutstanding, unusedCredits: s.baseUnusedCredits };
+    }),
+  };
 }
 
 export function journalReport(from: string, to: string) {
-  const db = getDb();
+  const db = baseView(getDb());
   return { from, to, journals: db.journals.filter((j: Journal) => j.date >= from && j.date <= to) };
 }
 

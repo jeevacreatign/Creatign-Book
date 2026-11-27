@@ -3,7 +3,9 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Pencil, Mail, Share2, FileText, Printer, ChevronDown, MoreHorizontal, X, Lock, Unlock, Copy, Trash2, Ban, BookOpen, Repeat, Bell, CreditCard, Truck, ArrowRightLeft, CheckCircle2, RotateCcw, Paperclip, MessageSquare, Send, ThumbsUp, ThumbsDown, Sparkles } from 'lucide-react';
 import { isUnposted, needsApproval } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
-import { fmtDate, fmtDateTime, frequencyLabel, money, today } from '@shared/format';
+import { fmtDate, fmtDateTime, frequencyLabel, today } from '@shared/format';
+import { moneyIn, rateLabel } from '@shared/currency';
+import { CurrencyFacts, PaymentRateField, usePaymentRate } from '../../components/currency';
 import { PAYMENT_MODES, PAYMENT_TERMS, type Contact, type DocKind, type Journal, type TxnDoc } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
@@ -73,17 +75,17 @@ function DocSummary({ d }: { d: DocDetailData }) {
                 {l.description && <div className="text-xs text-slate-500">{l.description}</div>}
               </td>
               <td className="text-right">{l.quantity} {l.unit}</td>
-              <td className="text-right">{money(l.rate)}</td>
-              {d.lineItems.some((x) => x.taxId) && <td className="text-right text-xs">{taxLabel(l.taxId, isIntraState(d.sourceOfSupply, d.destinationOfSupply, d.gstTreatment))}{l.taxAmount ? <div className="text-slate-500">{money(l.taxAmount)}</div> : null}</td>}
-              <td className="text-right">{money(l.amount)}</td>
+              <td className="text-right">{moneyIn(l.rate, d.currencyCode)}</td>
+              {d.lineItems.some((x) => x.taxId) && <td className="text-right text-xs">{taxLabel(l.taxId, isIntraState(d.sourceOfSupply, d.destinationOfSupply, d.gstTreatment))}{l.taxAmount ? <div className="text-slate-500">{moneyIn(l.taxAmount, d.currencyCode)}</div> : null}</td>}
+              <td className="text-right">{moneyIn(l.amount, d.currencyCode)}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <div className="ml-auto w-80 p-5">
-        <div className="flex justify-between py-1 text-[13px]"><span>Sub Total</span><span>{money(d.subTotal)}</span></div>
+        <div className="flex justify-between py-1 text-[13px]"><span>Sub Total</span><span>{moneyIn(d.subTotal, d.currencyCode)}</span></div>
         <TaxRows rows={d.taxBreakdown} reverseCharge={d.reverseCharge} inclusive={d.taxInclusive} />
-        <div className="mt-1 flex justify-between border-t border-slate-200 pt-2 text-[14px] font-semibold"><span>Total</span><span>{money(d.total)}</span></div>
+        <div className="mt-1 flex justify-between border-t border-slate-200 pt-2 text-[14px] font-semibold"><span>Total</span><span>{moneyIn(d.total, d.currencyCode)}</span></div>
       </div>
     </div>
   );
@@ -409,7 +411,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
               </Link>
               <span>{fmtDate(d.related.salesOrder.date)}</span>
               <Status status={d.related.salesOrder.status} />
-              <span>{money(d.related.salesOrder.total)}</span>
+              <span>{moneyIn(d.related.salesOrder.total, d.related.salesOrder.currencyCode)}</span>
             </div>
           </details>
         )}
@@ -450,8 +452,9 @@ export function DocDetail({ kind }: { kind: DocKind }) {
             </span>
           </div>
         )}
-        {d.writeOff && <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-[13px]">Written off {money(d.writeOff.amount)} on {fmtDate(d.writeOff.date)}{d.writeOff.reason ? ` · ${d.writeOff.reason}` : ''}</div>}
+        {d.writeOff && <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-[13px]">Written off {moneyIn(d.writeOff.amount, d.currencyCode)} on {fmtDate(d.writeOff.date)}{d.writeOff.reason ? ` · ${d.writeOff.reason}` : ''}</div>}
 
+        <CurrencyFacts x={d} amounts={[['Total', d.total], ...(['invoice', 'bill', 'credit_note', 'vendor_credit'].includes(d.kind) && !isUnposted(d.status) ? ([[d.kind === 'credit_note' || d.kind === 'vendor_credit' ? 'Credits remaining' : 'Balance due', d.balance]] as [string, number][]) : [])]} />
         <Tabs tabs={tabs} value={tab} onChange={setTab} className="no-print mb-4" />
 
         {tab === 'document' && (
@@ -491,7 +494,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
           title={`Email To ${d.contactName}`}
           to={contactEmail ? [contactEmail] : d.emailRecipients}
           subject={`${meta.label} - ${d.number} from ${org.name}`}
-          body={`Dear ${d.contactName},\n\nThank you for your business. Your ${meta.label.toLowerCase()} ${d.number} is attached as a PDF.\n\n${meta.label.toUpperCase()} AMOUNT: ${money(d.total)}${d.dueDate ? `\nDUE DATE: ${fmtDate(d.dueDate)}` : ''}\n\nRegards,\n${org.name}`}
+          body={`Dear ${d.contactName},\n\nThank you for your business. Your ${meta.label.toLowerCase()} ${d.number} is attached as a PDF.\n\n${meta.label.toUpperCase()} AMOUNT: ${moneyIn(d.total, d.currencyCode)}${d.dueDate ? `\nDUE DATE: ${fmtDate(d.dueDate)}` : ''}\n\nRegards,\n${org.name}`}
           contactId={d.contactId}
           entityType={kind}
           entityId={d.id}
@@ -663,6 +666,8 @@ function MoreInformation({ d }: { d: DocDetailData }) {
         <KV k="Project" v={d.projectName} />
         <KV k="Payment Terms" v={PAYMENT_TERMS.find((t) => t.value === d.paymentTerms)?.label} />
         <KV k="Expected Payment" v={fmtDate(d.expectedPaymentDate)} />
+        <KV k="Currency" v={d.currencyCode || 'INR'} />
+        {(d.currencyCode || 'INR') !== 'INR' && <KV k="Exchange Rate" v={rateLabel(d.currencyCode!, d.exchangeRate || 1)} />}
         {shown.map((l) => (
           <KV
             key={l.label}
@@ -717,8 +722,8 @@ function ChildList({ docs }: { docs: TxnDoc[] }) {
             <td>
               <Status status={c.status} dueDate={c.dueDate} />
             </td>
-            <td className="text-right">{money(c.total)}</td>
-            <td className="text-right">{money(c.balance)}</td>
+            <td className="text-right">{moneyIn(c.total, c.currencyCode)}</td>
+            <td className="text-right">{moneyIn(c.balance, c.currencyCode)}</td>
           </tr>
         ))}
       </tbody>
@@ -735,7 +740,7 @@ function RecurringOverview({ d }: { d: DocDetailData }) {
         <div className="rounded-md border border-slate-200 p-4">
           <div className="mb-3 flex items-center gap-3">
             <Pill status={d.status} />
-            <span className="text-lg font-semibold">{money(d.total)}</span>
+            <span className="text-lg font-semibold">{moneyIn(d.total, d.currencyCode)}</span>
             <span className="text-slate-500">· {frequencyLabel(d.repeatEvery)}</span>
           </div>
           <KV k="Profile Name" v={d.profileName} />
@@ -785,7 +790,7 @@ function RecurringOverview({ d }: { d: DocDetailData }) {
                 <td>
                   <Status status={c.status} dueDate={c.dueDate} />
                 </td>
-                <td className="text-right">{money(c.total)}</td>
+                <td className="text-right">{moneyIn(c.total, c.currencyCode)}</td>
                 <td className="text-right">
                   {!['paid', 'void'].includes(c.status) && !isUnposted(c.status) && (
                     <button
@@ -835,7 +840,7 @@ function PaymentsTab({ d, kind }: { d: DocDetailData; kind: DocKind }) {
               <tr key={a.id}>
                 <td>{fmtDate(a.date)}</td>
                 <td>{a.number}</td>
-                <td className="text-right">{money(a.amount)}</td>
+                <td className="text-right">{moneyIn(a.amount, d.currencyCode)}</td>
                 <td className="text-right">
                   <button className="text-slate-400 hover:text-red-500" onClick={() => remove.mutate(a.id)} aria-label="Remove">
                     <Trash2 size={13} />
@@ -870,7 +875,7 @@ function PaymentsTab({ d, kind }: { d: DocDetailData; kind: DocKind }) {
                     <td>{fmtDate(r.date)}</td>
                     <td>{r.mode}</td>
                     <td>{r.referenceNumber}</td>
-                    <td className="text-right">{money(r.amount)}</td>
+                    <td className="text-right">{moneyIn(r.amount, d.currencyCode)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -901,7 +906,7 @@ function PaymentsTab({ d, kind }: { d: DocDetailData; kind: DocKind }) {
               <td>
                 <Status status={p.status} />
               </td>
-              <td className="text-right">{money(p.amount)}</td>
+              <td className="text-right">{moneyIn(p.amount, d.currencyCode)}</td>
             </tr>
           ))}
           {d.related.creditsApplied.map((c) => (
@@ -910,7 +915,7 @@ function PaymentsTab({ d, kind }: { d: DocDetailData; kind: DocKind }) {
               <td>{c.creditNumber}</td>
               <td>Credits Applied</td>
               <td />
-              <td className="text-right">{money(c.amount)}</td>
+              <td className="text-right">{moneyIn(c.amount, d.currencyCode)}</td>
             </tr>
           ))}
           {!d.related.payments.length && !d.related.creditsApplied.length && (
@@ -928,7 +933,8 @@ function PaymentsTab({ d, kind }: { d: DocDetailData; kind: DocKind }) {
 
 function RefundModal({ d, onClose, accounts }: { d: DocDetailData; onClose: () => void; accounts: ReturnType<typeof useBoot>['accounts'] }) {
   const [f, setF] = useState({ amount: String(d.balance), date: today(), mode: 'Cash', referenceNumber: '', accountId: 'acc_petty_cash', description: '' });
-  const save = useAction(() => api(`/docs/${d.id}/refunds`, { body: f }), 'Refund recorded');
+  const fx = usePaymentRate(d.currencyCode, f.date);
+  const save = useAction(() => api(`/docs/${d.id}/refunds`, { body: { ...f, ...(fx.foreign ? { exchangeRate: fx.rate } : {}) } }), 'Refund recorded');
   return (
     <Modal
       open
@@ -957,12 +963,17 @@ function RefundModal({ d, onClose, accounts }: { d: DocDetailData; onClose: () =
         </div>
       </div>
       <div className="space-y-3">
-        <Field label="Amount" required hint={`Balance : ${money(d.balance)}`}>
-          <MoneyInput value={f.amount} onChange={(v) => setF({ ...f, amount: v })} />
+        <Field label="Amount" required hint={`Balance : ${moneyIn(d.balance, d.currencyCode)}`}>
+          <MoneyInput prefix={fx.code} value={f.amount} onChange={(v) => setF({ ...f, amount: v })} />
         </Field>
         <Field label="Refunded On" required>
           <DateInput value={f.date} onChange={(v) => setF({ ...f, date: v })} />
         </Field>
+        {fx.foreign && (
+          <Field label="Exchange Rate" required hint="Rate on the refund date. The difference from the credit's rate is posted as an exchange gain or loss.">
+            <PaymentRateField fx={fx} amount={Number(f.amount) || 0} />
+          </Field>
+        )}
         <Field label="Payment Mode">
           <Select value={f.mode} onChange={(e) => setF({ ...f, mode: e.target.value })} options={PAYMENT_MODES.map((m) => ({ value: m, label: m }))} />
         </Field>
@@ -997,7 +1008,7 @@ function BillCredits({ d }: { d: DocDetailData }) {
     <>
       <div className="mb-3 flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-[13px]">
         <span>
-          <span className="font-semibold">Credits Available:</span> {money(total)} from {list.length} credit{list.length === 1 ? '' : 's'} and advance payment{list.length === 1 ? '' : 's'}.
+          <span className="font-semibold">Credits Available:</span> {moneyIn(total, d.currencyCode)} from {list.length} credit{list.length === 1 ? '' : 's'} and advance payment{list.length === 1 ? '' : 's'}.
         </span>
         <button className="btn-primary btn-sm" onClick={() => setOpen(true)}>
           Apply
@@ -1034,7 +1045,7 @@ function ApplyToBillModal({ d, list, onClose }: { d: DocDetailData; list: Vendor
             Cancel
           </button>
           <span className="ml-auto text-[13px]">
-            Amount to Credit: <b>{money(total)}</b> · Bill Balance: <b>{money(d.balance - total)}</b>
+            Amount to Credit: <b>{moneyIn(total, d.currencyCode)}</b> · Bill Balance: <b>{moneyIn(d.balance - total, d.currencyCode)}</b>
           </span>
         </>
       }
@@ -1056,7 +1067,7 @@ function ApplyToBillModal({ d, list, onClose }: { d: DocDetailData; list: Vendor
                 <div className="text-xxs text-slate-500">{c.source === 'credit' ? 'Debit Note' : 'Excess payment'}</div>
               </td>
               <td>{fmtDate(c.date)}</td>
-              <td className="text-right tabular-nums">{money(c.available)}</td>
+              <td className="text-right tabular-nums">{moneyIn(c.available, d.currencyCode)}</td>
               <td>
                 <input type="number" className="input text-right" value={amounts[c.id] ?? ''} onChange={(e) => setAmounts({ ...amounts, [c.id]: e.target.value })} />
               </td>
@@ -1089,7 +1100,7 @@ function ApplyCreditsModal({ d, onClose }: { d: DocDetailData; onClose: () => vo
             Cancel
           </button>
           <span className="ml-auto text-[13px]">
-            Amount to Credit: <b>{money(total)}</b> · Remaining credits: <b>{money(d.balance - total)}</b>
+            Amount to Credit: <b>{moneyIn(total, d.currencyCode)}</b> · Remaining credits: <b>{moneyIn(d.balance - total, d.currencyCode)}</b>
           </span>
         </>
       }
@@ -1109,8 +1120,8 @@ function ApplyCreditsModal({ d, onClose }: { d: DocDetailData; onClose: () => vo
             <tr key={i.id}>
               <td>{i.number}</td>
               <td>{fmtDate(i.date)}</td>
-              <td className="text-right">{money(i.total)}</td>
-              <td className="text-right">{money(i.balance)}</td>
+              <td className="text-right">{moneyIn(i.total, i.currencyCode)}</td>
+              <td className="text-right">{moneyIn(i.balance, i.currencyCode)}</td>
               <td>
                 <input type="number" className="input text-right" value={amounts[i.id] ?? ''} onChange={(e) => setAmounts({ ...amounts, [i.id]: e.target.value })} />
               </td>
@@ -1136,7 +1147,7 @@ function WriteOffModal({ d, onClose, onSubmit }: { d: DocDetailData; onClose: ()
     <Modal open onClose={onClose} title={`Write off ${d.number}`} footer={<><button className="btn-danger" onClick={() => onSubmit({ date, reason })}>Write Off</button><button className="btn-secondary" onClick={onClose}>Cancel</button></>}>
       <div className="space-y-3">
         <div className="text-[13px]">
-          Write off the balance of <b>{money(d.balance)}</b> as a bad debt.
+          Write off the balance of <b>{moneyIn(d.balance, d.currencyCode)}</b> as a bad debt.
         </div>
         <Field label="Write Off Date" required>
           <DateInput value={date} onChange={setDate} />
@@ -1168,7 +1179,7 @@ function CancelItemsModal({ d, onClose, onSubmit }: { d: DocDetailData; onClose:
         {d.lineItems.map((l) => (
           <label key={l.id} className="flex items-center gap-2 text-[13px]">
             <input type="checkbox" className="accent-brand-600" checked={sel.includes(l.id)} onChange={(e) => setSel(e.target.checked ? [...sel, l.id] : sel.filter((x) => x !== l.id))} />
-            {l.name} · {l.quantity} × {money(l.rate)}
+            {l.name} · {l.quantity} × {moneyIn(l.rate, d.currencyCode)}
           </label>
         ))}
       </div>

@@ -412,6 +412,7 @@ export default function Home() {
             <div className="text-right text-[13px] text-slate-300">
               <div className="font-medium text-white">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
               <div>Financial year {fyLabel(org.fiscalYearStartMonth || 4)}</div>
+              <div className="text-[11px] text-slate-400">All amounts in INR (base currency)</div>
             </div>
           </div>
         </div>

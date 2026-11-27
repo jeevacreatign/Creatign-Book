@@ -4,7 +4,8 @@ import { ChevronDown, Plus, MoreHorizontal, Upload, Download, RefreshCw, Trash2,
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
 import { DOC_META } from '@shared/docmeta';
-import { fmtDate, frequencyLabel, money } from '@shared/format';
+import { fmtDate, frequencyLabel } from '@shared/format';
+import { moneyIn } from '@shared/currency';
 import type { DocKind, TxnDoc } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
 import { Dropdown, MenuItem, SearchBox, Spinner, Status, clsx, useConfirm } from '../../components/ui';
@@ -23,9 +24,24 @@ const DOC_EXPORT_COLUMNS: ExportColumn<DocRow>[] = [
   { header: 'Status', value: (d) => d.status },
   { header: 'Sub Total', value: (d) => d.subTotal },
   { header: 'Tax', value: (d) => d.taxAmount ?? 0 },
+  { header: 'Currency', value: (d) => d.currencyCode || 'INR' },
+  { header: 'Exchange Rate', value: (d) => d.exchangeRate ?? 1 },
   { header: 'Total', value: (d) => d.total },
   { header: 'Balance', value: (d) => d.balance },
+  { header: 'Total (INR)', value: (d) => d.baseTotal ?? d.total },
+  { header: 'Balance (INR)', value: (d) => d.baseBalance ?? d.balance },
 ];
+
+/** Amount in the document currency, with the INR equivalent underneath for foreign currencies. */
+function Amount({ d, v, base }: { d: TxnDoc; v: number; base?: number }) {
+  const foreign = (d.currencyCode || 'INR') !== 'INR';
+  return (
+    <span className="tabular-nums">
+      {moneyIn(v, d.currencyCode)}
+      {foreign && base != null && <span className="block text-xxs text-slate-400">{moneyIn(base, 'INR')}</span>}
+    </span>
+  );
+}
 
 const HEAD: Record<Column, string> = {
   date: 'Date',
@@ -72,9 +88,9 @@ function cell(c: Column, d: DocRow, all: DocRow[]) {
     case 'dueDate':
       return fmtDate(d.dueDate);
     case 'amount':
-      return <span className="tabular-nums">{money(d.total)}</span>;
+      return <Amount d={d} v={d.total} base={d.baseTotal} />;
     case 'balance':
-      return <span className="tabular-nums">{money(d.balance)}</span>;
+      return <Amount d={d} v={d.balance} base={d.baseBalance} />;
     case 'invoiced':
       return <Dot on={d.invoiceStatus === 'invoiced'} half={d.invoiceStatus === 'partially_invoiced'} />;
     case 'payment':
@@ -300,7 +316,7 @@ export function DocListPane({ kind }: { kind: DocKind }) {
           <Link key={d.id} to={`${meta.path}/${d.id}`} className={clsx('block border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50', d.id === id && 'bg-brand-50/70')}>
             <div className="flex justify-between gap-2">
               <span className="truncate font-medium text-slate-800">{d.contactName}</span>
-              <span className="tabular-nums text-slate-800">{money(d.total)}</span>
+              <span className="tabular-nums text-slate-800">{moneyIn(d.total, d.currencyCode)}</span>
             </div>
             <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
               <span>{meta.recurring ? d.profileName : d.number}</span>

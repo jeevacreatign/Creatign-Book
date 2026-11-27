@@ -16,6 +16,7 @@ import { registerBankingRoutes } from './banking';
 import { registerAuthRoutes, requestUser, requireAdmin, requireStaff } from './auth';
 import { registerDocumentRoutes } from './documents';
 import * as R from './reports';
+import { baseView } from './fx';
 import { CATEGORIES as CATALOG_CATEGORIES, catalog as reportCatalog, runReport } from './reportCatalog';
 import * as S from './services';
 import { mailSettings, savedSmtp, verifySmtp, type SmtpSettings } from './mailer';
@@ -141,6 +142,10 @@ export function createApp() {
       if (logo.length > 1.4 * 1024 * 1024) throw new S.HttpError(400, 'The logo must be 1 MB or smaller');
     }
     if (body.logo === null) body.logo = '';
+    // the base currency is fixed: the ledger and every exchange rate are kept in INR
+    if (body.currencyCode !== undefined && body.currencyCode !== 'INR') throw new S.HttpError(400, 'The base currency is INR and cannot be changed');
+    delete body.currencyCode;
+    delete body.currencySymbol;
     return Object.assign(getDb().organization, body, { id: getDb().organization.id });
   }));
 
@@ -854,7 +859,7 @@ export function createApp() {
   api.get('/report-catalog', h(() => ({ categories: CATALOG_CATEGORIES, reports: reportCatalog(), saved: getDb().savedReports })));
   api.get('/report-data/:key', h((req) => {
     try {
-      return runReport(getDb(), p(req, 'key'), Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, typeof v === 'string' && v ? v : undefined])));
+      return runReport(baseView(getDb()), p(req, 'key'), Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, typeof v === 'string' && v ? v : undefined])));
     } catch (e) {
       if ((e as { status?: number }).status === 404) throw new S.HttpError(404, 'Unknown report');
       throw e;

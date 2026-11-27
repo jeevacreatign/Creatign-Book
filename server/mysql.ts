@@ -11,7 +11,7 @@ import mysql, { type Pool, type PoolConnection } from 'mysql2/promise';
 import type { Database } from '../shared/types';
 
 type Row = Record<string, unknown>;
-type ColType = 'id' | 'str' | 'text' | 'date' | 'datetime' | 'money' | 'num' | 'bool';
+type ColType = 'id' | 'str' | 'text' | 'date' | 'datetime' | 'money' | 'num' | 'rate' | 'bool';
 interface Col {
   name: string;
   type: ColType;
@@ -34,14 +34,17 @@ const contact = c('contact_id', 'id', 'contactId', true);
 const created = c('created_at', 'datetime', 'createdAt');
 const status = c('status', 'str', 'status', true);
 const number = c('number', 'str', 'number', true);
+// currency of the record and its exchange rate (INR per unit); rows saved before multi-currency read as INR at 1
+const currency = { name: 'currency_code', type: 'str', get: (r: Row) => r.currencyCode || 'INR', index: true } as Col;
+const fxRate = { name: 'exchange_rate', type: 'rate', get: (r: Row) => (!r.currencyCode || r.currencyCode === 'INR' ? 1 : r.exchangeRate ?? 1) } as Col;
 
 export const TABLES: TableDef[] = [
   { key: 'accounts', table: 'accounts', cols: [c('code', 'str', 'code', true), c('name', 'text', 'name'), c('type', 'str', 'type', true), c('sub_type', 'str', 'subType'), c('parent_id', 'id', 'parentId', true), c('active', 'bool', 'active')] },
   { key: 'items', table: 'items', cols: [c('name', 'text', 'name'), c('type', 'str', 'type'), c('sku', 'str', 'sku'), c('hsn_sac', 'str', 'hsnSac'), c('selling_price', 'money', 'sellingPrice'), c('cost_price', 'money', 'costPrice'), status, created] },
-  { key: 'contacts', table: 'contacts', cols: [c('kind', 'str', 'kind', true), c('display_name', 'text', 'displayName'), c('company_name', 'text', 'companyName'), c('email', 'str', 'email', true), c('gstin', 'str', 'gstin'), c('place_of_supply', 'str', 'placeOfSupply'), status, created] },
-  { key: 'docs', table: 'transactions', cols: [c('kind', 'str', 'kind', true), number, contact, date('date', 'date'), date('due_date', 'dueDate'), status, c('project_id', 'id', 'projectId', true), c('sub_total', 'money', 'subTotal'), c('tax_total', 'money', 'taxAmount'), c('total', 'money', 'total'), c('balance', 'money', 'balance'), created] },
-  { key: 'paymentsReceived', table: 'payments_received', cols: [number, contact, date('date', 'date'), c('amount', 'money', 'amount'), c('mode', 'str', 'mode'), c('deposit_to_account_id', 'id', 'depositToAccountId', true), c('unused_amount', 'money', 'unusedAmount'), status, created] },
-  { key: 'paymentsMade', table: 'payments_made', cols: [number, c('type', 'str', 'type'), contact, date('date', 'date'), c('amount', 'money', 'amount'), c('mode', 'str', 'mode'), c('paid_through_account_id', 'id', 'paidThroughAccountId', true), c('unused_amount', 'money', 'unusedAmount'), status, created] },
+  { key: 'contacts', table: 'contacts', cols: [c('kind', 'str', 'kind', true), c('display_name', 'text', 'displayName'), c('company_name', 'text', 'companyName'), c('email', 'str', 'email', true), c('gstin', 'str', 'gstin'), c('place_of_supply', 'str', 'placeOfSupply'), currency, status, created] },
+  { key: 'docs', table: 'transactions', cols: [c('kind', 'str', 'kind', true), number, contact, date('date', 'date'), date('due_date', 'dueDate'), status, c('project_id', 'id', 'projectId', true), c('sub_total', 'money', 'subTotal'), c('tax_total', 'money', 'taxAmount'), c('total', 'money', 'total'), c('balance', 'money', 'balance'), currency, fxRate, c('base_total', 'money', 'baseTotal'), c('base_balance', 'money', 'baseBalance'), created] },
+  { key: 'paymentsReceived', table: 'payments_received', cols: [number, contact, date('date', 'date'), c('amount', 'money', 'amount'), c('mode', 'str', 'mode'), c('deposit_to_account_id', 'id', 'depositToAccountId', true), c('unused_amount', 'money', 'unusedAmount'), currency, fxRate, c('base_amount', 'money', 'baseAmount'), status, created] },
+  { key: 'paymentsMade', table: 'payments_made', cols: [number, c('type', 'str', 'type'), contact, date('date', 'date'), c('amount', 'money', 'amount'), c('mode', 'str', 'mode'), c('paid_through_account_id', 'id', 'paidThroughAccountId', true), c('unused_amount', 'money', 'unusedAmount'), currency, fxRate, c('base_amount', 'money', 'baseAmount'), status, created] },
   { key: 'expenses', table: 'expenses', cols: [date('date', 'date'), c('account_id', 'id', 'accountId', true), c('paid_through_account_id', 'id', 'paidThroughAccountId', true), c('vendor_id', 'id', 'vendorId', true), c('customer_id', 'id', 'customerId', true), c('project_id', 'id', 'projectId', true), c('amount', 'money', 'amount'), { name: 'total', type: 'money', get: (r) => (r.subTotal == null ? r.amount : Number(r.subTotal) + (Number(r.taxAmount) || 0)) }, status, created] },
   { key: 'recurringExpenses', table: 'recurring_expenses', cols: [c('profile_name', 'text', 'profileName'), c('next_date', 'date', 'nextDate'), status, created] },
   { key: 'journals', table: 'journals', cols: [number, date('date', 'date'), c('source_type', 'str', 'sourceType', true), c('source_id', 'id', 'sourceId', true), contact, c('project_id', 'id', 'projectId', true), created] },
@@ -63,8 +66,8 @@ export const TABLES: TableDef[] = [
   { key: 'timeEntries', table: 'time_entries', cols: [c('project_id', 'id', 'projectId', true), c('task_id', 'id', 'taskId'), c('user_id', 'id', 'userId', true), date('date', 'date'), c('hours', 'num', 'hours'), c('billable', 'bool', 'billable'), c('invoiced', 'bool', 'invoiced'), c('invoice_id', 'id', 'invoiceId', true), created] },
   { key: 'timers', table: 'timers', cols: [c('user_id', 'id', 'userId', true), c('project_id', 'id', 'projectId')] },
   { key: 'budgets', table: 'budgets', cols: [c('name', 'text', 'name'), c('fiscal_year_start', 'date', 'fiscalYearStart'), c('project_id', 'id', 'projectId', true)] },
-  { key: 'currencies', table: 'currencies', idField: 'code', cols: [c('name', 'text', 'name'), c('symbol', 'str', 'symbol')] },
-  { key: 'currencyAdjustments', table: 'currency_adjustments', cols: [date('date', 'date'), c('currency_code', 'str', 'currencyCode')] },
+  { key: 'currencies', table: 'currencies', idField: 'code', cols: [c('name', 'text', 'name'), c('symbol', 'str', 'symbol'), c('rate', 'rate', 'rate')] },
+  { key: 'currencyAdjustments', table: 'currency_adjustments', cols: [date('date', 'date'), c('currency_code', 'str', 'currencyCode'), c('rate', 'rate', 'rate'), c('gain_or_loss', 'money', 'gainOrLoss')] },
   { key: 'bankTransactions', table: 'bank_transactions', cols: [c('type', 'str', 'type', true), date('date', 'date'), c('account_id', 'id', 'accountId', true), c('offset_account_id', 'id', 'offsetAccountId', true), c('amount', 'money', 'amount'), contact, c('statement_line_id', 'id', 'statementLineId', true), created] },
   { key: 'statementLines', table: 'statement_lines', cols: [c('account_id', 'id', 'accountId', true), date('date', 'date'), c('description', 'text', 'description'), c('deposit', 'money', 'deposit'), c('withdrawal', 'money', 'withdrawal'), status, c('import_id', 'id', 'importId', true), created] },
   { key: 'statementImports', table: 'statement_imports', cols: [c('account_id', 'id', 'accountId', true), c('file_name', 'text', 'fileName'), created] },
@@ -89,6 +92,7 @@ const SQL_TYPE: Record<ColType, string> = {
   datetime: 'DATETIME(3)',
   money: 'DECIMAL(18,2)',
   num: 'DECIMAL(18,4)',
+  rate: 'DECIMAL(18,6)',
   bool: 'TINYINT(1)',
 };
 
@@ -104,7 +108,8 @@ function sqlValue(type: ColType, v: unknown): unknown {
       return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 23).replace('T', ' ');
     }
     case 'money':
-    case 'num': {
+    case 'num':
+    case 'rate': {
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
     }
@@ -163,8 +168,10 @@ function q(name: string) {
  * Bump when a typed column starts reading a different field: rows already stored are then
  * rewritten once on the next start (their JSON is unchanged, so the diff writer would skip them).
  *   2: transactions.tax_total, expenses.total, activities.at, share_links.expires_at, payment_notices.doc_id
+ *   3: multi-currency: currency_code / exchange_rate / base amounts on transactions and payments,
+ *      contacts.currency_code, currencies.rate (existing rows are written as INR at rate 1)
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** Create any missing table or column. Safe to run on every start. Returns the version the database was at. */
 export async function migrate(): Promise<number> {

@@ -3,7 +3,8 @@
 // also used for browser print) and the PDFKit attachment renderer (server/pdf.ts). Both read the
 // same `buildPdfModel()` output so the two always show the same fields, labels and totals.
 import { DOC_META } from './docmeta';
-import { fmtDate, frequencyLabel, money, num } from './format';
+import { fmtDate, frequencyLabel, num } from './format';
+import { BASE_CURRENCY, fxOf, isoInfo, moneyIn, rateLabel, toBase } from './currency';
 import type { Address, Contact, DocKind, Organization, TxnDoc } from './types';
 import { PAYMENT_TERMS } from './types';
 import { isIntraState, taxLabel, taxRate } from './gst';
@@ -325,13 +326,32 @@ function intWords(n: number): string {
   return parts.join(' ');
 }
 
-/** 125000.5 -> "Indian Rupee One Lakh Twenty-Five Thousand and Fifty Paise Only" */
-export function amountInWords(amount: number): string {
+/** International grouping (thousand, million, billion) for currencies other than INR. */
+function intWordsWestern(n: number): string {
+  if (n === 0) return 'Zero';
+  const scales = ['', 'Thousand', 'Million', 'Billion', 'Trillion'];
+  const parts: string[] = [];
+  let i = 0;
+  while (n > 0 && i < scales.length) {
+    const chunk = n % 1000;
+    if (chunk) parts.unshift([threeDigits(chunk), scales[i]].filter(Boolean).join(' '));
+    n = Math.floor(n / 1000);
+    i++;
+  }
+  return parts.join(' ');
+}
+
+/**
+ * 125000.5 -> "Indian Rupee One Lakh Twenty-Five Thousand and Fifty Paise Only";
+ * in another currency: 1250.5 USD -> "US Dollar One Thousand Two Hundred Fifty and 50/100 Only".
+ */
+export function amountInWords(amount: number, currencyCode: string = BASE_CURRENCY): string {
   const neg = amount < 0;
   const a = Math.abs(Math.round((amount || 0) * 100));
-  const rupees = Math.floor(a / 100);
-  const paise = a % 100;
-  return `${neg ? 'Minus ' : ''}Indian Rupee ${intWords(rupees)}${paise ? ` and ${twoDigits(paise)} Paise` : ''} Only`;
+  const units = Math.floor(a / 100);
+  const cents = a % 100;
+  if (currencyCode !== BASE_CURRENCY) return `${neg ? 'Minus ' : ''}${isoInfo(currencyCode).name} ${intWordsWestern(units)}${cents ? ` and ${String(cents).padStart(2, '0')}/100` : ''} Only`;
+  return `${neg ? 'Minus ' : ''}Indian Rupee ${intWords(units)}${cents ? ` and ${twoDigits(cents)} Paise` : ''} Only`;
 }
 
 // ------------------------------------------------------------ render model
@@ -380,6 +400,8 @@ export interface PdfModel {
   /** e.g. "Balance Due" panel */
   highlight: { label: string; value: string };
   amountInWords?: string;
+  /** ISO code of the amounts on the document */
+  currencyCode?: string;
   notes?: { label: string; text: string };
   terms?: { label: string; text: string };
   bank?: string;
@@ -418,6 +440,13 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
     ['Project', doc.projectName],
     ['Frequency', doc.repeatEvery ? frequencyLabel(doc.repeatEvery) : undefined],
   ];
+  // foreign-currency documents state their currency and the rate used for the INR equivalent
+  const fx = fxOf(doc);
+  const money = (n: number | undefined) => moneyIn(n, fx.code);
+  if (fx.code !== BASE_CURRENCY) {
+    facts.push(['Currency', `${fx.code} - ${isoInfo(fx.code).name}`]);
+    facts.push(['Exchange Rate', rateLabel(fx.code, fx.rate)]);
+  }
   if (t.details.showCustomFields) {
     for (const f of customFieldsFor(preferences, doc.kind)) {
       const v = doc.customFields?.[f.id];
@@ -464,10 +493,11 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
   if (doc.tcsAmount > 0) totals.push({ label: `TCS (${doc.tcsRate}%)`, value: num(doc.tcsAmount) });
   if (adj !== 0) totals.push({ label: doc.adjustmentLabel || 'Adjustment', value: num(adj) });
   totals.push({ label: t.total.totalLabel || 'Total', value: money(doc.total), emphasis: 'total' });
+  if (fx.code !== BASE_CURRENCY) totals.push({ label: `Total in INR (at ${rateLabel(fx.code, fx.rate)})`, value: moneyIn(toBase(doc.total, fx.rate), BASE_CURRENCY) });
   const hasBalance = doc.kind === 'invoice' || doc.kind === 'bill';
   const credits = doc.kind === 'credit_note' || doc.kind === 'vendor_credit';
   const paid = doc.amountPaid ?? 0;
-  if (hasBalance && t.total.showPaymentMade && paid > 0) totals.push({ label: 'Supplier Payment', value: `(-) ${money(paid)}`, emphasis: 'negative' });
+  if (hasBalance && t.total.showPaymentMade && paid > 0) totals.push({ label: sales ? 'Payment Made' : 'Supplier Payment', value: `(-) ${money(paid)}`, emphasis: 'negative' });
   if (hasBalance && t.total.showBalanceDue) totals.push({ label: t.total.balanceLabel || 'Balance Due', value: money(doc.balance), emphasis: 'balance' });
   if (credits) totals.push({ label: 'Credits Remaining', value: money(doc.balance), emphasis: 'balance' });
   const highlight = hasBalance && t.total.showBalanceDue ? { label: t.total.balanceLabel || 'Balance Due', value: money(doc.balance) } : credits ? { label: 'Credits Remaining', value: money(doc.balance) } : { label: t.total.totalLabel || 'Total', value: money(doc.total) };
@@ -495,7 +525,8 @@ export function buildPdfModel(doc: TxnDoc, org: Organization, contact: Contact |
     totals,
     totalValue: money(doc.total),
     highlight,
-    amountInWords: t.total.showAmountInWords ? amountInWords(doc.total) : undefined,
+    amountInWords: t.total.showAmountInWords ? amountInWords(doc.total, fx.code) : undefined,
+    currencyCode: fx.code,
     notes: t.other.showNotes && notesText ? { label: t.other.notesLabel, text: notesText } : undefined,
     terms: t.other.showTerms && doc.terms ? { label: t.other.termsLabel, text: doc.terms } : undefined,
     bank: t.other.showBankDetails && t.other.bankDetails.trim() ? t.other.bankDetails.trim() : undefined,

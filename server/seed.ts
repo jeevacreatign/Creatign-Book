@@ -1,5 +1,6 @@
 import type { Account, Contact, Database, Item } from '../shared/types';
 import { addDays, today } from '../shared/format';
+import { normalizeCurrencies } from '../shared/currency';
 import { ACCOUNT_IDS as A } from '../shared/docmeta';
 import { builtInTemplates } from '../shared/pdfTemplate';
 import { builtInEmailTemplates } from '../shared/email';
@@ -54,6 +55,8 @@ export const DEFAULT_ACCOUNTS: Account[] = [
   acc('acc_printing', '6100', 'Printing and Stationery', 'expense', 'expense'),
   acc('acc_meals', '6110', 'Meals and Entertainment', 'expense', 'expense'),
   acc('acc_other_expense', '6900', 'Other Expenses', 'expense', 'other_expense', 'Adjustments and round-off on purchase documents'),
+  acc('acc_fx_gain', '6910', 'Exchange Gain or Loss', 'expense', 'other_expense', 'Realized gains (credit) and losses (debit) when foreign-currency invoices, bills and credits are settled at a different rate'),
+  acc('acc_fx_unrealized', '6920', 'Unrealized Exchange Gain or Loss', 'expense', 'other_expense', 'FX revaluations of open foreign-currency balances; each is reversed the next day'),
 ];
 
 export const DEFAULT_CURRENCIES = [
@@ -145,7 +148,7 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     manualJournals: [],
     journalTemplates: [],
     recurringJournals: [],
-    currencies: DEFAULT_CURRENCIES.map((c) => ({ ...c })),
+    currencies: DEFAULT_CURRENCIES.map((c) => ({ ...c, history: [] })),
     currencyAdjustments: [],
     transactionLocks: { modules: {}, history: [] },
     bankTransactions: [],
@@ -235,5 +238,6 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     te('te_4', 'prj_site', 'tsk_meet', 'usr_admin', 1, 1, 'Weekly review', false);
     te('te_5', 'prj_brand', 'tsk_logo', 'usr_admin', 0, 2, 'Logo concepts');
   }
+  normalizeCurrencies(db);
   return db;
 }

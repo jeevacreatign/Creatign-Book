@@ -14,8 +14,21 @@ import { PortalAccessModal, PortalStatusBlock } from '../../components/portal/Pa
 import { AddressBlock } from '../../components/DocumentPreview';
 import { ExportMenu } from '../../components/ExportMenu';
 import { ContactForm } from './ContactForm';
+import { isoInfo, moneyIn } from '@shared/currency';
+import { CurrencyBadge } from '../../components/currency';
 
-type Row = Contact & { outstanding: number; unusedCredits: number };
+type Row = Contact & { outstanding: number; unusedCredits: number; baseOutstanding?: number; baseUnusedCredits?: number };
+
+/** Amount in the contact's currency, with INR underneath for foreign-currency contacts. */
+function Fcy({ v, base, code }: { v: number; base?: number; code?: string }) {
+  const foreign = !!code && code !== 'INR';
+  return (
+    <>
+      {moneyIn(v, code)}
+      {foreign && base != null && <span className="block text-xxs text-slate-400">{moneyIn(base, 'INR')}</span>}
+    </>
+  );
+}
 const basePath = (k: ContactKind) => (k === 'customer' ? '/sales/customers' : '/purchases/vendors');
 
 function ContactList({ kind }: { kind: ContactKind }) {
@@ -54,8 +67,10 @@ function ContactList({ kind }: { kind: ContactKind }) {
               { header: 'Company Name', value: (c) => c.companyName },
               { header: 'Email', value: (c) => c.email },
               { header: 'Work Phone', value: (c) => c.workPhone },
-              { header: kind === 'customer' ? 'Receivables (BCY)' : 'Payables (BCY)', value: (c) => c.outstanding },
-              { header: 'Unused Credits (BCY)', value: (c) => c.unusedCredits },
+              { header: 'Currency', value: (c) => c.currencyCode || 'INR' },
+              { header: kind === 'customer' ? 'Receivables (FCY)' : 'Payables (FCY)', value: (c) => c.outstanding },
+              { header: kind === 'customer' ? 'Receivables (BCY)' : 'Payables (BCY)', value: (c) => c.baseOutstanding ?? c.outstanding },
+              { header: 'Unused Credits (BCY)', value: (c) => c.baseUnusedCredits ?? c.unusedCredits },
             ]}
           />
           <button className="btn-primary" onClick={() => navigate(`${basePath(kind)}/new`)}>
@@ -110,8 +125,8 @@ function ContactList({ kind }: { kind: ContactKind }) {
                   <td>{c.companyName}</td>
                   <td>{c.email}</td>
                   <td>{c.workPhone}</td>
-                  <td className="text-right tabular-nums">{money(c.outstanding)}</td>
-                  <td className="text-right tabular-nums">{money(c.unusedCredits)}</td>
+                  <td className="text-right tabular-nums"><Fcy v={c.outstanding} base={c.baseOutstanding} code={c.currencyCode} /></td>
+                  <td className="text-right tabular-nums"><Fcy v={c.unusedCredits} base={c.baseUnusedCredits} code={c.currencyCode} /></td>
                 </tr>
               ))}
               {!data.length && (
@@ -146,7 +161,7 @@ function ContactListPane({ kind }: { kind: ContactKind }) {
           <Link key={c.id} to={`${basePath(kind)}/${c.id}`} className={clsx('block border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50', c.id === id && 'bg-brand-50/70')}>
             <div className="flex justify-between gap-2">
               <span className="truncate font-medium">{c.displayName}</span>
-              <span className="tabular-nums text-slate-700">{money(c.outstanding)}</span>
+              <span className="tabular-nums text-slate-700">{moneyIn(c.outstanding, c.currencyCode)}</span>
             </div>
             {c.status === 'inactive' && <div className="text-xxs uppercase text-slate-400">Inactive</div>}
           </Link>
@@ -325,9 +340,11 @@ function Overview({ c, onPortal }: { c: Row; onPortal: () => void }) {
             </thead>
             <tbody>
               <tr>
-                <td>INR- Indian Rupee</td>
-                <td className="text-right tabular-nums">{money(c.outstanding)}</td>
-                <td className="text-right tabular-nums">{money(c.unusedCredits)}</td>
+                <td>
+                  <CurrencyBadge code={c.currencyCode} /> {isoInfo(c.currencyCode || 'INR').name}
+                </td>
+                <td className="text-right tabular-nums"><Fcy v={c.outstanding} base={c.baseOutstanding} code={c.currencyCode} /></td>
+                <td className="text-right tabular-nums"><Fcy v={c.unusedCredits} base={c.baseUnusedCredits} code={c.currencyCode} /></td>
               </tr>
             </tbody>
           </table>
@@ -411,7 +428,7 @@ function Transactions({ c }: { c: Row }) {
     count: docs.length,
     newTo: `${DOC_META[kind].path}/new?contactId=${c.id}`,
     head: ['Date', DOC_META[kind].numberLabel, 'Reference#', 'Status', 'Amount', 'Balance'],
-    rows: docs.map((d) => ({ key: d.id, to: `${DOC_META[kind].path}/${d.id}`, cells: [fmtDate(d.date), d.number || d.profileName, d.referenceNumber, <Status key="s" status={d.status} dueDate={d.dueDate} />, money(d.total), money(d.balance)] })),
+    rows: docs.map((d) => ({ key: d.id, to: `${DOC_META[kind].path}/${d.id}`, cells: [fmtDate(d.date), d.number || d.profileName, d.referenceNumber, <Status key="s" status={d.status} dueDate={d.dueDate} />, moneyIn(d.total, d.currencyCode), moneyIn(d.balance, d.currencyCode)] })),
   });
   const sections =
     c.kind === 'customer'
@@ -422,7 +439,7 @@ function Transactions({ c }: { c: Row }) {
             count: data.customerPayments.length,
             newTo: `/sales/payments-received/new?contactId=${c.id}`,
             head: ['Date', 'Payment#', 'Reference#', 'Mode', 'Amount', 'Unused'],
-            rows: data.customerPayments.map((p) => ({ key: p.id, to: `/sales/payments-received/${p.id}`, cells: [fmtDate(p.date), p.number, p.referenceNumber, p.mode, money(p.amount), money(p.unusedAmount)] })),
+            rows: data.customerPayments.map((p) => ({ key: p.id, to: `/sales/payments-received/${p.id}`, cells: [fmtDate(p.date), p.number, p.referenceNumber, p.mode, moneyIn(p.amount, p.currencyCode), moneyIn(p.unusedAmount, p.currencyCode)] })),
           },
           docSection('Estimates', data.quotes, 'quote'),
           docSection('Sales Orders', data.salesOrders, 'sales_order'),
@@ -442,7 +459,7 @@ function Transactions({ c }: { c: Row }) {
             count: data.billPayments.length,
             newTo: `/purchases/payments-made/new?contactId=${c.id}`,
             head: ['Date', 'Payment#', 'Reference#', 'Mode', 'Amount', 'Unused'],
-            rows: data.billPayments.map((p) => ({ key: p.id, to: `/purchases/payments-made/${p.id}`, cells: [fmtDate(p.date), p.number, p.referenceNumber, p.mode, money(p.amount), money(p.unusedAmount)] })),
+            rows: data.billPayments.map((p) => ({ key: p.id, to: `/purchases/payments-made/${p.id}`, cells: [fmtDate(p.date), p.number, p.referenceNumber, p.mode, moneyIn(p.amount, p.currencyCode), moneyIn(p.unusedAmount, p.currencyCode)] })),
           },
           expenseSection(data.expenses, c, 'Expenses'),
           docSection('Bill Schedules', data.recurringBills, 'recurring_bill'),
@@ -557,6 +574,7 @@ function Mails({ c }: { c: Row }) {
 }
 
 interface StatementData {
+  currencyCode?: string;
   from: string;
   to: string;
   opening: number;
@@ -567,6 +585,7 @@ interface StatementData {
 }
 
 export function StatementView({ c, s, org }: { c: Contact; s: StatementData; org: ReturnType<typeof useOrg> }) {
+  const sm = (n: number, sym?: string) => (s.currencyCode && s.currencyCode !== 'INR' ? moneyIn(n, s.currencyCode) : money(n, sym));
   const vendor = c.kind === 'vendor';
   return (
     <div className="print-area mx-auto max-w-[820px] bg-white p-10 text-[12.5px] shadow-sm ring-1 ring-slate-200">
@@ -591,19 +610,19 @@ export function StatementView({ c, s, org }: { c: Contact; s: StatementData; org
             <div className="bg-slate-100 px-2 py-1 text-xs font-semibold">Account Summary</div>
             <div className="flex justify-between px-2 py-1">
               <span>Opening Balance</span>
-              <span>{money(s.opening)}</span>
+              <span>{sm(s.opening)}</span>
             </div>
             <div className="flex justify-between px-2 py-1">
               <span>{vendor ? 'Billed Amount' : 'Invoiced Amount'}</span>
-              <span>{money(s.invoiced)}</span>
+              <span>{sm(s.invoiced)}</span>
             </div>
             <div className="flex justify-between px-2 py-1">
               <span>{vendor ? 'Amount Paid' : 'Amount Received'}</span>
-              <span>{money(s.paid)}</span>
+              <span>{sm(s.paid)}</span>
             </div>
             <div className="flex justify-between border-t border-slate-300 px-2 py-1 font-semibold">
               <span>Balance Due</span>
-              <span>{money(s.closing)}</span>
+              <span>{sm(s.closing)}</span>
             </div>
           </div>
         </div>
@@ -624,9 +643,9 @@ export function StatementView({ c, s, org }: { c: Contact; s: StatementData; org
             <td className="px-2 py-2">{fmtDate(s.from)}</td>
             <td className="px-2 py-2">***Opening Balance***</td>
             <td />
-            <td className="px-2 py-2 text-right">{money(s.opening, '')}</td>
+            <td className="px-2 py-2 text-right">{sm(s.opening, '')}</td>
             <td />
-            <td className="px-2 py-2 text-right">{money(s.opening, '')}</td>
+            <td className="px-2 py-2 text-right">{sm(s.opening, '')}</td>
           </tr>
           {s.rows.map((r, i) => (
             <tr key={i} className="border-b border-slate-200">
@@ -635,9 +654,9 @@ export function StatementView({ c, s, org }: { c: Contact; s: StatementData; org
               <td className="px-2 py-2">
                 {r.number} {r.details && <span className="text-slate-500">- {r.details.replace(/\d{4}-\d{2}-\d{2}/, (m) => fmtDate(m))}</span>}
               </td>
-              <td className="px-2 py-2 text-right">{r.amount ? money(r.amount, '') : ''}</td>
-              <td className="px-2 py-2 text-right">{r.payment ? money(r.payment, '') : ''}</td>
-              <td className="px-2 py-2 text-right">{money(r.balance, '')}</td>
+              <td className="px-2 py-2 text-right">{r.amount ? sm(r.amount, '') : ''}</td>
+              <td className="px-2 py-2 text-right">{r.payment ? sm(r.payment, '') : ''}</td>
+              <td className="px-2 py-2 text-right">{sm(r.balance, '')}</td>
             </tr>
           ))}
         </tbody>
@@ -645,7 +664,7 @@ export function StatementView({ c, s, org }: { c: Contact; s: StatementData; org
       <div className="mt-3 flex justify-end">
         <div className="flex w-64 justify-between border-t border-slate-300 py-2 font-semibold">
           <span>Balance Due</span>
-          <span>{money(s.closing)}</span>
+          <span>{sm(s.closing)}</span>
         </div>
       </div>
     </div>
@@ -695,7 +714,7 @@ function Statement({ c }: { c: Row }) {
           title={`Email statement to ${c.displayName}`}
           to={c.email ? [c.email] : []}
           subject={`Account Statement from ${fmtDate(s.from)} to ${fmtDate(s.to)}`}
-          body={`Dear ${c.displayName},\n\nIt's been a great experience working with you. Attached is your statement of accounts for the period ${fmtDate(s.from)} to ${fmtDate(s.to)}. The balance due is ${money(s.closing)}.\n\nRegards,\n${org.name}`}
+          body={`Dear ${c.displayName},\n\nIt's been a great experience working with you. Attached is your statement of accounts for the period ${fmtDate(s.from)} to ${fmtDate(s.to)}. The balance due is ${moneyIn(s.closing, s.currencyCode)}.\n\nRegards,\n${org.name}`}
           contactId={c.id}
           extra={{ statement: { from: s.from, to: s.to } }}
           attachmentOptions={[

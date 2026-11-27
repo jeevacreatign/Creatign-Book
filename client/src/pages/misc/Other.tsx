@@ -23,6 +23,7 @@ import type { ExpenseDetailData } from '../expenses/ExpenseDetail';
 import PortalSettingsPage from '../settings/Portal';
 import { MyAccount, UsersAccess } from '../settings/Team';
 import PaymentReminders from '../settings/Reminders';
+import Currencies from '../settings/Currencies';
 import { useMe } from '../../auth';
 
 
@@ -58,8 +59,8 @@ function OrgProfile() {
       <Field label="PAN">
         <input className="input uppercase" value={f.pan || ''} onChange={(e) => setF({ ...f, pan: e.target.value.toUpperCase() })} />
       </Field>
-      <Field label="Base Currency">
-        <input className="input" value={`${f.currencyCode} - Indian Rupee (${f.currencySymbol})`} disabled />
+      <Field label="Base Currency" hint={<>The books, reports and dashboards are kept in INR and the base currency cannot be changed. Clients and suppliers can use other currencies: manage them in <Link className="link" to="/settings/currencies">Settings &gt; Currencies</Link>.</>}>
+        <input className="input" aria-label="Base currency" value={`INR - Indian Rupee (₹) · Base currency`} disabled />
       </Field>
       <Field label="Fiscal Year">
         <input className="input" value="April - March" disabled />
@@ -400,6 +401,7 @@ export function Settings() {
     ...(me.user.role === 'Admin' ? [{ to: '/settings/users', label: 'Users & Access' }] : []),
     { to: '/settings/preferences', label: 'Preferences' },
     { to: '/settings/approvals', label: 'Approvals' },
+    { to: '/settings/currencies', label: 'Currencies' },
     { to: '/settings/reminders', label: 'Payment Reminders' },
     { to: '/settings/templates', label: 'PDF Templates' },
     { to: '/settings/emails', label: 'Emails' },
@@ -425,6 +427,7 @@ export function Settings() {
           <Route path="users" element={<UsersAccess />} />
           <Route path="preferences" element={<Preferences />} />
           <Route path="approvals" element={<Approvals />} />
+          <Route path="currencies" element={<Currencies />} />
           <Route path="reminders" element={<PaymentReminders />} />
           <Route path="templates" element={<TemplatesSettings />} />
           <Route path="emails/*" element={<EmailSettings />} />

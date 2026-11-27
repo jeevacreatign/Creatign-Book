@@ -8,6 +8,8 @@ import type { Account, Attachment, Database, DocKind, Journal, JournalLine, Jour
 import { getDb, newId, now } from './db';
 import { logActivity, runRecurring } from './engine';
 import { accountBalance } from './reports';
+import { BASE_CURRENCY, isIsoCode, isoCodes, isoInfo, rateOn } from '../shared/currency';
+import { currencyRecord, parseRate, revaluationLines } from './fx';
 import { currentUser } from './projects';
 import * as S from './services';
 
@@ -175,6 +177,8 @@ const SOURCE_LABEL: Record<string, string> = {
   expense: 'Expense',
   opening_balance: 'Opening Balance',
   bank_transaction: 'Bank Transaction',
+  credit_application: 'Credits Applied',
+  fx_revaluation: 'FX Revaluation',
   manual: 'Journal',
 };
 export const sourceLabel = (s: string) => SOURCE_LABEL[s] ?? s;
@@ -646,16 +650,70 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
   api.post('/bulk-update', m((req) => bulkUpdate(getDb(), { ...filterOf(req.body || {}), newAccountId: String(req.body?.newAccountId || ''), ids: (req.body?.ids as string[]) || [] })));
 
   // ---------------------------------------------------------------- currencies
-  api.get('/currencies', h(() => getDb().currencies));
+  // INR is the base currency. Other ISO 4217 currencies carry a rate (INR per unit) entered by hand,
+  // with a dated history. Changing a rate never touches existing transactions: each keeps its own rate.
+  const currencyUse = (db: Database, code: string) =>
+    db.contacts.filter((c) => (c.currencyCode || 'INR') === code).length +
+    db.docs.filter((d) => (d.currencyCode || 'INR') === code).length +
+    db.paymentsReceived.filter((x) => (x.currencyCode || 'INR') === code).length +
+    db.paymentsMade.filter((x) => (x.currencyCode || 'INR') === code).length;
+  const listCurrencies = (db: Database) =>
+    db.currencies
+      .slice()
+      .sort((a, b) => (a.code === BASE_CURRENCY ? -1 : b.code === BASE_CURRENCY ? 1 : a.code.localeCompare(b.code)))
+      .map((c) => ({ ...c, base: c.code === BASE_CURRENCY, usage: currencyUse(db, c.code), history: (c.history ?? []).slice().sort((x, y) => y.date.localeCompare(x.date)) }));
+  api.get('/currencies', h(() => listCurrencies(getDb())));
+  api.get('/currencies/iso', h(() => [...isoCodes()].sort().map((code) => ({ code, ...isoInfo(code) }))));
+  api.get('/currencies/:code/rate', h((req) => {
+    const db = getDb();
+    const c = db.currencies.find((x) => x.code === p(req, 'code').toUpperCase());
+    if (!c) throw notFound('Currency');
+    const date = q(req, 'date') || today();
+    return { code: c.code, date, rate: rateOn(c, date) };
+  }));
+  api.post('/currencies', m((req) => {
+    const db = getDb();
+    const b = req.body || {};
+    const code = String(b.code || '').trim().toUpperCase();
+    if (!isIsoCode(code)) throw bad('Enter a valid ISO 4217 currency code, for example USD');
+    if (db.currencies.some((c) => c.code === code)) throw bad(`${code} has already been added`);
+    const rate = parseRate(b.rate);
+    if (!rate) throw bad('Exchange rate is required: how many INR one unit is worth');
+    const c = currencyRecord(code, rate, str(b.name), str(b.symbol));
+    c.history = [{ date: str(b.date) || today(), rate }];
+    db.currencies.push(c);
+    return c;
+  }));
   api.put('/currencies/:code', m((req) => {
     const db = getDb();
     const c = db.currencies.find((x) => x.code === p(req, 'code'));
     if (!c) throw notFound('Currency');
-    if (c.code === 'INR') throw bad('The base currency rate is always 1');
-    const rate = Number(req.body?.rate);
-    if (!(rate > 0)) throw bad('Enter a valid exchange rate');
-    c.rate = round2(rate * 1e4) / 1e4;
+    const b = req.body || {};
+    if (str(b.name)) c.name = str(b.name)!;
+    if (str(b.symbol)) c.symbol = str(b.symbol)!;
+    if (b.rate === undefined || b.rate === '') return c;
+    if (c.code === BASE_CURRENCY) throw bad('The base currency rate is always 1');
+    const rate = parseRate(b.rate)!;
+    const date = str(b.date) || today();
+    c.history = (c.history ?? []).filter((x) => x.date !== date);
+    c.history.push({ date, rate });
+    // the current rate is the latest one entered for today or earlier
+    c.rate = rateOn({ ...c, rate }, today());
     return c;
+  }));
+  api.delete('/currencies/:code/history/:date', m((req) => {
+    const c = getDb().currencies.find((x) => x.code === p(req, 'code'));
+    if (!c) throw notFound('Currency');
+    c.history = (c.history ?? []).filter((x) => x.date !== p(req, 'date'));
+    return c;
+  }));
+  api.delete('/currencies/:code', m((req) => {
+    const db = getDb();
+    const code = p(req, 'code');
+    if (code === BASE_CURRENCY) throw bad('INR is the base currency and cannot be deleted');
+    if (!db.currencies.some((c) => c.code === code)) throw notFound('Currency');
+    if (currencyUse(db, code)) throw bad(`${code} is used by clients, suppliers or transactions and cannot be deleted`);
+    db.currencies = db.currencies.filter((c) => c.code !== code);
   }));
   api.get('/currency-adjustments', h((req) => {
     const db = getDb();
@@ -663,26 +721,35 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     const r = periodRange(period, today(), db.organization.fiscalYearStartMonth);
     return db.currencyAdjustments.filter((a) => a.date >= r.from && a.date <= r.to).slice().sort((a, b) => b.date.localeCompare(a.date));
   }));
-  api.post('/currency-adjustments/preview', h((req) => {
-    // Creatign Ledger records every transaction in INR, so there are no open foreign currency balances to revalue.
+  const revalInput = (db: Database, b: Record<string, unknown>) => {
+    const c = db.currencies.find((x) => x.code === b.currencyCode && x.code !== BASE_CURRENCY);
+    if (!c) throw bad('Select a foreign currency');
+    const date = str(b.date) || today();
+    const rate = parseRate(b.rate);
+    if (!rate) throw bad('Enter a valid exchange rate');
+    return { c, date, rate };
+  };
+  const revalPreview = (input: Record<string, unknown>) => {
+    // open balances in the currency and the unrealized gain or loss at the new rate
     const db = getDb();
-    const code = String(req.body?.currencyCode || '');
-    if (!db.currencies.some((c) => c.code === code && c.code !== 'INR')) throw bad('Select a foreign currency');
-    return { currencyCode: code, accounts: [], gainOrLoss: 0 };
-  }));
+    const { c, date, rate } = revalInput(db, input);
+    const lines = revaluationLines(db, c.code, date, rate);
+    return { currencyCode: c.code, date, rate, lines, gainOrLoss: round2(lines.reduce((s, l) => s + l.gainOrLoss, 0)) };
+  };
+  api.get('/currency-adjustments/preview', h((req) => revalPreview(req.query as Record<string, unknown>)));
+  api.post('/currency-adjustments/preview', h((req) => revalPreview(req.body || {})));
   api.post('/currency-adjustments', m((req) => {
     const db = getDb();
     const b = req.body || {};
-    const c = db.currencies.find((x) => x.code === b.currencyCode && x.code !== 'INR');
-    if (!c) throw bad('Select a foreign currency');
-    const date = str(b.date);
-    if (!date) throw bad('Date of Adjustment is required');
-    const rate = Number(b.rate);
-    if (!(rate > 0)) throw bad('Enter a valid exchange rate');
+    const { c, date, rate } = revalInput(db, b);
+    if (!str(b.date)) throw bad('Date of Adjustment is required');
     const notes = str(b.notes);
     if (!notes) throw bad('Notes are required');
-    c.rate = rate;
-    const adj = { id: newId('cadj'), currencyCode: c.code, date, rate, notes, gainOrLoss: 0, createdAt: now() };
+    const lines = revaluationLines(db, c.code, date, rate);
+    c.history = (c.history ?? []).filter((x) => x.date !== date);
+    c.history.push({ date, rate });
+    c.rate = rateOn(c, today());
+    const adj = { id: newId('cadj'), currencyCode: c.code, date, rate, notes, lines, gainOrLoss: round2(lines.reduce((s, l) => s + l.gainOrLoss, 0)), createdAt: now() };
     db.currencyAdjustments.push(adj);
     return adj;
   }));

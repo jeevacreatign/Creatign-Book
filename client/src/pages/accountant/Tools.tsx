@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { AlertCircle, Lock, LockOpen, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { LOCK_MODULES } from '@shared/accountant';
 import { PERIODS, fmtDate, fmtDateTime, money, today, type PeriodKey } from '@shared/format';
+import { moneyIn, rateLabel } from '@shared/currency';
 import type { Currency, CurrencyAdjustment, LockModule, TransactionLocks } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
@@ -223,10 +224,8 @@ export function CurrencyAdjustments() {
                 </td>
                 <td>{fmtDate(a.date)}</td>
                 <td>{a.currencyCode}</td>
-                <td>
-                  1 {a.currencyCode} = {a.rate} INR
-                </td>
-                <td className="text-right tabular-nums">{money(a.gainOrLoss)}</td>
+                <td>{rateLabel(a.currencyCode, a.rate)}</td>
+                <td className={clsx('text-right tabular-nums', a.gainOrLoss < 0 && 'text-red-600')}>{money(a.gainOrLoss)}</td>
                 <td className="max-w-sm truncate">{a.notes}</td>
                 <td className="pr-5 text-right">
                   <button className="invisible text-slate-400 hover:text-red-500 group-hover:visible" onClick={() => del.mutate(a.id)} aria-label="Delete">
@@ -245,47 +244,37 @@ export function CurrencyAdjustments() {
           </tbody>
         </table>
       )}
-      <div className="mx-5 mt-6 max-w-3xl rounded-lg border border-slate-200 p-4">
-        <div className="mb-2 font-semibold">Exchange rates</div>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Currency</th>
-              <th>Symbol</th>
-              <th className="text-right">Rate (INR per unit)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currencies.map((c) => (
-              <tr key={c.code}>
-                <td>
-                  {c.code} - {c.name} {c.code === 'INR' && <span className="ml-1 rounded bg-emerald-600 px-1 text-[10px] text-white">BASE</span>}
-                </td>
-                <td>{c.symbol}</td>
-                <td className="text-right tabular-nums">{c.rate}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="mt-2 text-xs text-slate-500">Every transaction in Creatign Ledger is recorded in INR, so adjustments revalue no open balances and the gain or loss is 0.</p>
+      <div className="mx-5 mt-6 max-w-3xl rounded-lg border border-slate-200 p-4 text-[13px] text-slate-600">
+        A revaluation restates open foreign-currency invoices, bills, credits and unused payments at a new rate. The unrealized gain or loss is posted on the revaluation date and reversed the next day, so each transaction keeps its own rate. Manage currencies and rates in{' '}
+        <Link className="link" to="/settings/currencies">
+          Settings &gt; Currencies
+        </Link>
+        .
       </div>
       {open && <AdjustmentModal currencies={currencies.filter((c) => c.code !== 'INR')} onClose={() => setOpen(false)} />}
     </div>
   );
 }
 
+interface RevalPreview {
+  lines: { sourceType: string; sourceId: string; number: string; balance: number; bookedRate: number; gainOrLoss: number }[];
+  gainOrLoss: number;
+}
+
 function AdjustmentModal({ currencies, onClose }: { currencies: Currency[]; onClose: () => void }) {
   const [f, setF] = useState({ currencyCode: currencies[0]?.code ?? '', date: today(), rate: String(currencies[0]?.rate ?? ''), notes: '' });
-  const save = useAction(() => api('/currency-adjustments', { body: { ...f, rate: Number(f.rate) } }), 'Adjustment recorded');
+  const save = useAction(() => api('/currency-adjustments', { body: { ...f, rate: Number(f.rate) } }), 'Revaluation recorded');
+  const { data: preview } = useApi<RevalPreview>(f.currencyCode && Number(f.rate) > 0 ? `/currency-adjustments/preview?${new URLSearchParams({ ...f, notes: '' })}` : null);
   return (
     <Modal
       open
       onClose={onClose}
-      title="Base FX Revaluation"
+      title="FX Revaluation"
+      width="max-w-2xl"
       footer={
         <>
           <button className="btn-primary" onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
-            Continue
+            Save Revaluation
           </button>
           <button className="btn-secondary" onClick={onClose}>
             Cancel
@@ -298,7 +287,7 @@ function AdjustmentModal({ currencies, onClose }: { currencies: Currency[]; onCl
           <select className="input" value={f.currencyCode} onChange={(e) => setF({ ...f, currencyCode: e.target.value, rate: String(currencies.find((c) => c.code === e.target.value)?.rate ?? '') })}>
             {currencies.map((c) => (
               <option key={c.code} value={c.code}>
-                {c.code}- {c.name}
+                {c.code} - {c.name}
               </option>
             ))}
           </select>
@@ -313,6 +302,47 @@ function AdjustmentModal({ currencies, onClose }: { currencies: Currency[]; onCl
             <span className="flex items-center rounded-r-md border border-l-0 border-slate-300 bg-slate-50 px-2.5 text-[13px]">INR</span>
           </div>
         </Field>
+        {preview && (
+          <div className="rounded-md border border-slate-200">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Open balance</th>
+                  <th className="text-right">Balance ({f.currencyCode})</th>
+                  <th className="text-right">Booked rate</th>
+                  <th className="text-right">Gain or loss (INR)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.lines.map((l) => (
+                  <tr key={l.sourceId}>
+                    <td>
+                      {l.number} <span className="text-xxs text-slate-400">{l.sourceType.replace(/_/g, ' ')}</span>
+                    </td>
+                    <td className="text-right tabular-nums">{moneyIn(l.balance, f.currencyCode)}</td>
+                    <td className="text-right tabular-nums">{l.bookedRate}</td>
+                    <td className={clsx('text-right tabular-nums', l.gainOrLoss < 0 && 'text-red-600')}>{money(l.gainOrLoss)}</td>
+                  </tr>
+                ))}
+                {!preview.lines.length && (
+                  <tr>
+                    <td colSpan={4} className="py-4 text-center text-slate-400">
+                      No open {f.currencyCode} balances on this date.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              <tfoot>
+                <tr className="font-semibold">
+                  <td colSpan={3} className="text-right">
+                    Unrealized gain or loss
+                  </td>
+                  <td className={clsx('text-right tabular-nums', preview.gainOrLoss < 0 && 'text-red-600')}>{money(preview.gainOrLoss)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
         <Field inline={false} label="Notes" required>
           <textarea className="input" rows={3} maxLength={500} placeholder="Max. 500 characters" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
         </Field>
