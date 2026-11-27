@@ -58,7 +58,12 @@ export function RateInput({
         <span className="flex shrink-0 items-center rounded-r-md border border-l-0 border-slate-300 bg-slate-50 px-2.5 text-[13px]">INR</span>
       </div>
       {!valid && <div className="mt-1 text-xs text-red-600">Enter an exchange rate greater than zero</div>}
-      {valid && amount != null && (
+      {valid && amount != null && !amount && (
+        <div className="mt-1 text-xs text-slate-500" data-testid="base-preview">
+          {rateLabel(code, rate)}. Add items to see the {amountLabel.toLowerCase()} in INR.
+        </div>
+      )}
+      {valid && amount != null && !!amount && (
         <div className="mt-1 text-xs text-slate-500" data-testid="base-preview">
           {amountLabel} in INR: <b className="text-slate-700">{moneyIn(toBase(amount, rate), BASE_CURRENCY)}</b>
           {defaultRate && Math.abs(defaultRate - rate) > 1e-9 && <span className="ml-2 text-amber-700">(rate on this date: {defaultRate})</span>}
