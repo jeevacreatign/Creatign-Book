@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, Package, ShoppingCart, ShoppingBag, Clock, Landmark, UserCog, BarChart3, FolderOpen, Wallet, CreditCard, ChevronRight, ChevronDown, Search, Plus, Settings, Bell, RefreshCw, PanelLeftClose, PanelLeftOpen, Building2, Check, Sparkles, LogOut, UserRound, Users,
 } from 'lucide-react';
@@ -107,6 +107,7 @@ function Leaf({ to, icon, label, end, badge }: { to: string; icon: ReactNode; la
 }
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const timeOnly = useMe().user.role === 'Timesheet Staff';
   if (collapsed)
     return (
       <aside className="no-print flex w-12 flex-col items-center border-r border-slate-200 bg-slate-50 py-2">
@@ -116,6 +117,15 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
       </aside>
     );
   const ic = 'shrink-0 text-current opacity-80';
+  if (timeOnly)
+    return (
+      <aside className="no-print flex w-[220px] shrink-0 flex-col border-r border-slate-200 bg-slate-50">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+          <Leaf to="/time-tracking/timesheet" icon={<Clock size={15} className={ic} />} label="Timesheet" />
+          <Leaf to="/time-tracking/projects" icon={<FolderOpen size={15} className={ic} />} label="My Projects" />
+        </nav>
+      </aside>
+    );
   return (
     <aside className="no-print flex w-[220px] shrink-0 flex-col border-r border-slate-200 bg-slate-50">
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
@@ -239,6 +249,7 @@ function Topbar() {
   useOutside(profRef, () => setProfile(false));
   const me = useMe();
   const signOut = useSignOut();
+  const timeOnly = me.user.role === 'Timesheet Staff';
   return (
     <header className="no-print flex h-12 shrink-0 items-center gap-3 bg-ink-900 px-3 text-white">
       <Link to="/" className="flex w-[196px] items-center gap-2">
@@ -250,7 +261,7 @@ function Topbar() {
       <button className="rounded p-1 text-slate-300 hover:bg-white/10" title="Refresh" onClick={() => window.location.reload()}>
         <RefreshCw size={15} />
       </button>
-      <GlobalSearch />
+      {!timeOnly && <GlobalSearch />}
       <div className="flex-1" />
       <TimerChip />
       <div ref={orgRef} className="relative">
@@ -284,7 +295,7 @@ function Topbar() {
           </div>
         )}
       </div>
-      <div ref={plusRef} className="relative">
+      {!timeOnly && <div ref={plusRef} className="relative">
         <button className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 hover:bg-brand-500" aria-label="Quick create" onClick={() => setPlus((p) => !p)}>
           <Plus size={16} />
         </button>
@@ -309,13 +320,17 @@ function Topbar() {
             ))}
           </div>
         )}
-      </div>
-      <button className="rounded p-1 text-slate-300 hover:bg-white/10" title="Notifications" onClick={() => navigate('/?tab=updates')}>
-        <Bell size={16} />
-      </button>
-      <button className="rounded p-1 text-slate-300 hover:bg-white/10" title="Settings" onClick={() => navigate('/settings')}>
-        <Settings size={16} />
-      </button>
+      </div>}
+      {!timeOnly && (
+        <>
+          <button className="rounded p-1 text-slate-300 hover:bg-white/10" title="Notifications" onClick={() => navigate('/?tab=updates')}>
+            <Bell size={16} />
+          </button>
+          <button className="rounded p-1 text-slate-300 hover:bg-white/10" title="Settings" onClick={() => navigate('/settings')}>
+            <Settings size={16} />
+          </button>
+        </>
+      )}
       <div ref={profRef} className="relative">
         <button className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-400 text-[12px] font-semibold text-ink-900" onClick={() => setProfile((p) => !p)} aria-label="Profile" title={me.user.name}>
           {initials(me.user.name)}
@@ -363,6 +378,8 @@ function Topbar() {
 }
 
 export default function Layout() {
+  const me = useMe();
+  const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem('cb.sidebar') === 'collapsed';
@@ -379,6 +396,8 @@ export default function Layout() {
       }
       return !c;
     });
+  // Timesheet Staff only have the timesheet and their projects (the server refuses the rest)
+  if (me.user.role === 'Timesheet Staff' && !pathname.startsWith('/time-tracking') && pathname !== '/settings/account') return <Navigate to="/time-tracking/timesheet" replace />;
   return (
     <div className="flex h-full flex-col">
       <Topbar />

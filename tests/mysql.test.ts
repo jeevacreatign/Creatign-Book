@@ -56,6 +56,31 @@ describe.skipIf(!URL)('MySQL storage', () => {
     expect(l.d).toBeCloseTo(l.c, 2);
   });
 
+  it('fills typed columns from the right fields', async () => {
+    const inv = (await api().get('/api/docs').query({ kind: 'invoice' })).body[0];
+    await api().post(`/api/docs/${inv.id}/actions/mark_sent`).send({});
+    const link = await api().post('/api/share-links').send({ entityId: inv.id, expiresOn: '2099-01-31' });
+    expect(link.status).toBe(200);
+    const [rows] = await sql.query('SELECT expires_at FROM share_links WHERE id = ?', [link.body.id]);
+    expect(String((rows as { expires_at: string }[])[0].expires_at)).toMatch(/^2099-01-31/);
+    const [acts] = await sql.query('SELECT COUNT(*) AS n, COUNT(`at`) AS dated FROM activities');
+    const a = (acts as { n: number; dated: number }[])[0];
+    expect(a.n).toBeGreaterThan(0);
+    expect(a.dated).toBe(a.n);
+  });
+
+  it('backfills typed columns once after an upgrade', async () => {
+    await sql.query('UPDATE activities SET `at` = NULL');
+    await sql.query('UPDATE schema_info SET version = 1');
+    const db = await import('../server/db');
+    await db.closeDb();
+    await db.initDb();
+    const [acts] = await sql.query('SELECT COUNT(*) AS n FROM activities WHERE `at` IS NULL');
+    expect((acts as { n: number }[])[0].n).toBe(0);
+    const [ver] = await sql.query('SELECT version FROM schema_info');
+    expect((ver as { version: number }[])[0].version).toBeGreaterThanOrEqual(2);
+  });
+
   it('round-trips the whole book exactly', async () => {
     const { getDb } = await import('../server/db');
     const back = await reload();

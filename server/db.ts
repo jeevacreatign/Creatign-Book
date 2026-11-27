@@ -44,11 +44,16 @@ export async function initDb(): Promise<Database> {
   const target = my.connectionSettings();
   if (!target) throw new Error('DATABASE_URL is not set. Point it at your MySQL database, for example mysql://ledger:password@localhost:3306/creatign_ledger (see README).');
   my.connect(target);
-  await my.migrate();
+  const was = await my.migrate();
   const raw = await my.loadAll();
   if (raw) {
     my.remember(raw as Database);
     db = emptyDefaults(raw);
+    // typed columns changed meaning: rewrite every row once so they are filled in
+    if (was < my.SCHEMA_VERSION) {
+      my.save(db, { full: true });
+      await my.flush();
+    }
   } else {
     db = seedDatabase({ withSamples: process.env.SEED_SAMPLES !== 'false' });
     my.save(db, { full: true });

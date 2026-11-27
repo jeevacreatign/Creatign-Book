@@ -47,6 +47,7 @@ On first start the server creates the tables and fills them with the Creatign or
 |---|---|
 | `npm run dev` | Starts API (port 4000, auto-reload) and web app (port 5173) together |
 | `npm test` | Runs the workflow tests against an in-memory database |
+| `npm run test:mysql` | Runs the same tests against a real MySQL database (`TEST_DATABASE_URL`, an empty throwaway database: its tables are dropped) and checks that MySQL matches the books in memory |
 | `npm run typecheck` | TypeScript check for client, server and shared code |
 | `npm run reset-data` | Wipes the MySQL database and reseeds sample data. `npm run reset-data -- --empty` seeds only the organisation and accounts |
 | `npm run db:import -- server/data/db.json` | Moves books from the old JSON file into MySQL (add `--force` to replace books already in MySQL) |
@@ -92,7 +93,7 @@ To run the same image anywhere else: `docker build -t creatign-ledger .` then `d
 The staff app and its API need a signed-in team member.
 
 * **First run**: opening the app shows **Set up Creatign Ledger**. The first person to sign up becomes the **Admin**. If their email matches a user already on file (the sample data has *accounts@creatign.example*), that user record is claimed. On a public server set `ADMIN_EMAIL` so that only the owner's address can do this.
-* **Later sign-ups** (`/signup`) wait as *Awaiting approval* until an Admin approves them in **Settings → Users & Access**, where the Admin also picks their role (Admin, Staff or Timesheet Staff).
+* **Later sign-ups** (`/signup`) wait as *Awaiting approval* until an Admin approves them in **Settings → Users & Access**, where the Admin also picks their role (Admin, Staff or Timesheet Staff). Staff can use the whole app except team access, backups, and the mail and client-portal link settings. Timesheet Staff only see the timesheet and the projects they are on, and only their own time.
 * **Invitations**: **Settings → Users & Access → Invite User** emails a link (valid 7 days, single use) to set a password. If email is not set up, the link is shown to copy.
 * **Forgot password** emails a reset link valid for 2 hours. Resetting signs out every other browser.
 * **Sessions** are random tokens in an HttpOnly, SameSite=Lax cookie (14 days with *Keep me signed in*, otherwise until the browser closes). Only a hash is stored. Passwords are hashed with scrypt; 8 wrong attempts lock the account for 15 minutes, and sign-in, sign-up and reset requests are rate limited.

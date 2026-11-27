@@ -1,6 +1,6 @@
 // Time tracking: projects (four billing methods, tasks, users, budgets), timesheet entries,
 // the running timer, and invoicing unbilled time.
-import { publicUser, requestUser } from './auth';
+import { grantableRole, publicUser, requestUser, timesheetOnlyUser } from './auth';
 import type { Request, RequestHandler, Router } from 'express';
 import { DOC_META } from '../shared/docmeta';
 import { round2, today } from '../shared/format';
@@ -150,7 +150,7 @@ function filterEntries(db: Database, req: Request) {
   const r = timePeriodRange(q(req, 'period') || 'all', today(), fy, { from: q(req, 'from'), to: q(req, 'to') });
   const projectId = q(req, 'projectId');
   const customerId = q(req, 'customerId');
-  const userId = q(req, 'userId');
+  const userId = timesheetOnlyUser()?.id ?? q(req, 'userId');
   const status = q(req, 'status');
   const search = q(req, 'q')?.toLowerCase();
   return db.timeEntries
@@ -178,6 +178,22 @@ function resolveTask(prj: Project, taskId?: string, taskName?: string): ProjectT
   return t;
 }
 
+const onProject = (prj: Project, userId: string) => prj.users.some((u) => u.userId === userId);
+
+/** Projects the requester may see: all of them, or for Timesheet Staff the ones they are on. */
+const visibleProject = (prj: Project) => {
+  const limited = timesheetOnlyUser();
+  return !limited || onProject(prj, limited.id);
+};
+
+/** A time entry the requester may open or change (Timesheet Staff: only their own). */
+function ownEntry(db: Database, id: string) {
+  const t = db.timeEntries.find((x) => x.id === id);
+  const limited = timesheetOnlyUser();
+  if (!t || (limited && t.userId !== limited.id)) throw notFound('Time entry');
+  return t;
+}
+
 function ensureProjectUser(db: Database, prj: Project, userId: string) {
   if (!db.users.some((u) => u.id === userId)) throw bad('Select a user');
   if (!prj.users.some((u) => u.userId === userId)) {
@@ -192,7 +208,10 @@ function buildEntry(db: Database, b: Record<string, unknown>, existing?: TimeEnt
   if (prj.status === 'inactive' && !existing) throw bad('This project is inactive. Mark it as active to log time.');
   const task = resolveTask(prj, str(b.taskId) ?? (b.taskName ? undefined : existing?.taskId), str(b.taskName));
   if (!task && prj.tasks.length) throw bad('Task Name is required');
-  const userId = str(b.userId) ?? existing?.userId ?? currentUser(db).id;
+  const limited = timesheetOnlyUser();
+  const userId = limited ? limited.id : (str(b.userId) ?? existing?.userId ?? currentUser(db).id);
+  // Timesheet Staff log time only on projects they are already on
+  if (limited && !onProject(prj, limited.id)) throw new S.HttpError(403, 'You are not on this project');
   ensureProjectUser(db, prj, userId);
   const startTime = str(b.startTime);
   const endTime = str(b.endTime);
@@ -484,7 +503,10 @@ function saveBudget(db: Database, body: Partial<Budget>, existing?: Budget): Bud
 
 export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
   // ---------------------------------------------------------------- users
-  api.get('/users', h(() => getDb().users.map(publicUser)));
+  api.get('/users', h(() => {
+    const limited = timesheetOnlyUser();
+    return getDb().users.filter((u) => !limited || u.id === limited.id).map(publicUser);
+  }));
   api.post('/users', m((req) => {
     const db = getDb();
     const b = req.body as Partial<User>;
@@ -493,7 +515,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
     const email = str(b.email);
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Enter a valid email address');
     if (email && db.users.some((u) => u.email?.toLowerCase() === email.toLowerCase())) throw bad('A user with this email already exists');
-    const u: User = { id: newId('usr'), name, email, role: b.role === 'Admin' || b.role === 'Timesheet Staff' ? b.role : 'Staff', status: 'active', createdAt: now() };
+    const u: User = { id: newId('usr'), name, email, role: grantableRole(b.role), status: 'active', createdAt: now() };
     db.users.push(u);
     return u;
   }));
@@ -504,6 +526,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
     const view = q(req, 'view') || 'all';
     const search = q(req, 'q')?.toLowerCase();
     return db.projects
+      .filter(visibleProject)
       .filter((x) => view === 'all' || x.status === view)
       .filter((x) => !q(req, 'customerId') || x.customerId === q(req, 'customerId'))
       .map((x) => projectRow(db, x))
@@ -512,11 +535,13 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
   }));
   api.get('/projects/watchlist', h(() => {
     const db = getDb();
-    return db.projects.filter((x) => x.watchlist && x.status === 'active').map((x) => projectRow(db, x));
+    return db.projects.filter((x) => x.watchlist && x.status === 'active' && visibleProject(x)).map((x) => projectRow(db, x));
   }));
   api.get('/projects/:id', h((req) => {
     const db = getDb();
-    return projectDetail(db, getProject(db, p(req, 'id')));
+    const prj = getProject(db, p(req, 'id'));
+    if (!visibleProject(prj)) throw notFound('Project');
+    return projectDetail(db, prj);
   }));
   api.post('/projects', m((req) => saveProject(getDb(), req.body)));
   api.put('/projects/:id', m((req) => {
@@ -611,7 +636,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
       const found = email ? db.users.find((u) => u.email?.toLowerCase() === email.toLowerCase()) : undefined;
       if (found) userId = found.id;
       else {
-        const u: User = { id: newId('usr'), name, email, role: b.role === 'Admin' || b.role === 'Timesheet Staff' ? b.role : 'Staff', status: 'active', createdAt: now() };
+        const u: User = { id: newId('usr'), name, email, role: grantableRole(b.role), status: 'active', createdAt: now() };
         db.users.push(u);
         userId = u.id;
       }
@@ -660,6 +685,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
   api.get('/projects/:id/hours', h((req) => {
     const db = getDb();
     const prj = getProject(db, p(req, 'id'));
+    if (!visibleProject(prj)) throw notFound('Project');
     const r = timePeriodRange(q(req, 'period') || 'this_week', today(), db.organization.fiscalYearStartMonth);
     const entries = db.timeEntries.filter((t) => t.projectId === prj.id && t.date >= r.from && t.date <= r.to);
     const days = (Date.parse(r.to) - Date.parse(r.from)) / 86400000 + 1;
@@ -765,9 +791,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
   }));
   api.get('/time-entries/:id', h((req) => {
     const db = getDb();
-    const t = db.timeEntries.find((x) => x.id === p(req, 'id'));
-    if (!t) throw notFound('Time entry');
-    return entryRow(db, t);
+    return entryRow(db, ownEntry(db, p(req, 'id')));
   }));
   api.post('/time-entries', m((req) => {
     const db = getDb();
@@ -779,8 +803,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
   }));
   api.put('/time-entries/:id', m((req) => {
     const db = getDb();
-    const t = db.timeEntries.find((x) => x.id === p(req, 'id'));
-    if (!t) throw notFound('Time entry');
+    const t = ownEntry(db, p(req, 'id'));
     if (t.invoiced) {
       // invoiced time is locked; only the notes can change
       t.notes = str((req.body as { notes?: string }).notes) ?? t.notes;
@@ -791,16 +814,14 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
   }));
   api.delete('/time-entries/:id', m((req) => {
     const db = getDb();
-    const t = db.timeEntries.find((x) => x.id === p(req, 'id'));
-    if (!t) throw notFound('Time entry');
+    const t = ownEntry(db, p(req, 'id'));
     if (t.invoiced) throw bad('Invoiced time cannot be deleted. Delete the invoice first.');
     db.timeEntries = db.timeEntries.filter((x) => x.id !== t.id);
     db.timers = db.timers.filter((x) => x.entryId !== t.id);
   }));
   api.post('/time-entries/:id/clone', m((req) => {
     const db = getDb();
-    const t = db.timeEntries.find((x) => x.id === p(req, 'id'));
-    if (!t) throw notFound('Time entry');
+    const t = ownEntry(db, p(req, 'id'));
     const c: TimeEntry = { ...t, id: newId('te'), date: str((req.body as { date?: string }).date) ?? today(), invoiced: false, invoiceId: undefined, billable: t.billable, createdAt: now(), updatedAt: undefined };
     db.timeEntries.push(c);
     return entryRow(db, c);
@@ -809,10 +830,12 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
     const db = getDb();
     const { action, ids } = req.body as { action: string; ids: string[] };
     if (!Array.isArray(ids) || !ids.length) throw bad('Select at least one entry');
-    const list = db.timeEntries.filter((t) => ids.includes(t.id));
+    const list = ids.map((id) => ownEntry(db, id));
     if (list.some((t) => t.invoiced)) throw bad('Some of the selected entries are invoiced. Invoiced time cannot be changed.');
-    if (action === 'delete') db.timeEntries = db.timeEntries.filter((t) => !ids.includes(t.id));
-    else if (action === 'billable' || action === 'non_billable') for (const t of list) t.billable = action === 'billable';
+    if (action === 'delete') {
+      db.timeEntries = db.timeEntries.filter((t) => !ids.includes(t.id));
+      db.timers = db.timers.filter((x) => !x.entryId || !ids.includes(x.entryId)); // no timer left pointing at a deleted entry
+    } else if (action === 'billable' || action === 'non_billable') for (const t of list) t.billable = action === 'billable';
     else throw bad('Unknown action');
     return { done: list.length };
   }));
@@ -847,8 +870,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
     let notes = str(b.notes);
     const entryId = str(b.entryId);
     if (entryId) {
-      const e = db.timeEntries.find((x) => x.id === entryId);
-      if (!e) throw notFound('Time entry');
+      const e = ownEntry(db, entryId);
       if (e.invoiced) throw bad('This entry is invoiced. Start a new timer instead.');
       projectId = e.projectId;
       taskId = e.taskId;
@@ -858,6 +880,7 @@ export function registerProjectRoutes(api: Router, h: Wrap, m: Wrap) {
     if (projectId) {
       const prj = getProject(db, projectId);
       if (prj.status === 'inactive') throw bad('This project is inactive');
+      if (!visibleProject(prj)) throw new S.HttpError(403, 'You are not on this project');
       if (taskId && !prj.tasks.some((k) => k.id === taskId)) throw bad('Select a task from this project');
     }
     const t: RunningTimer = { id: newId('tmr'), userId: currentUser(db).id, projectId: projectId || undefined, taskId: taskId || undefined, notes, billable, entryId, startedAt: now(), accumulatedMs: 0, running: true, createdAt: now() };
