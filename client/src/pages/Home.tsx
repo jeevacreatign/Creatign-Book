@@ -6,12 +6,13 @@ import { PERIODS, fmtDate, fmtDateTime, money, type PeriodKey } from '@shared/fo
 import type { Activity } from '@shared/types';
 import { qs, useApi } from '../api';
 import { useOrg } from '../lib/app';
+import { useMe } from '../auth';
 import { Dropdown, MenuItem, Tabs, clsx } from '../components/ui';
 import { fmtHours } from '@shared/projects';
 
 // Validated categorical slots (light surface): blue, orange
-const SERIES_1 = '#2a78d6';
-const SERIES_2 = '#eb6834';
+const SERIES_1 = '#2c3b56';
+const SERIES_2 = '#c99a3a';
 
 interface Aging { total: number; current: number; overdue: number; buckets: Record<string, number> }
 interface Dash {
@@ -372,20 +373,49 @@ function RecentUpdates() {
   );
 }
 
+function greeting(d = new Date()) {
+  const h = d.getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+/** "2026-27" for an April-March year */
+function fyLabel(startMonth: number, d = new Date()) {
+  const y = d.getMonth() + 1 >= startMonth ? d.getFullYear() : d.getFullYear() - 1;
+  return startMonth === 1 ? String(y) : `${y}-${String(y + 1).slice(2)}`;
+}
+
 export default function Home() {
   const org = useOrg();
+  const me = useMe();
   const [search, setSearch] = useSearchParams();
   const tab = (search.get('tab') as 'dashboard' | 'getting' | 'updates') || 'dashboard';
   return (
-    <div className="min-h-full bg-slate-50/60">
-      <div className="border-b border-slate-200 bg-white px-5 pt-4">
-        <div className="mb-3 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600 text-lg font-bold text-white">{org.logoText || org.name[0]}</div>
-          <div>
-            <div className="text-base font-semibold">Hello, {org.name}</div>
-            <div className="text-xs text-slate-500">{org.name} · {org.state}, {org.country}</div>
+    <div className="min-h-full bg-slate-50/50">
+      <div className="border-b border-slate-200 bg-white">
+        <div className="relative overflow-hidden bg-ink-900 bg-[radial-gradient(90%_140%_at_100%_0%,rgba(207,159,62,0.28),transparent_55%)] px-6 py-6 text-white">
+          <img src="/logo.png" alt="" aria-hidden className="pointer-events-none absolute -right-10 -top-14 h-56 w-56 opacity-[0.12]" />
+          <div className="relative flex flex-wrap items-end justify-between gap-4">
+            <div className="flex items-center gap-4">
+              {org.logo ? (
+                <img src={org.logo} alt="" className="h-12 w-12 rounded-xl bg-white object-contain p-1" />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-brand-300/40 bg-white/5 text-lg font-semibold text-brand-300">{org.logoText || org.name[0]}</div>
+              )}
+              <div>
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-brand-300">{greeting()}</div>
+                <div className="mt-0.5 text-[22px] font-semibold tracking-tight">{me.user.name.split(' ')[0] || org.name}</div>
+                <div className="text-[13px] text-slate-300">
+                  {org.name} · {org.state}, {org.country}
+                </div>
+              </div>
+            </div>
+            <div className="text-right text-[13px] text-slate-300">
+              <div className="font-medium text-white">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+              <div>Financial year {fyLabel(org.fiscalYearStartMonth || 4)}</div>
+            </div>
           </div>
         </div>
+        <div className="px-5 pt-2">
         <Tabs
           tabs={[
             { value: 'dashboard', label: 'Dashboard' },
@@ -396,6 +426,7 @@ export default function Home() {
           onChange={(t) => setSearch(t === 'dashboard' ? {} : { tab: t })}
           className="border-b-0"
         />
+        </div>
       </div>
       {tab === 'dashboard' && <Dashboard />}
       {tab === 'getting' && <GettingStarted />}

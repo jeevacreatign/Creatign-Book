@@ -5,11 +5,14 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Gold, taken from the Creatign mark. 600+ is dark enough for white text and links.
         brand: {
-          50: '#eef4ff', 100: '#dbe6ff', 200: '#bfd3ff', 300: '#93b5fd', 400: '#6090fa',
-          500: '#3b6ef5', 600: '#2554e0', 700: '#1d43b8', 800: '#1e3a8f', 900: '#1e3471',
+          50: '#fbf7ee', 100: '#f5eacd', 200: '#ead39a', 300: '#ddb866', 400: '#cf9f3e',
+          500: '#b8862a', 600: '#946414', 700: '#7a5212', 800: '#5f4011', 900: '#4a3210',
         },
-        ink: { 900: '#0f1b2d', 800: '#16253b', 700: '#1f314c' },
+        // Deep navy used for the sidebar, primary buttons and headings
+        ink: { 950: '#0a101c', 900: '#0e1726', 800: '#152033', 700: '#1e2b42', 600: '#2c3b56', 500: '#43526e' },
+        canvas: '#f4f3ef',
       },
       fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'sans-serif'] },
       fontSize: { xxs: ['11px', '14px'] },

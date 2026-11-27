@@ -196,8 +196,8 @@ function Attachments({ projectId, files }: { projectId: string; files: Attachmen
 
 // ------------------------------------------------------------ overview
 
-const SERIES_BILLABLE = '#2a78d6';
-const SERIES_NON = '#9bbbe3';
+const SERIES_BILLABLE = '#2c3b56';
+const SERIES_NON = '#ddb866';
 const CHART_PERIODS = TIME_PERIODS.filter((x) => ['this_week', 'previous_week', 'this_month', 'previous_month', 'this_quarter', 'this_year'].includes(x.value));
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
