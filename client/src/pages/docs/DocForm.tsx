@@ -5,7 +5,7 @@ import { computeTotals, lineAmount } from '@shared/calc';
 import { isUnposted } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
 import { dueDateFor, money, num, round2, today, addDays } from '@shared/format';
-import { BASE_CURRENCY, moneyIn, rateLabel } from '@shared/currency';
+import { BASE_CURRENCY, moneyIn, rateLabel, toBase } from '@shared/currency';
 import { CurrencyBadge, RateInput } from '../../components/currency';
 import { PAYMENT_TERMS, TCS_RATES, TDS_RATES, type Contact, type DocKind, type Item, type LineItem, type TxnDoc } from '@shared/types';
 import { api, qs, useApi } from '../../api';
@@ -513,6 +513,12 @@ export function DocForm({ kind }: { kind: DocKind }) {
                 <span>Total ( {currencyCode} )</span>
                 <span className="tabular-nums">{num(totals.total)}</span>
               </div>
+              {foreign && (
+                <div className="mt-1 flex items-center justify-between text-[13px] text-slate-600" data-testid="total-in-inr">
+                  <span>Total in INR {rateNum > 0 && <span className="text-xs text-slate-400">({rateLabel(currencyCode, rateNum)})</span>}</span>
+                  <span className="font-semibold tabular-nums text-slate-800">{rateNum > 0 ? moneyIn(toBase(totals.total, rateNum), BASE_CURRENCY) : '-'}</span>
+                </div>
+              )}
               {d.reverseCharge && totals.taxAmount > 0 && <div className="mt-2 text-xxs text-amber-700">Tax of {num(totals.taxAmount)} is payable by you under reverse charge and is not part of the amount owed to the vendor.</div>}
               {!sales && d.gstTreatment && !treatmentChargesTax(d.gstTreatment) && !d.reverseCharge && totals.taxAmount > 0 && <div className="mt-2 text-xxs text-amber-700">Suppliers with this GST treatment do not usually charge GST. Check the tax on each line.</div>}
             </div>
@@ -578,7 +584,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
         )}
         <div className={clsx('text-right text-xs text-slate-500', !has('makeRecurring') && 'ml-auto')}>
           Total Amount: <span className="font-semibold text-slate-800">{moneyIn(totals.total, currencyCode)}</span>
-          {foreign && rateNum > 0 && <span className="ml-2">({moneyIn(round2(totals.total * rateNum), BASE_CURRENCY)})</span>}
+          {foreign && rateNum > 0 && <span className="ml-2">({moneyIn(toBase(totals.total, rateNum), BASE_CURRENCY)})</span>}
         </div>
       </FormFooter>
       <BulkItems
