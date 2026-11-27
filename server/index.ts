@@ -10,6 +10,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 4000;
 
 await initDb();
+if (process.env.NODE_ENV === 'production' && !process.env.APP_ORIGIN?.trim())
+  console.warn('[security] APP_ORIGIN is not set: set it to the public address (for example https://ledger.example.com) so emailed links always point at this server.');
 boot();
 const app = createApp();
 

@@ -13,7 +13,7 @@ import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import { normalizeTimeTracking, registerProjectRoutes } from './projects';
 import { lockGuard, registerAccountantRoutes } from './accountant';
 import { registerBankingRoutes } from './banking';
-import { registerAuthRoutes, requireAdmin, requireStaff } from './auth';
+import { registerAuthRoutes, requestUser, requireAdmin, requireStaff, timesheetOnlyUser } from './auth';
 import { registerDocumentRoutes } from './documents';
 import * as R from './reports';
 import { CATEGORIES as CATALOG_CATEGORIES, catalog as reportCatalog, runReport } from './reportCatalog';
@@ -87,14 +87,36 @@ function freshness(_req: Request, _res: Response, next: NextFunction) {
   next();
 }
 
+/** Baseline headers for every response (the app and the API). */
+function securityHeaders(_req: Request, res: Response, next: NextFunction) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // invite, reset and share links carry tokens in the URL: don't leak them to other sites
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  if (process.env.COOKIE_SECURE === '1') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  next();
+}
+
+/** Images and PDFs may show inline; everything else downloads. Nothing uploaded may run scripts. */
+const INLINE_UPLOAD = /\.(png|jpe?g|gif|bmp|webp|pdf)$/i;
+export function uploadHeaders(res: Response, file: string) {
+  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (!INLINE_UPLOAD.test(file)) res.setHeader('Content-Disposition', 'attachment');
+}
+
 export function createApp() {
   const app = express();
   // Behind CloudFront + a load balancer, TRUST_PROXY=2 makes req.ip the visitor's address (used for sign-in rate limits)
   const hops = Number(process.env.TRUST_PROXY);
   if (hops > 0) app.set('trust proxy', hops);
+  app.disable('x-powered-by');
+  app.use(securityHeaders);
   app.use(express.json({ limit: '5mb' }));
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  app.use('/uploads', requireStaff, express.static(UPLOAD_DIR));
+  // uploads are user files: never let the browser run them as a page on our origin
+  app.use('/uploads', requireStaff, express.static(UPLOAD_DIR, { setHeaders: uploadHeaders }));
   app.use('/api', requireStaff);
 
   const api = express.Router();
@@ -268,7 +290,8 @@ export function createApp() {
     const needle = q(req, 'q');
     return getDb()
       .contacts.filter((c) => (!kind || c.kind === kind) && (status === 'all' || c.status === status) && (matches(c.displayName, needle) || matches(c.companyName, needle) || matches(c.email, needle)))
-      .map((c) => ({ ...c, ...S.contactSummary(c) }));
+      // Timesheet Staff only need client names for the timesheet filters
+      .map((c) => (timesheetOnlyUser() ? { id: c.id, kind: c.kind, displayName: c.displayName, companyName: c.companyName, status: c.status } : { ...c, ...S.contactSummary(c) }));
   }));
   api.get('/contacts/:id', h((req) => {
     const c = S.getContact(p(req, 'id'));
@@ -566,11 +589,12 @@ export function createApp() {
   api.post('/recurring-expenses/:id/actions/:action', m((req) => S.recurringExpenseAction(p(req, 'id'), p(req, 'action'))));
 
   // ------------------------------------------------------------ comments, activity, mail
-  api.get('/comments', h((req) => getDb().comments.filter((c) => c.entityId === q(req, 'entityId')).slice().reverse()));
+  // comments saved before the stricter sanitizer are cleaned again on the way out
+  api.get('/comments', h((req) => getDb().comments.filter((c) => c.entityId === q(req, 'entityId')).slice().reverse().map((c) => ({ ...c, html: sanitize(c.html) }))));
   api.post('/comments', m((req) => {
     const { entityType, entityId, html } = req.body;
     if (!entityId || !String(html || '').replace(/<[^>]*>/g, '').trim()) throw new S.HttpError(400, 'Comment cannot be empty');
-    const c = { id: newId('cmt'), entityType, entityId, html: sanitize(String(html)), author: getDb().organization.name, createdAt: now() };
+    const c = { id: newId('cmt'), entityType, entityId, html: sanitize(String(html)), author: requestUser()?.name ?? getDb().organization.name, createdAt: now() };
     getDb().comments.push(c);
     return c;
   }));
@@ -602,6 +626,7 @@ export function createApp() {
   api.get('/mail/google/start', (req, res) => {
     const nonce = q(req, 'nonce');
     try {
+      requireAdmin();
       res.redirect(createGoogleAuthorizationUrl(nonce || ''));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not start Google authorization';
@@ -632,7 +657,10 @@ export function createApp() {
       res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).status(400).type('html').send(googleOAuthResultPage({ nonce: pending.nonce, ok: false, error: message }));
     }
   });
-  api.delete('/mail/google/account', h(() => disconnectGoogleAccount()));
+  api.delete('/mail/google/account', h(() => {
+    requireAdmin();
+    return disconnectGoogleAccount();
+  }));
   api.get('/mails/:id', h((req) => {
     const mail = getDb().mails.find((x) => x.id === p(req, 'id'));
     if (!mail) throw new S.HttpError(404, 'Email not found');
@@ -674,7 +702,9 @@ export function createApp() {
   }));
 
   // ------------------------------------------------------------ email settings & templates
+  // where mail goes (and so where reset links land) is an Admin decision
   api.put('/mail-settings', h((req) => {
+    requireAdmin();
     const db = getDb();
     const b = req.body as Partial<SmtpSettings> & { password?: string; clearPassword?: boolean };
     const cur = savedSmtp();
@@ -704,6 +734,7 @@ export function createApp() {
     return mailSettings();
   }));
   api.post('/mail-settings/test', h(async (req) => {
+    requireAdmin();
     const db = getDb();
     const to = String(req.body.to || db.organization.email || '').trim();
     if (!isEmail(to)) throw new S.HttpError(400, 'Enter an email address to send the test to');
@@ -871,12 +902,15 @@ export function createApp() {
   return app;
 }
 
-/** Allow only the formatting tags the comment editor produces. */
-function sanitize(html: string) {
+/** Allow only the formatting tags the comment editor produces, with no attributes at all. */
+export function sanitize(html: string) {
+  const allowed = new Set(['b', 'i', 'u', 'strong', 'em', 'br', 'p', 'div', 'ul', 'ol', 'li']);
   return html
-    .replace(/<(script|style|iframe|object)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<(?!\/?(b|i|u|strong|em|br|p|div|ul|ol|li)\b)[^>]*>/gi, '')
-    .replace(/\s(on\w+|style|href|src)=("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    .replace(/<(script|style|iframe|object|embed|template|noscript|textarea|title|xmp)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\s*(\/?)\s*([a-z][a-z0-9]*)\b[^>]*>/gi, (_m, close: string, tag: string) => (allowed.has(tag.toLowerCase()) ? `<${close}${tag.toLowerCase()}>` : ''))
+    // any "<" left that is not one of the bare tags above is text
+    .replace(/<(?!\/?(?:b|i|u|strong|em|br|p|div|ul|ol|li)>)/g, '&lt;');
 }
 
 export function boot() {

@@ -12,6 +12,7 @@
     "start": "NODE_ENV=production node --import tsx server/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:mysql": "vitest run -c vitest.mysql.config.ts",
     "reset-data": "tsx server/reset.ts",
     "db:import": "tsx server/import-json.ts"
   },

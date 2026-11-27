@@ -392,7 +392,7 @@ export function Settings() {
     { to: '/settings/features', label: 'Feature Settings' },
     { to: '/settings/import', label: 'Import Data' },
     ...(me.user.role === 'Admin' ? [{ to: '/settings/data', label: 'Data & Backup' }] : []),
-  ];
+  ].filter((t) => me.user.role !== 'Timesheet Staff' || t.to === '/settings/account');
   return (
     <div className="flex h-full">
       <div className="w-56 shrink-0 border-r border-slate-200 p-3">

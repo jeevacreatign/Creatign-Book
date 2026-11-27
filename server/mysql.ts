@@ -39,24 +39,24 @@ export const TABLES: TableDef[] = [
   { key: 'accounts', table: 'accounts', cols: [c('code', 'str', 'code', true), c('name', 'text', 'name'), c('type', 'str', 'type', true), c('sub_type', 'str', 'subType'), c('parent_id', 'id', 'parentId', true), c('active', 'bool', 'active')] },
   { key: 'items', table: 'items', cols: [c('name', 'text', 'name'), c('type', 'str', 'type'), c('sku', 'str', 'sku'), c('hsn_sac', 'str', 'hsnSac'), c('selling_price', 'money', 'sellingPrice'), c('cost_price', 'money', 'costPrice'), status, created] },
   { key: 'contacts', table: 'contacts', cols: [c('kind', 'str', 'kind', true), c('display_name', 'text', 'displayName'), c('company_name', 'text', 'companyName'), c('email', 'str', 'email', true), c('gstin', 'str', 'gstin'), c('place_of_supply', 'str', 'placeOfSupply'), status, created] },
-  { key: 'docs', table: 'transactions', cols: [c('kind', 'str', 'kind', true), number, contact, date('date', 'date'), date('due_date', 'dueDate'), status, c('project_id', 'id', 'projectId', true), c('sub_total', 'money', 'subTotal'), c('tax_total', 'money', 'taxTotal'), c('total', 'money', 'total'), c('balance', 'money', 'balance'), created] },
+  { key: 'docs', table: 'transactions', cols: [c('kind', 'str', 'kind', true), number, contact, date('date', 'date'), date('due_date', 'dueDate'), status, c('project_id', 'id', 'projectId', true), c('sub_total', 'money', 'subTotal'), c('tax_total', 'money', 'taxAmount'), c('total', 'money', 'total'), c('balance', 'money', 'balance'), created] },
   { key: 'paymentsReceived', table: 'payments_received', cols: [number, contact, date('date', 'date'), c('amount', 'money', 'amount'), c('mode', 'str', 'mode'), c('deposit_to_account_id', 'id', 'depositToAccountId', true), c('unused_amount', 'money', 'unusedAmount'), status, created] },
   { key: 'paymentsMade', table: 'payments_made', cols: [number, c('type', 'str', 'type'), contact, date('date', 'date'), c('amount', 'money', 'amount'), c('mode', 'str', 'mode'), c('paid_through_account_id', 'id', 'paidThroughAccountId', true), c('unused_amount', 'money', 'unusedAmount'), status, created] },
-  { key: 'expenses', table: 'expenses', cols: [date('date', 'date'), c('account_id', 'id', 'accountId', true), c('paid_through_account_id', 'id', 'paidThroughAccountId', true), c('vendor_id', 'id', 'vendorId', true), c('customer_id', 'id', 'customerId', true), c('project_id', 'id', 'projectId', true), c('amount', 'money', 'amount'), c('total', 'money', 'total'), status, created] },
+  { key: 'expenses', table: 'expenses', cols: [date('date', 'date'), c('account_id', 'id', 'accountId', true), c('paid_through_account_id', 'id', 'paidThroughAccountId', true), c('vendor_id', 'id', 'vendorId', true), c('customer_id', 'id', 'customerId', true), c('project_id', 'id', 'projectId', true), c('amount', 'money', 'amount'), { name: 'total', type: 'money', get: (r) => (r.subTotal == null ? r.amount : Number(r.subTotal) + (Number(r.taxAmount) || 0)) }, status, created] },
   { key: 'recurringExpenses', table: 'recurring_expenses', cols: [c('profile_name', 'text', 'profileName'), c('next_date', 'date', 'nextDate'), status, created] },
   { key: 'journals', table: 'journals', cols: [number, date('date', 'date'), c('source_type', 'str', 'sourceType', true), c('source_id', 'id', 'sourceId', true), contact, c('project_id', 'id', 'projectId', true), created] },
   { key: 'manualJournals', table: 'manual_journals', cols: [number, date('date', 'date'), status, c('reporting_method', 'str', 'reportingMethod'), created] },
   { key: 'journalTemplates', table: 'journal_templates', cols: [c('name', 'text', 'name')] },
   { key: 'recurringJournals', table: 'recurring_journals', cols: [c('profile_name', 'text', 'profileName'), c('next_date', 'date', 'nextDate'), status] },
   { key: 'comments', table: 'comments', cols: [c('entity_type', 'str', 'entityType', true), c('entity_id', 'id', 'entityId', true), created] },
-  { key: 'activities', table: 'activities', cols: [c('entity_type', 'str', 'entityType', true), c('entity_id', 'id', 'entityId', true), contact, c('at', 'datetime', 'at')] },
+  { key: 'activities', table: 'activities', cols: [c('entity_type', 'str', 'entityType', true), c('entity_id', 'id', 'entityId', true), contact, c('at', 'datetime', 'createdAt')] },
   { key: 'mails', table: 'mails', cols: [contact, c('entity_type', 'str', 'entityType', true), c('entity_id', 'id', 'entityId', true), c('subject', 'text', 'subject'), status, created] },
-  { key: 'shareLinks', table: 'share_links', cols: [c('token', 'str', 'token', true), c('entity_type', 'str', 'entityType'), c('entity_id', 'id', 'entityId', true), c('expires_at', 'datetime', 'expiresAt'), created] },
+  { key: 'shareLinks', table: 'share_links', cols: [c('token', 'str', 'token', true), c('entity_type', 'str', 'entityType'), c('entity_id', 'id', 'entityId', true), c('expires_at', 'datetime', 'expiresOn'), created] },
   { key: 'emailTemplates', table: 'email_templates', cols: [c('kind', 'str', 'kind', true), c('name', 'text', 'name')] },
   { key: 'pdfTemplates', table: 'pdf_templates', cols: [c('name', 'text', 'name'), c('layout', 'str', 'layout')] },
   { key: 'portalUsers', table: 'portal_users', cols: [contact, c('email', 'str', 'email', true), status, created] },
   { key: 'portalSessions', table: 'portal_sessions', cols: [c('token_hash', 'str', 'tokenHash', true), c('user_id', 'id', 'userId', true), c('expires_at', 'datetime', 'expiresAt')] },
-  { key: 'paymentNotices', table: 'payment_notices', cols: [contact, c('doc_id', 'id', 'docId', true), c('amount', 'money', 'amount'), status, created] },
+  { key: 'paymentNotices', table: 'payment_notices', cols: [contact, c('doc_id', 'id', 'invoiceId', true), c('amount', 'money', 'amount'), status, created] },
   { key: 'users', table: 'users', cols: [c('name', 'text', 'name'), c('email', 'str', 'email', true), c('role', 'str', 'role'), status, created] },
   { key: 'staffSessions', table: 'staff_sessions', cols: [c('token_hash', 'str', 'tokenHash', true), c('user_id', 'id', 'userId', true), c('expires_at', 'datetime', 'expiresAt')] },
   { key: 'projects', table: 'projects', cols: [c('name', 'text', 'name'), c('code', 'str', 'code'), c('customer_id', 'id', 'customerId', true), c('billing_method', 'str', 'billingMethod'), status, created] },
@@ -68,7 +68,7 @@ export const TABLES: TableDef[] = [
   { key: 'bankTransactions', table: 'bank_transactions', cols: [c('type', 'str', 'type', true), date('date', 'date'), c('account_id', 'id', 'accountId', true), c('offset_account_id', 'id', 'offsetAccountId', true), c('amount', 'money', 'amount'), contact, c('statement_line_id', 'id', 'statementLineId', true), created] },
   { key: 'statementLines', table: 'statement_lines', cols: [c('account_id', 'id', 'accountId', true), date('date', 'date'), c('description', 'text', 'description'), c('deposit', 'money', 'deposit'), c('withdrawal', 'money', 'withdrawal'), status, c('import_id', 'id', 'importId', true), created] },
   { key: 'statementImports', table: 'statement_imports', cols: [c('account_id', 'id', 'accountId', true), c('file_name', 'text', 'fileName'), created] },
-  { key: 'bankRules', table: 'bank_rules', cols: [c('name', 'text', 'name'), c('active', 'bool', 'active')] },
+  { key: 'bankRules', table: 'bank_rules', cols: [c('name', 'text', 'name')] },
   { key: 'reconciliations', table: 'reconciliations', cols: [c('account_id', 'id', 'accountId', true), c('start_date', 'date', 'startDate'), c('end_date', 'date', 'endDate'), status] },
   { key: 'documents', table: 'files', cols: [c('name', 'text', 'name'), c('inbox', 'str', 'inbox'), c('folder_id', 'id', 'folderId', true), c('size', 'num', 'size'), c('uploaded_at', 'datetime', 'uploadedAt'), c('trashed_at', 'datetime', 'trashedAt')] },
   { key: 'docFolders', table: 'file_folders', cols: [c('name', 'text', 'name')] },
@@ -157,8 +157,15 @@ function q(name: string) {
   return '`' + name.replace(/`/g, '') + '`';
 }
 
-/** Create any missing table or column. Safe to run on every start. */
-export async function migrate() {
+/**
+ * Bump when a typed column starts reading a different field: rows already stored are then
+ * rewritten once on the next start (their JSON is unchanged, so the diff writer would skip them).
+ *   2: transactions.tax_total, expenses.total, activities.at, share_links.expires_at, payment_notices.doc_id
+ */
+export const SCHEMA_VERSION = 2;
+
+/** Create any missing table or column. Safe to run on every start. Returns the version the database was at. */
+export async function migrate(): Promise<number> {
   const conn = await pool!.getConnection();
   try {
     await conn.query(`CREATE TABLE IF NOT EXISTS settings (\`key\` VARCHAR(64) NOT NULL PRIMARY KEY, data LONGTEXT NOT NULL, updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
@@ -173,7 +180,10 @@ export async function migrate() {
       for (const c of t.cols) if (!names.has(c.name)) await conn.query(`ALTER TABLE ${q(t.table)} ADD COLUMN ${q(c.name)} ${SQL_TYPE[c.type]} NULL${c.index ? `, ADD KEY ${q(`ix_${c.name}`)} (${q(c.name)})` : ''}`);
     }
     await conn.query(`CREATE TABLE IF NOT EXISTS journal_lines (id VARCHAR(128) NOT NULL PRIMARY KEY, journal_id VARCHAR(96) NOT NULL, line_no INT NOT NULL, date DATE NULL, account_id VARCHAR(96) NOT NULL, contact_id VARCHAR(96) NULL, project_id VARCHAR(96) NULL, source_type VARCHAR(64) NULL, source_id VARCHAR(96) NULL, debit DECIMAL(18,2) NOT NULL DEFAULT 0, credit DECIMAL(18,2) NOT NULL DEFAULT 0, description VARCHAR(512) NULL, KEY ix_journal (journal_id), KEY ix_account_date (account_id, date), KEY ix_contact (contact_id), KEY ix_date (date)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-    await conn.query(`INSERT INTO schema_info (id, version) VALUES (1, 1) ON DUPLICATE KEY UPDATE version = VALUES(version)`);
+    const [ver] = await conn.query('SELECT version FROM schema_info WHERE id = 1');
+    const was = Number((ver as { version: number }[])[0]?.version ?? 0);
+    await conn.query(`INSERT INTO schema_info (id, version) VALUES (1, ?) ON DUPLICATE KEY UPDATE version = VALUES(version)`, [Math.max(was, SCHEMA_VERSION)]);
+    return was;
   } finally {
     conn.release();
   }

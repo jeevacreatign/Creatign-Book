@@ -124,8 +124,31 @@ export const requireStaff: RequestHandler = (req, _res, next) => {
   const found = sessionUser(req);
   if (!found) return next(new S.HttpError(401, 'Please sign in'));
   if (req.method !== 'GET' && req.method !== 'HEAD' && req.get('x-cl-request') !== '1') return next(new S.HttpError(403, 'Request blocked'));
+  if (found.u.role === 'Timesheet Staff' && !timesheetCanUse(req)) return next(new S.HttpError(403, 'Your role can only log time on your projects'));
   store.run(found.u, () => next());
 };
+
+// Timesheet Staff log time on the projects they are on, and nothing else.
+const TIMESHEET_READ = /^\/(bootstrap|users|contacts|projects|projects\/[^/]+|projects\/[^/]+\/hours|time-entries(\/.*)?|timer)$/;
+const TIMESHEET_WRITE = /^\/(time-entries(\/.*)?|timer(\/.*)?)$/;
+function timesheetCanUse(req: Request) {
+  if (req.baseUrl !== '/api') return false; // no attachments
+  if (/^\/auth\//.test(req.path)) return true;
+  return req.method === 'GET' || req.method === 'HEAD' ? TIMESHEET_READ.test(req.path) : TIMESHEET_WRITE.test(req.path);
+}
+
+/** The signed-in Timesheet Staff member, when the request comes from one (their data is limited to their own time). */
+export const timesheetOnlyUser = () => {
+  const u = requestUser();
+  return u?.role === 'Timesheet Staff' ? u : undefined;
+};
+
+/** A role someone may hand out: only an Admin can create another Admin. */
+export function grantableRole(role: unknown): User['role'] {
+  const r = (['Admin', 'Staff', 'Timesheet Staff'] as const).find((x) => x === role) ?? 'Staff';
+  if (r === 'Admin' && !authDisabled() && requestUser()?.role !== 'Admin') throw new S.HttpError(403, 'Only an Admin can add another Admin');
+  return r;
+}
 
 export const requireAdmin = () => {
   if (authDisabled()) return;
@@ -147,6 +170,24 @@ async function sendInvite(u: User, origin: string, by?: string) {
 }
 
 // ------------------------------------------------------------------ routes
+
+/**
+ * Origin for links in emails sent from a request nobody signed in to make (password reset).
+ * The browser's Origin header is used only when it names the host the request came to, so a
+ * forged Origin can't send someone's reset link to another site. Set APP_ORIGIN in production
+ * so the Host header doesn't matter either.
+ */
+export function unauthenticatedOrigin(req: Request) {
+  const o = req.get('origin');
+  let host: string | undefined;
+  try {
+    host = o ? new URL(o).host : undefined;
+  } catch {
+    host = undefined;
+  }
+  const served = req.get('host')?.trim().toLowerCase();
+  return publicOrigin(host && served && host.toLowerCase() === served ? o : undefined);
+}
 
 export function registerAuthRoutes(api: Router, h: Wrap, m: Wrap) {
   const origin = (req: Request) => publicOrigin(req.get('origin') || undefined);
@@ -242,7 +283,7 @@ export function registerAuthRoutes(api: Router, h: Wrap, m: Wrap) {
       const token = randomToken();
       u.resetTokenHash = hashToken(token);
       u.resetExpiresAt = new Date(Date.now() + RESET_HOURS * 3600_000).toISOString();
-      const url = `${origin(req)}/reset-password/${token}`;
+      const url = `${unauthenticatedOrigin(req)}/reset-password/${token}`;
       await sendStaffEmail(u.email!, 'Reset your Creatign Ledger password', `Hi ${u.name},\n\nWe received a request to reset your password. The link below works until ${fmtExpiry(u.resetExpiresAt)}. If you did not ask for this, you can ignore this email.`, { label: 'Reset Password', url });
       S.commit();
     }

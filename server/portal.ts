@@ -17,6 +17,7 @@ import { renderDocPdf, renderPaymentPdf, renderStatementPdf } from './pdf';
 import * as R from './reports';
 import * as S from './services';
 import { hashToken, randomToken } from './secrets';
+import { requireAdmin } from './auth';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 const SESSION_COOKIE = 'cb_portal';
@@ -143,6 +144,8 @@ export function staffPortalRoutes(api: Router, commit: () => void) {
 
   api.get('/portal-settings', h(() => ({ ...settings(), defaults: DEFAULT_PORTAL_SETTINGS })));
   api.put('/portal-settings', h((req) => {
+    // the portal URL is used in every emailed link, including password resets
+    requireAdmin();
     const db = getDb();
     const b = req.body as Partial<PortalSettings>;
     const cur = settings();
@@ -493,7 +496,7 @@ function setSession(req: Request, res: Response, u: PortalUser) {
   u.lastLoginAt = now();
   u.failedLogins = 0;
   u.lockedUntil = undefined;
-  const secure = req.secure || req.get('x-forwarded-proto') === 'https';
+  const secure = req.secure || req.get('x-forwarded-proto') === 'https' || req.get('cloudfront-forwarded-proto') === 'https' || process.env.COOKIE_SECURE === '1';
   res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Expires=${expires.toUTCString()}${secure ? '; Secure' : ''}`);
 }
 
