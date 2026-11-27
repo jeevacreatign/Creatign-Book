@@ -25,6 +25,8 @@ import { portalRouter, publicShareRoutes, staffPortalRoutes } from './portal';
 import { EMAIL_TEMPLATE_KINDS, builtInEmailTemplates, type EmailTemplate, type EmailTemplateKind } from '../shared/email';
 import { consumeGoogleAuthorizationState, createGoogleAuthorizationUrl, disconnectGoogleAccount, finishGoogleAuthorization, googleOAuthResultPage } from './google-mail';
 import { renderDocPdf, renderPaymentPdf, renderStatementPdf } from './pdf';
+import { dueReminders, reminderLog, runReminders, saveReminderSettings } from './reminders';
+import { reminderSettings } from '../shared/reminders';
 
 type Handler = (req: Request, res: Response) => unknown;
 const h = (fn: Handler) => async (req: Request, res: Response, next: NextFunction) => {
@@ -230,7 +232,8 @@ export function createApp() {
   }));
   api.put('/preferences', m((req) => {
     const prefs = getDb().preferences;
-    const body = req.body as Record<string, unknown>;
+    const body = { ...(req.body as Record<string, unknown>) };
+    delete body.paymentReminders; // saved through /payment-reminders (Admin only)
     // keep per-module defaults (Customize > Terms & Conditions) in step with the global preference fields
     const dd = { ...((prefs.docDefaults as Record<string, { notes?: string; terms?: string }>) || {}) };
     const sync = (key: string, kind: string, field: 'notes' | 'terms') => {
@@ -241,6 +244,19 @@ export function createApp() {
     sync('customerNotes', 'invoice', 'notes');
     prefs.docDefaults = dd;
     return Object.assign(prefs, body);
+  }));
+  // ------------------------------------------------------------ automatic payment reminders
+  api.get('/payment-reminders', h(() => {
+    const db = getDb();
+    return { settings: reminderSettings(db.preferences), upcoming: dueReminders().map((x) => ({ invoiceId: x.invoiceId, number: x.number, ruleName: x.rule.name })), log: reminderLog() };
+  }));
+  api.put('/payment-reminders', m((req) => {
+    requireAdmin();
+    return saveReminderSettings(req.body || {});
+  }));
+  api.post('/payment-reminders/run', h(async (req) => {
+    requireAdmin();
+    return runReminders(undefined, origin(req));
   }));
   api.get('/admin/backup', (req, res, next) => {
     try {

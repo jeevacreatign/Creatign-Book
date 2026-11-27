@@ -22,6 +22,7 @@ import EmailSettings from '../settings/Emails';
 import type { ExpenseDetailData } from '../expenses/ExpenseDetail';
 import PortalSettingsPage from '../settings/Portal';
 import { MyAccount, UsersAccess } from '../settings/Team';
+import PaymentReminders from '../settings/Reminders';
 import { useMe } from '../../auth';
 
 
@@ -386,6 +387,7 @@ export function Settings() {
     ...(me.user.role === 'Admin' ? [{ to: '/settings/users', label: 'Users & Access' }] : []),
     { to: '/settings/preferences', label: 'Preferences' },
     { to: '/settings/approvals', label: 'Approvals' },
+    { to: '/settings/reminders', label: 'Payment Reminders' },
     { to: '/settings/templates', label: 'PDF Templates' },
     { to: '/settings/emails', label: 'Emails' },
     { to: '/settings/portal', label: 'Client Portal' },
@@ -410,6 +412,7 @@ export function Settings() {
           <Route path="users" element={<UsersAccess />} />
           <Route path="preferences" element={<Preferences />} />
           <Route path="approvals" element={<Approvals />} />
+          <Route path="reminders" element={<PaymentReminders />} />
           <Route path="templates" element={<TemplatesSettings />} />
           <Route path="emails/*" element={<EmailSettings />} />
           <Route path="portal" element={<PortalSettingsPage />} />

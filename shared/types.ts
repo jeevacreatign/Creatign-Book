@@ -341,6 +341,8 @@ export interface TxnDoc {
   writeOff?: { amount: number; date: string; reason?: string };
   expectedPaymentDate?: string;
   remindersStopped?: boolean;
+  /** automatic payment reminders already handled for this invoice (one entry per rule) */
+  remindersSent?: { ruleId: string; at: string; status: 'sent' | 'outbox' | 'failed' | 'skipped'; mailId?: string; error?: string }[];
   // recurring profiles
   profileName?: string;
   repeatEvery?: RepeatEvery;
@@ -799,6 +801,8 @@ export interface Mail {
   /** link included in the email, if any */
   shareLinkId?: ID;
   delivered?: boolean; // false when no mail server was configured (recorded only)
+  /** automatic payment reminder rule that sent this email */
+  reminderRuleId?: string;
   /** system: invites, resets and notifications rather than a composed email */
   system?: boolean;
   createdAt: string;

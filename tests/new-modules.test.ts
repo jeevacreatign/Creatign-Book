@@ -72,3 +72,52 @@ describe('advance invoices', () => {
     expect((await api().delete(`/api/docs/${adv}`)).status).toBe(400);
   });
 });
+
+describe('automatic payment reminders', () => {
+  let inv = '';
+  it('is off until an Admin turns it on', async () => {
+    const r = await api().get('/api/payment-reminders');
+    expect(r.body.settings.enabled).toBe(false);
+    expect(r.body.settings.rules.length).toBeGreaterThan(0);
+    const created = await api().post('/api/docs').send({ kind: 'invoice', mode: 'open', contactId: 'cus_ananya', date: '2026-10-01', dueDate: '2026-10-31', lineItems: [{ itemId: 'item_logo', name: 'Logo Design', quantity: 1, rate: 8000 }] });
+    inv = created.body.id;
+    const { runReminders } = await import('../server/reminders');
+    expect((await runReminders('2026-11-01')).outbox).toBe(0);
+  });
+
+  it('validates and saves the rules', async () => {
+    const bad = await api().put('/api/payment-reminders').send({ enabled: true, rules: [{ name: 'x', when: 'after', days: -2, subject: 'S', enabled: true }] });
+    expect(bad.status).toBe(400);
+    const ok = await api().put('/api/payment-reminders').send({ enabled: true });
+    expect(ok.status).toBe(200);
+    expect(ok.body.enabled).toBe(true);
+    // the general preferences endpoint cannot change them
+    await api().put('/api/preferences').send({ paymentReminders: { enabled: false } });
+    expect((await api().get('/api/payment-reminders')).body.settings.enabled).toBe(true);
+  });
+
+  it('sends each due rule once and only the latest one when several were missed', async () => {
+    const { runReminders, dueReminders } = await import('../server/reminders');
+    // 8 days after the due date: "1 day after" and "7 days after" are both due; only the 7-day one goes
+    const plan = dueReminders('2026-11-08').find((x) => x.invoiceId === inv)!;
+    expect(plan.rule.id).toBe('rem_after_7');
+    const r = await runReminders('2026-11-08');
+    expect(r.outbox + r.sent).toBeGreaterThanOrEqual(1);
+    const again = await runReminders('2026-11-08');
+    expect(dueReminders('2026-11-08').some((x) => x.invoiceId === inv)).toBe(false);
+    expect(again.outbox + again.sent).toBe(0);
+    const d = await api().get(`/api/docs/${inv}`);
+    const handled = Object.fromEntries(d.body.remindersSent.map((x: { ruleId: string; status: string }) => [x.ruleId, x.status]));
+    expect(handled).toMatchObject({ rem_after_1: 'skipped', rem_after_7: 'outbox' });
+    const log = await api().get('/api/payment-reminders');
+    expect(log.body.log.some((x: { number: string }) => x.number === d.body.number)).toBe(true);
+    const mails = await api().get('/api/mails').query({ entityId: inv });
+    expect(JSON.stringify(mails.body)).toContain('Second reminder');
+  });
+
+  it('skips invoices whose reminders are stopped or that are paid', async () => {
+    const { dueReminders } = await import('../server/reminders');
+    await api().post(`/api/docs/${inv}/actions/stop_reminders`).send({});
+    expect(dueReminders('2026-11-20').some((x) => x.invoiceId === inv)).toBe(false);
+  });
+});
