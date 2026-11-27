@@ -2,7 +2,7 @@
 // units of the base currency (INR) per 1 unit of the transaction currency. Amounts on a document stay
 // in its own currency; the ledger, reports and dashboards always work in the base currency.
 import { money, round2 } from './format';
-import type { Currency, Database } from './types';
+import type { Currency, Database, RateEntry } from './types';
 
 export const BASE_CURRENCY = 'INR';
 /** Exchange rates are kept to 6 decimal places (0.012345 INR per JPY ... 106.400000 INR per GBP). */
@@ -81,6 +81,37 @@ export function rateOn(c: Pick<Currency, 'code' | 'rate' | 'history'> | undefine
   if (!c || c.code === BASE_CURRENCY) return 1;
   const past = (c.history ?? []).filter((h) => h.date <= date).sort((a, b) => a.date.localeCompare(b.date));
   return past.length ? past[past.length - 1].rate : c.rate;
+}
+
+/** The history entry that sets the rate on a date (latest on or before it), if any. */
+export function rateEntryOn(c: Pick<Currency, 'history'> | undefined, date: string): RateEntry | undefined {
+  const past = (c?.history ?? []).filter((h) => h.date <= date).sort((a, b) => a.date.localeCompare(b.date));
+  return past[past.length - 1];
+}
+
+/** A rate older than this many days is flagged as stale (central-bank rates skip weekends and holidays). */
+export const DEFAULT_STALE_DAYS = 4;
+
+export interface RateStatus {
+  rate: number;
+  /** date of the rate in use for new transactions today */
+  date?: string;
+  source: 'manual' | 'fetched' | 'unknown';
+  provider?: string;
+  recordedAt?: string;
+  ageDays?: number;
+  stale: boolean;
+  staleReason?: string;
+}
+
+/** Where today's default rate of a currency comes from, and whether it is out of date. */
+export function rateStatus(c: Currency, day: string, staleDays = DEFAULT_STALE_DAYS): RateStatus {
+  if (c.code === BASE_CURRENCY) return { rate: 1, source: 'manual', stale: false };
+  const e = rateEntryOn(c, day);
+  if (!e) return { rate: c.rate, source: 'unknown', stale: true, staleReason: 'No dated rate: enter one or refresh rates' };
+  const ageDays = Math.max(0, Math.round((Date.parse(day) - Date.parse(e.date)) / 86400000));
+  const stale = ageDays > staleDays;
+  return { rate: e.rate, date: e.date, source: e.source ?? 'manual', provider: e.provider, recordedAt: e.recordedAt, ageDays, stale, staleReason: stale ? `Rate is ${ageDays} days old` : undefined };
 }
 
 const rateFmt = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: RATE_DECIMALS });

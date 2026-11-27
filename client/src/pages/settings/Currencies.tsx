@@ -1,15 +1,16 @@
-// Settings > Currencies: INR is the base currency. Other ISO 4217 currencies are added with a manually
-// entered exchange rate (INR per unit) and a dated rate history. New transactions default to the latest
-// rate on or before their date; saved transactions keep the rate they were created with.
+// Settings > Currencies: INR is the base currency. Other ISO 4217 currencies carry a dated rate history,
+// fetched from the rate provider by the server (Refresh Rates) or entered by hand. New transactions
+// default to the latest rate on or before their date; saved transactions keep the rate they were created with.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash2, History, Coins } from 'lucide-react';
-import { fmtDate, today } from '@shared/format';
+import { Plus, Trash2, History, Coins, RefreshCw, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { fmtDate, fmtDateTime, today } from '@shared/format';
 import { rateLabel } from '@shared/currency';
 import { api, useAction, useApi } from '../../api';
 import { useMe } from '../../auth';
+import { toast } from '../../lib/toast';
 import { DateInput, Field, Modal, Spinner, clsx, useConfirm } from '../../components/ui';
-import { CurrencyBadge, useCurrencies, type CurrencyRow } from '../../components/currency';
+import { CurrencyBadge, RateSourceTag, useCurrencies, type CurrencyRow } from '../../components/currency';
 
 export default function Currencies() {
   const admin = useMe().user.role !== 'Timesheet Staff';
@@ -32,19 +33,20 @@ export default function Currencies() {
         )}
       </div>
       <p className="mb-5 max-w-3xl text-[13px] text-slate-500">
-        The base currency is <b className="text-slate-700">INR - Indian Rupee</b>. The ledger, reports and dashboards are always in INR. Clients and suppliers can bill in another currency; each of their transactions keeps the exchange rate of its date. Rates are entered by hand, no paid rate service is used. Revalue open balances at month end in{' '}
+        The base currency is <b className="text-slate-700">INR - Indian Rupee</b>. The ledger, reports and dashboards are always in INR. Clients and suppliers can bill in another currency; each of their transactions keeps the exchange rate of its date. Refreshing rates or entering a new rate only changes the default for new transactions. Revalue open balances at month end in{' '}
         <Link className="link" to="/accountant/currency-adjustments">
           FX Revaluations
         </Link>
         .
       </p>
+      <LiveRates admin={admin} />
       <table className="table rounded-md border border-slate-200">
         <thead>
           <tr>
             <th className="pl-4">Currency</th>
             <th>Symbol</th>
             <th className="text-right">Exchange Rate</th>
-            <th>Last Rate Entry</th>
+            <th>Rate Source</th>
             <th className="text-right">Used By</th>
             <th className="pr-4" />
           </tr>
@@ -61,12 +63,29 @@ export default function Currencies() {
               </td>
               <td>{c.symbol}</td>
               <td className="text-right tabular-nums">{c.base ? '1' : rateLabel(c.code, c.rate)}</td>
-              <td className="text-slate-500">{c.history?.[0] ? `${fmtDate(c.history[0].date)}: ${c.history[0].rate}` : '-'}</td>
+              <td className="text-slate-500" data-testid={`rate-source-${c.code}`}>
+                {c.base ? (
+                  '-'
+                ) : (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="flex items-center gap-1.5">
+                      <RateSourceTag source={c.status?.source} provider={c.status?.provider} />
+                      {c.status?.date && <span className="text-xs">{fmtDate(c.status.date)}</span>}
+                    </span>
+                    {c.status?.source === 'fetched' && <span className="text-[11px] text-slate-400">{c.status.provider}</span>}
+                    {c.status?.stale && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700" data-testid={`stale-${c.code}`}>
+                        <AlertTriangle size={11} /> Stale: {c.status.staleReason}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </td>
               <td className="text-right tabular-nums text-slate-500">{c.usage ? `${c.usage} record${c.usage === 1 ? '' : 's'}` : '-'}</td>
               <td className="pr-4 text-right">
                 {!c.base && admin && (
                   <span className="flex justify-end gap-3">
-                    <button className="link text-xs" onClick={() => setEditing(c)} aria-label={`Edit rate ${c.code}`}>
+                    <button className="link whitespace-nowrap text-xs" onClick={() => setEditing(c)} aria-label={`Edit rate ${c.code}`}>
                       Update Rate
                     </button>
                     {!c.usage && (
@@ -158,7 +177,7 @@ function EditRate({ c, onClose }: { c: CurrencyRow; onClose: () => void }) {
       }
     >
       <div className="space-y-4">
-        <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">Saving a rate never changes existing transactions. It is offered for new transactions dated on or after the date below.</div>
+        <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">A rate entered here is saved as a manual rate. It never changes existing transactions; it is offered for new transactions dated on or after the date below.</div>
         <Field inline={false} label="Exchange Rate" required>
           <div className="flex">
             <span className="flex items-center rounded-l-md border border-r-0 border-slate-300 bg-slate-50 px-2.5 text-[13px]">1 {c.code} =</span>
@@ -176,9 +195,10 @@ function EditRate({ c, onClose }: { c: CurrencyRow; onClose: () => void }) {
           {!(c.history ?? []).length && <div className="text-xs text-slate-400">No dated rates yet.</div>}
           <ul className="divide-y divide-slate-100 text-[13px]">
             {(c.history ?? []).map((h) => (
-              <li key={h.date} className={clsx('flex items-center justify-between py-1.5')}>
-                <span>{fmtDate(h.date)}</span>
-                <span className="tabular-nums">{rateLabel(c.code, h.rate)}</span>
+              <li key={h.date} className={clsx('flex items-center justify-between gap-3 py-1.5')}>
+                <span className="w-24">{fmtDate(h.date)}</span>
+                <RateSourceTag source={h.source ?? 'manual'} provider={h.provider} />
+                <span className="flex-1 text-right tabular-nums">{rateLabel(c.code, h.rate)}</span>
                 <button className="text-slate-400 hover:text-red-500" onClick={() => drop.mutate(h.date)} aria-label={`Remove rate of ${h.date}`}>
                   <Trash2 size={12} />
                 </button>
@@ -191,3 +211,90 @@ function EditRate({ c, onClose }: { c: CurrencyRow; onClose: () => void }) {
   );
 }
 
+interface RefreshResult {
+  ok: boolean;
+  provider: string;
+  rateDate?: string;
+  fetchedAt: string;
+  updated: { code: string; previousRate: number; rate: number; date: string }[];
+  unsupported: string[];
+  keptManual: { code: string; date: string; rate: number }[];
+  error?: string;
+  trigger: 'manual' | 'automatic';
+}
+interface RateStatusInfo {
+  provider: { name: string; website: string; apiKeyRequired: boolean; apiKeyConfigured: boolean; updates: string; rateType: string };
+  staleDays: number;
+  autoRefresh: boolean;
+  lastRun?: RefreshResult;
+  lastSuccessAt?: string;
+}
+
+/** Provider, Refresh Rates and the result of the last refresh. */
+function LiveRates({ admin }: { admin: boolean }) {
+  const { data } = useApi<RateStatusInfo>('/currency-rates/status');
+  const refresh = useAction(() => api<RefreshResult>('/currency-rates/refresh', { method: 'POST' }), (r) => {
+    if (r.ok) return `Rates refreshed: ${r.updated.length} updated`;
+    toast.error(`Could not refresh rates: ${r.error}`);
+    return undefined;
+  });
+  const auto = useAction((on: boolean) => api('/currency-rates/settings', { method: 'PUT', body: { autoRefresh: on } }), 'Saved');
+  if (!data) return null;
+  const run = data.lastRun ?? refresh.data;
+  const p = data.provider;
+  return (
+    <div className="mb-5 rounded-md border border-slate-200 bg-slate-50/60 p-4 text-[13px]" data-testid="live-rates">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-0.5">
+          <div className="font-semibold text-slate-800">Live exchange rates</div>
+          <div className="text-slate-600">
+            Provider:{' '}
+            <a className="link" href={p.website} target="_blank" rel="noreferrer">
+              {p.name}
+            </a>{' '}
+            <span className="text-slate-400">({p.apiKeyRequired ? (p.apiKeyConfigured ? 'API key set on the server' : 'API key missing on the server') : 'no API key needed'})</span>
+          </div>
+          <div className="text-xs text-slate-500">
+            {p.rateType}. Updated {p.updates.charAt(0).toLowerCase() + p.updates.slice(1)}. Rates older than {data.staleDays} days are flagged as stale.
+          </div>
+        </div>
+        {admin && (
+          <button className="btn-primary" disabled={refresh.isPending} onClick={() => refresh.mutate(undefined)}>
+            <RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : ''} /> {refresh.isPending ? 'Refreshing...' : 'Refresh Rates'}
+          </button>
+        )}
+      </div>
+      {admin && (
+        <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+          <input type="checkbox" className="accent-brand-600" checked={data.autoRefresh} onChange={(e) => auto.mutate(e.target.checked)} />
+          Refresh automatically every 6 hours
+        </label>
+      )}
+      {run && (
+        <div className={clsx('mt-3 rounded-md border px-3 py-2', run.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900')} data-testid="refresh-status">
+          <div className="flex items-center gap-1.5 font-medium">
+            {run.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+            {run.ok ? `Rates of ${fmtDate(run.rateDate!)} fetched` : 'Refresh failed'} {run.trigger === 'automatic' ? '(automatic)' : ''} at {fmtDateTime(run.fetchedAt)}
+          </div>
+          {!run.ok && <div className="mt-0.5">{run.error}. No rate was changed; the rates below are the last ones saved.</div>}
+          {run.ok && (
+            <ul className="mt-1 space-y-0.5 text-xs">
+              <li>Updated: {run.updated.length ? run.updated.map((u) => `${u.code} ${u.previousRate} → ${u.rate}`).join(', ') : 'none'}</li>
+              {run.unsupported.length > 0 && (
+                <li className="text-amber-800" data-testid="unsupported">
+                  Not updated, the provider does not quote: {run.unsupported.join(', ')}. Enter these rates by hand.
+                </li>
+              )}
+              {run.keptManual.map((k) => (
+                <li key={k.code} className="text-amber-800">
+                  {k.code}: your manual rate of {fmtDate(k.date)} ({k.rate}) stays the default for new transactions.
+                </li>
+              ))}
+            </ul>
+          )}
+          {!run.ok && data.lastSuccessAt && <div className="mt-0.5 text-xs">Last successful refresh: {fmtDateTime(data.lastSuccessAt)}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
