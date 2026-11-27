@@ -39,7 +39,7 @@ export function assertUnlocked(db: Database, module: LockModule, ...dates: (stri
   }
 }
 
-const SALES_KINDS = new Set(['quote', 'sales_order', 'invoice', 'delivery_challan', 'credit_note']);
+const SALES_KINDS = new Set(['quote', 'sales_order', 'invoice', 'retainer_invoice', 'delivery_challan', 'credit_note']);
 const PURCHASE_KINDS = new Set(['purchase_order', 'bill', 'vendor_credit']);
 
 /** Which lock module and dates a mutating API call touches. */

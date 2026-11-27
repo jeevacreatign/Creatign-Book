@@ -10,7 +10,7 @@ import { ListHeader, MoreMenu, ViewPicker } from '../../components/split';
 import { ExportMenu } from '../../components/ExportMenu';
 import type { BankAccountRow } from './common';
 
-const SERIES = '#2a78d6';
+const SERIES = '#2c3b56';
 const PERIODS = [
   { value: 'last_30_days', label: 'Last 30 days' },
   { value: 'this_month', label: 'This Month' },

@@ -213,7 +213,7 @@ function ProjectList() {
               <button className="btn-primary rounded-r-none" onClick={() => navigate('/time-tracking/projects/new')}>
                 <Plus size={15} /> New
               </button>
-              <Dropdown align="right" button={() => <button className="btn-primary w-8 rounded-l-none border-l border-l-brand-700 px-0" aria-label="More new options"><ChevronDown size={14} /></button>}>
+              <Dropdown align="right" button={() => <button className="btn-primary w-8 rounded-l-none border-l border-l-white/20 px-0" aria-label="More new options"><ChevronDown size={14} /></button>}>
                 <MenuItem onClick={() => navigate('/time-tracking/projects/new')}>New Project</MenuItem>
                 <MenuItem onClick={() => navigate('/time-tracking/timesheet?new=1')}>New Log Entry</MenuItem>
               </Dropdown>

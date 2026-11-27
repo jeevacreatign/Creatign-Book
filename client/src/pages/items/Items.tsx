@@ -9,6 +9,7 @@ import { api, useAction, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { ExportMenu } from '../../components/ExportMenu';
+import { AdjustmentForm, Adjustments, ItemsNav, PriceListForm, PriceLists, StockHistory } from './Catalog';
 import { AccountSelect, Checkbox, Combo, Dropdown, Field, FormFooter, KV, MenuItem, MoneyInput, PageHeader, Radio, SearchBox, Select, Spinner, Status, Tabs, clsx, useConfirm } from '../../components/ui';
 
 type ItemDetail = Item & { usage: { id: string; kind: DocKind; number: string; date: string; status: string; contact: string; total: number }[] };
@@ -28,8 +29,10 @@ function ItemList() {
     { value: 'active', label: 'Active Items' },
     { value: 'inactive', label: 'Inactive Items' },
   ];
+  const tracking = data.some((i) => i.trackInventory);
   return (
     <div>
+      <ItemsNav />
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
         <Dropdown button={() => <button className="flex items-center gap-1 text-[15px] font-semibold">{views.find((v) => v.value === status)?.label} <ChevronDown size={15} className="text-brand-600" /></button>}>
           {views.map((v) => (
@@ -77,6 +80,7 @@ function ItemList() {
               <th className="text-right">Purchase Rate</th>
               <th>Description</th>
               <th className="text-right">Rate</th>
+              {tracking && <th className="text-right">Stock on Hand</th>}
               <th>Usage Unit</th>
             </tr>
           </thead>
@@ -94,12 +98,23 @@ function ItemList() {
                 <td className="text-right tabular-nums">{i.purchasable ? money(i.costPrice) : '-'}</td>
                 <td className="max-w-[220px] truncate text-slate-600">{i.salesDescription}</td>
                 <td className="text-right tabular-nums">{i.sellable ? money(i.sellingPrice) : '-'}</td>
+                {tracking && (
+                  <td className="text-right tabular-nums">
+                    {i.trackInventory ? (
+                      <span className={clsx((i.stockOnHand ?? 0) <= (i.reorderLevel ?? -Infinity) && 'font-semibold text-red-600')} title={(i.stockOnHand ?? 0) <= (i.reorderLevel ?? -Infinity) ? 'At or below the reorder level' : undefined}>
+                        {i.stockOnHand ?? 0}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">-</span>
+                    )}
+                  </td>
+                )}
                 <td>{i.unit}</td>
               </tr>
             ))}
             {!data.length && (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-slate-400">
+                <td colSpan={8} className="py-12 text-center text-slate-400">
                   No items yet. <Link to="/items/new" className="link">Create your first item</Link>.
                 </td>
               </tr>
@@ -145,9 +160,6 @@ function ItemForm() {
         </button>
       </PageHeader>
       <div className="flex-1 space-y-5 px-5 py-5">
-        <div className="max-w-5xl rounded-md border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs text-slate-600">
-          Inventory quantities are not tracked yet. Items can still be used in sales and purchase transactions.
-        </div>
         <div className="max-w-5xl space-y-4 rounded-md bg-slate-50 p-4">
           <Field label="Name" required>
             <input className="input max-w-md" value={f.name || ''} onChange={(e) => set({ name: e.target.value })} autoFocus />
@@ -194,6 +206,24 @@ function ItemForm() {
             </Field>
           </div>
         </div>
+        {f.type !== 'service' && (
+          <div className="max-w-5xl border-t border-slate-200 pt-5">
+            <div className="mb-1">
+              <Checkbox checked={!!f.trackInventory} onChange={(v) => set({ trackInventory: v })} label={<span className="font-semibold">Track stock for this item</span>} />
+            </div>
+            <p className="mb-4 ml-6 text-xs text-slate-500">Bills and debit notes add stock, invoices and credit notes remove it, and Stock Adjustments correct it.</p>
+            {f.trackInventory && (
+              <div className="grid max-w-5xl gap-x-8 gap-y-3 md:grid-cols-2">
+                <Field label="Opening Stock">
+                  <input className="input" type="number" value={f.openingStock ?? ''} onChange={(e) => set({ openingStock: e.target.value as unknown as number })} />
+                </Field>
+                <Field label="Reorder Level" hint="The item is flagged when stock falls to this level.">
+                  <input className="input" type="number" min={0} value={f.reorderLevel ?? ''} onChange={(e) => set({ reorderLevel: e.target.value as unknown as number })} />
+                </Field>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <FormFooter>
         <button className="btn-primary" disabled={saving} onClick={save}>
@@ -260,8 +290,10 @@ function ItemDetailView() {
             </div>
           </div>
           <div className="px-5 py-4">
-            <Tabs tabs={[{ value: 'overview', label: 'Overview' }, { value: 'transactions', label: 'Transactions' }]} value={tab} onChange={setTab} className="mb-4" />
-            {tab === 'overview' ? (
+            <Tabs tabs={[{ value: 'overview', label: 'Overview' }, { value: 'transactions', label: 'Transactions' }, ...(i.trackInventory ? [{ value: 'stock', label: 'Stock History' }] : [])]} value={tab} onChange={setTab} className="mb-4" />
+            {tab === 'stock' && i.trackInventory ? (
+              <StockHistory itemId={i.id} />
+            ) : tab === 'overview' ? (
               <div className="max-w-3xl space-y-6">
                 <div>
                   <KV k="Item Type" v={i.type === 'goods' ? 'Goods' : 'Service'} />
@@ -270,6 +302,21 @@ function ItemDetailView() {
                   <KV k="Status" v={<Status status={i.status} />} />
                   <KV k="Created" v={fmtDate(i.createdAt.slice(0, 10))} />
                 </div>
+                {i.trackInventory && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="card p-4">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Stock on Hand</div>
+                      <div className={clsx('mt-1 text-2xl font-semibold tabular-nums', (i.stockOnHand ?? 0) <= (i.reorderLevel ?? -Infinity) ? 'text-red-600' : 'text-ink-900')}>{i.stockOnHand ?? 0} <span className="text-sm font-normal text-slate-500">{i.unit}</span></div>
+                    </div>
+                    <div className="card p-4">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Reorder Level</div>
+                      <div className="mt-1 text-2xl font-semibold tabular-nums text-ink-900">{i.reorderLevel ?? '-'}</div>
+                    </div>
+                    <div className="card flex items-center justify-center p-4">
+                      <button className="btn-secondary" onClick={() => navigate('/items/adjustments/new')}>Adjust Stock</button>
+                    </div>
+                  </div>
+                )}
                 <div className="grid gap-6 md:grid-cols-2">
                   <div className="rounded-md border border-slate-200 p-4">
                     <div className="mb-2 font-semibold">Sales Information</div>
@@ -334,6 +381,10 @@ export default function Items() {
   return (
     <Routes>
       <Route index element={<ItemList />} />
+      <Route path="price-lists" element={<PriceLists />} />
+      <Route path="price-lists/:id" element={<PriceListForm />} />
+      <Route path="adjustments" element={<Adjustments />} />
+      <Route path="adjustments/new" element={<AdjustmentForm />} />
       <Route path="new" element={<ItemForm />} />
       <Route path=":id/edit" element={<ItemForm />} />
       <Route path=":id" element={<ItemDetailView />} />

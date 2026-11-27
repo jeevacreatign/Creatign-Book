@@ -236,6 +236,19 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         </>
       );
       break;
+    case 'retainer_invoice':
+      if (d.status === 'draft') primary.push(<ToolbarBtn key="sent" icon={<CheckCircle2 size={14} />} onClick={() => run('mark_sent')}>Mark as Sent</ToolbarBtn>);
+      if (d.status === 'sent' || d.status === 'partially_paid') primary.push(<ToolbarBtn key="pay" icon={<CreditCard size={14} />} onClick={() => navigate(`/sales/payments-received/new?retainerInvoiceId=${d.id}&contactId=${d.contactId}`)}>Record Advance</ToolbarBtn>);
+      more = (
+        <>
+          {d.status !== 'draft' && d.status !== 'void' && !(d.amountPaid ?? 0) && <MenuItem onClick={() => run('revert_to_draft')}>Revert to Draft</MenuItem>}
+          {cloneItem}
+          {d.status !== 'void' && voidItem}
+          {deleteItem}
+          {lockItem}
+        </>
+      );
+      break;
     case 'delivery_challan':
       if (d.status === 'draft') primary.push(<ToolbarBtn key="open" onClick={() => run('convert_to_open')}>Convert to Open</ToolbarBtn>);
       if (d.status === 'open') primary.push(<ToolbarBtn key="del" icon={<Truck size={14} />} onClick={() => run('mark_delivered')}>Mark as Delivered</ToolbarBtn>);
@@ -321,7 +334,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         { value: 'document', label: kind === 'quote' ? 'Estimate Details' : 'Details' },
         ...(kind === 'quote' || kind === 'sales_order' || kind === 'delivery_challan' ? [{ value: 'invoices', label: 'Invoices' }] : []),
         ...(kind === 'purchase_order' ? [{ value: 'invoices', label: 'Bills' }] : []),
-        ...(kind === 'invoice' || kind === 'bill' ? [{ value: 'payments', label: 'Payments' }] : []),
+        ...(kind === 'invoice' || kind === 'bill' || kind === 'retainer_invoice' ? [{ value: 'payments', label: kind === 'retainer_invoice' ? 'Advances' : 'Payments' }] : []),
         ...(kind === 'credit_note' || kind === 'vendor_credit' ? [{ value: 'payments', label: sales ? 'Invoices Credited' : 'Bills Credited' }] : []),
         ...(meta.posts ? [{ value: 'journal', label: 'Journal' }] : []),
         { value: 'emails', label: 'Emails' },
@@ -866,7 +879,7 @@ function PaymentsTab({ d, kind }: { d: DocDetailData; kind: DocKind }) {
         )}
       </div>
     );
-  const base = kind === 'invoice' ? '/sales/payments-received' : '/purchases/payments-made';
+  const base = kind === 'invoice' || kind === 'retainer_invoice' ? '/sales/payments-received' : '/purchases/payments-made';
   return (
     <div className="space-y-6">
       <table className="table">

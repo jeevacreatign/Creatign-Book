@@ -63,23 +63,23 @@ export function useSignOut() {
 
 function Shell({ title, sub, children, footer }: { title: string; sub?: ReactNode; children: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="flex min-h-full bg-white">
+    <div className="flex min-h-full bg-canvas">
       <aside className="relative hidden w-[44%] max-w-[560px] flex-col justify-between overflow-hidden bg-ink-900 p-10 text-white lg:flex">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand-600/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-teal-400/10 blur-3xl" />
+        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand-500/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-brand-300/10 blur-3xl" />
         <Brand light />
         <div className="relative">
           <h2 className="text-[28px] font-semibold leading-tight tracking-tight">Books that close themselves.</h2>
           <p className="mt-3 max-w-sm text-[15px] text-slate-300">GST-ready invoicing, payables, banking and reports for Indian businesses, in one ledger your accountant will trust.</p>
           <ul className="mt-8 space-y-3 text-[14px] text-slate-200">
             <li className="flex items-center gap-3">
-              <ReceiptText size={17} className="text-teal-300" /> GST invoices, delivery challans and credit notes
+              <ReceiptText size={17} className="text-brand-300" /> GST invoices, delivery challans and credit notes
             </li>
             <li className="flex items-center gap-3">
-              <Landmark size={17} className="text-teal-300" /> Bank statement import, matching and reconciliation
+              <Landmark size={17} className="text-brand-300" /> Bank statement import, matching and reconciliation
             </li>
             <li className="flex items-center gap-3">
-              <BarChart3 size={17} className="text-teal-300" /> GSTR-1, GSTR-3B and Schedule III statements
+              <BarChart3 size={17} className="text-brand-300" /> GSTR-1, GSTR-3B and Schedule III statements
             </li>
           </ul>
         </div>
@@ -105,7 +105,7 @@ function Shell({ title, sub, children, footer }: { title: string; sub?: ReactNod
 function Brand({ light }: { light?: boolean }) {
   return (
     <div className="relative flex items-center gap-2.5">
-      <img src="/logo.svg" alt="" className="h-8 w-8" />
+      <img src="/logo.png" alt="Creatign" className={light ? 'h-11 w-11 drop-shadow-[0_4px_14px_rgba(207,159,62,0.45)]' : 'h-9 w-9'} />
       <span className={`text-[17px] font-semibold tracking-tight ${light ? 'text-white' : 'text-slate-900'}`}>
         Creatign <span className={light ? 'font-normal text-brand-300' : 'font-normal text-brand-600'}>Ledger</span>
       </span>
@@ -120,7 +120,7 @@ function Input({ label, hint, right, ...props }: React.InputHTMLAttributes<HTMLI
         {label}
         {right}
       </span>
-      <input {...props} className="block h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-[14px] text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100" />
+      <input {...props} className="block h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-[14px] text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100" />
       {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
     </label>
   );
@@ -135,7 +135,7 @@ function Password({ label = 'Password', value, onChange, autoComplete, hint, rig
         {right}
       </span>
       <span className="relative block">
-        <input type={show ? 'text' : 'password'} required autoFocus={autoFocus} autoComplete={autoComplete} value={value} onChange={(e) => onChange(e.target.value)} className="block h-10 w-full rounded-md border border-slate-300 bg-white px-3 pr-10 text-[14px] text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100" />
+        <input type={show ? 'text' : 'password'} required autoFocus={autoFocus} autoComplete={autoComplete} value={value} onChange={(e) => onChange(e.target.value)} className="block h-10 w-full rounded-lg border border-slate-300 bg-white px-3 pr-10 text-[14px] text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100" />
         <button type="button" className="absolute right-2 top-2 rounded p-1 text-slate-400 hover:text-slate-600" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'}>
           {show ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
@@ -172,7 +172,7 @@ function ErrorNote({ error }: { error?: string }) {
 
 function Submit({ busy, children }: { busy: boolean; children: ReactNode }) {
   return (
-    <button type="submit" disabled={busy} className="flex h-10 w-full items-center justify-center rounded-md bg-brand-600 text-[14px] font-medium text-white hover:bg-brand-700 disabled:opacity-60">
+    <button type="submit" disabled={busy} className="flex h-10 w-full items-center justify-center rounded-lg bg-ink-900 text-[14px] font-medium text-white shadow-sm hover:bg-ink-700 disabled:opacity-60">
       {busy ? 'Please wait…' : children}
     </button>
   );

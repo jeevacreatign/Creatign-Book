@@ -159,6 +159,8 @@ export function seedDatabase({ withSamples }: { withSamples: boolean }): Databas
     reportSchedules: [],
     counters: {},
     pdfTemplates: builtInTemplates(),
+    priceLists: [],
+    inventoryAdjustments: [],
     preferences: {
       defaultTemplates: {},
       salespersons: ['Jeeva'],

@@ -119,9 +119,43 @@ export interface Item {
   taxPreference?: 'taxable' | 'exempt' | 'non_gst' | 'out_of_scope';
   /** default GST rate for sales and purchases */
   taxId?: string;
+  /** goods only: keep a running stock count from bills, invoices, notes and adjustments */
+  trackInventory?: boolean;
+  openingStock?: number;
+  /** warn when stock on hand falls to this level */
+  reorderLevel?: number;
+  /** computed by the API for tracked items */
+  stockOnHand?: number;
   status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
+}
+
+/** Client-specific selling rates. Percentage lists mark every item up or down; per-item lists set rates. */
+export interface PriceList {
+  id: ID;
+  name: string;
+  description?: string;
+  type: 'percentage' | 'per_item';
+  direction: 'markup' | 'markdown';
+  percentage: number;
+  rounding: 'none' | 'whole' | 'nearest_10';
+  items: { itemId: ID; rate: number }[];
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Manual stock correction (count, damage, samples, opening). Positive adds stock, negative removes it. */
+export interface InventoryAdjustment {
+  id: ID;
+  number: string;
+  date: string;
+  reason: string;
+  reference?: string;
+  notes?: string;
+  lines: { itemId: ID; quantity: number }[];
+  createdAt: string;
 }
 
 export interface ContactPerson {
@@ -171,6 +205,8 @@ export interface Contact {
   accountId?: ID; // Accounts Receivable / Accounts Payable
   openingBalance: number;
   paymentTerms: PaymentTerms;
+  /** clients: selling rates come from this price list */
+  priceListId?: ID;
   portalEnabled: boolean;
   website?: string;
   department?: string;
@@ -222,6 +258,7 @@ export type DocKind =
   | 'quote'
   | 'sales_order'
   | 'invoice'
+  | 'retainer_invoice'
   | 'recurring_invoice'
   | 'delivery_challan'
   | 'credit_note'
@@ -340,6 +377,8 @@ export interface TxnDoc {
   writeOff?: { amount: number; date: string; reason?: string };
   expectedPaymentDate?: string;
   remindersStopped?: boolean;
+  /** automatic payment reminders already handled for this invoice (one entry per rule) */
+  remindersSent?: { ruleId: string; at: string; status: 'sent' | 'outbox' | 'failed' | 'skipped'; mailId?: string; error?: string }[];
   // recurring profiles
   profileName?: string;
   repeatEvery?: RepeatEvery;
@@ -371,6 +410,8 @@ export interface PaymentReceived {
   tdsDeducted: boolean;
   tdsAmount: number;
   allocations: Allocation[];
+  /** advance collected against an advance invoice: kept as client credit until applied to invoices */
+  retainerInvoiceId?: ID;
   notes?: string;
   attachments: Attachment[];
   sendThankYou: boolean;
@@ -796,6 +837,8 @@ export interface Mail {
   /** link included in the email, if any */
   shareLinkId?: ID;
   delivered?: boolean; // false when no mail server was configured (recorded only)
+  /** automatic payment reminder rule that sent this email */
+  reminderRuleId?: string;
   /** system: invites, resets and notifications rather than a composed email */
   system?: boolean;
   createdAt: string;
@@ -908,6 +951,11 @@ export interface TimeEntry {
   billable: boolean;
   invoiced: boolean;
   invoiceId?: ID;
+  /** with timesheet approvals on: only approved time can be invoiced (no value = approved) */
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -990,6 +1038,8 @@ export interface Database {
   counters: Record<string, number>;
   preferences: Record<string, unknown>;
   pdfTemplates: PdfTemplate[];
+  priceLists: PriceList[];
+  inventoryAdjustments: InventoryAdjustment[];
 }
 
 export const PAYMENT_TERMS: { value: PaymentTerms; label: string }[] = [

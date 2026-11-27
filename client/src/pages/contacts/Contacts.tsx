@@ -354,7 +354,7 @@ function Overview({ c, onPortal }: { c: Row; onPortal: () => void }) {
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} tickFormatter={(m: string) => m.slice(0, 3)} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} width={50} />
                 <Tooltip formatter={(v: number) => money(v)} cursor={{ fill: '#f1f5f9' }} />
-                <Bar dataKey="amount" name={vendor ? 'Expenses' : 'Income'} fill="#2a78d6" radius={[4, 4, 0, 0]} maxBarSize={22} />
+                <Bar dataKey="amount" name={vendor ? 'Expenses' : 'Income'} fill="#2c3b56" radius={[4, 4, 0, 0]} maxBarSize={22} />
               </BarChart>
             </ResponsiveContainer>
           </div>

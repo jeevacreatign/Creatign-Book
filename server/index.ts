@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boot, createApp } from './app';
 import { closeDb, initDb } from './db';
+import { startReminderSchedule } from './reminders';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 4000;
@@ -21,6 +22,8 @@ if (fs.existsSync(dist)) {
   app.use(express.static(dist));
   app.get(/^(?!\/api|\/uploads).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
+
+if (process.env.REMINDERS_DISABLED !== '1') startReminderSchedule();
 
 const server = app.listen(PORT, () => {
   console.log(`Creatign Ledger API listening on http://localhost:${PORT}`);

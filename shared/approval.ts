@@ -35,6 +35,7 @@ export const POSTED_STATUS: Partial<Record<DocKind, string>> = {
   quote: 'sent',
   sales_order: 'confirmed',
   invoice: 'open',
+  retainer_invoice: 'sent',
   credit_note: 'open',
   purchase_order: 'issued',
   bill: 'open',

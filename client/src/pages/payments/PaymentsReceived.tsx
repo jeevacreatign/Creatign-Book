@@ -216,6 +216,13 @@ export function PaymentForm() {
 
   // preselect the invoice we came from
   const invoiceParam = search.get('invoiceId');
+  // advance against an advance invoice: the whole amount stays as client credit
+  const retainerId = search.get('retainerInvoiceId') || existing?.retainerInvoiceId;
+  const { data: retainer } = useApi<TxnDoc>(retainerId ? `/docs/${retainerId}` : null);
+  useEffect(() => {
+    if (!retainer || id || !f || f.retainerInvoiceId) return;
+    setF((cur) => ({ ...cur!, retainerInvoiceId: retainer.id, contactId: retainer.contactId, amount: retainer.balance }));
+  }, [retainer, id, f]);
   useEffect(() => {
     if (!invoiceParam || !unpaid.length || Object.keys(alloc).length) return;
     const inv = unpaid.find((i) => i.id === invoiceParam);
@@ -263,6 +270,11 @@ export function PaymentForm() {
         </button>
       </PageHeader>
       <div className="flex-1 space-y-4 px-5 py-5">
+        {retainer && (
+          <div className="max-w-3xl rounded-lg border border-brand-200 bg-brand-50 px-4 py-2.5 text-[13px] text-ink-900">
+            Advance for <span className="font-medium">{retainer.number}</span> ({money(retainer.balance)} still due). The amount is kept as client credit and can be applied to invoices later.
+          </div>
+        )}
         <div className="max-w-3xl space-y-3.5">
           <Field label="Client Name" required>
             <ContactPicker
