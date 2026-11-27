@@ -13,7 +13,7 @@ import { journalsFor, logActivity, recompute, runRecurring } from './engine';
 import { normalizeTimeTracking, registerProjectRoutes } from './projects';
 import { lockGuard, registerAccountantRoutes } from './accountant';
 import { registerBankingRoutes } from './banking';
-import { registerAuthRoutes, requestUser, requireAdmin, requireStaff, timesheetOnlyUser } from './auth';
+import { registerAuthRoutes, requestUser, requireAdmin, requireStaff } from './auth';
 import { registerDocumentRoutes } from './documents';
 import * as R from './reports';
 import { CATEGORIES as CATALOG_CATEGORIES, catalog as reportCatalog, runReport } from './reportCatalog';
@@ -290,8 +290,7 @@ export function createApp() {
     const needle = q(req, 'q');
     return getDb()
       .contacts.filter((c) => (!kind || c.kind === kind) && (status === 'all' || c.status === status) && (matches(c.displayName, needle) || matches(c.companyName, needle) || matches(c.email, needle)))
-      // Timesheet Staff only need client names for the timesheet filters
-      .map((c) => (timesheetOnlyUser() ? { id: c.id, kind: c.kind, displayName: c.displayName, companyName: c.companyName, status: c.status } : { ...c, ...S.contactSummary(c) }));
+      .map((c) => ({ ...c, ...S.contactSummary(c) }));
   }));
   api.get('/contacts/:id', h((req) => {
     const c = S.getContact(p(req, 'id'));

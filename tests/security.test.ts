@@ -68,9 +68,8 @@ describe('Timesheet Staff', () => {
       expect([path, (await request(app).get(path).set('Cookie', timesheet)).status]).toEqual([path, 403]);
     expect((await request(app).post('/api/items').set('Cookie', timesheet).set(H).send({ name: 'x' })).status).toBe(403);
     expect((await request(app).post('/api/projects').set('Cookie', timesheet).set(H).send({ name: 'x' })).status).toBe(403);
-    const clients = (await request(app).get('/api/contacts?kind=customer').set('Cookie', timesheet)).body as Record<string, unknown>[];
-    expect(clients.length).toBeGreaterThan(0);
-    expect(clients.every((c) => !('outstanding' in c) && !('email' in c))).toBe(true);
+    expect((await request(app).get('/api/contacts?kind=customer').set('Cookie', timesheet)).status).toBe(403);
+    expect((await request(app).get('/api/contacts/cus_test').set('Cookie', timesheet)).status).toBe(403);
   });
 
   it('see and log time only on projects they are on, always as themselves', async () => {

@@ -11,6 +11,7 @@ import { Lifecycle } from '../../components/shared';
 import { ExportMenu } from '../../components/ExportMenu';
 import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
 import { downloadRows } from '../../lib/export';
+import { useMe } from '../../auth';
 import { openTimer, useUsers, type ProjectDetail, type ProjectRow } from './common';
 import { ProjectPage } from './ProjectTabs';
 
@@ -118,7 +119,9 @@ function ProjectList() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const { data = [], isLoading } = useApi<ProjectRow[]>(`/projects${qs({ view, q })}`);
-  const { data: customers = [] } = useApi<Contact[]>('/contacts?kind=customer');
+  const timeOnly = useMe().user.role === 'Timesheet Staff';
+  // only used to match clients when importing projects, which Timesheet Staff can't do
+  const { data: customers = [] } = useApi<Contact[]>(timeOnly ? null : '/contacts?kind=customer');
   const confirm = useConfirm();
   const bulk = useAction((v: { action: string; ids: string[] }) => api<{ done: number }>('/projects/bulk', { body: v }), (r) => `${r.done} project(s) updated`);
   const all = data.length > 0 && data.every((p) => selected.includes(p.id));
