@@ -97,6 +97,16 @@ export const DOC_UI: Record<DocKind, DocUI> = {
     saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
     notesLabel: 'Client Notes',
   },
+  retainer_invoice: {
+    kind: 'retainer_invoice',
+    columns: ['date', 'number', 'reference', 'contact', 'status', 'amount', 'balance'],
+    filters: [ALL, DRAFT, { value: 'sent', label: 'Sent' }, { value: 'partially_paid', label: 'Partially Paid' }, { value: 'paid', label: 'Paid' }, { value: 'void', label: 'Void' }],
+    fields: ['reference', 'project', 'subject', 'addresses'],
+    attachments: { max: 5, mb: 10 },
+    saveLabels: { draft: 'Save as Draft', open: 'Save', send: 'Save and Send' },
+    notesLabel: 'Client Notes',
+    lifecycle: { title: 'Collect advances before the work starts', subtitle: 'Ask for a deposit or mobilisation advance. What the client pays is kept as credit and applied to the final invoices.', steps: ['SEND ADVANCE INVOICE', 'ADVANCE RECEIVED', 'APPLY TO INVOICES'], cta: 'NEW ADVANCE INVOICE' },
+  },
   recurring_invoice: {
     kind: 'recurring_invoice',
     columns: ['contact', 'profileName', 'frequency', 'lastDate', 'nextDate', 'status', 'amount'],

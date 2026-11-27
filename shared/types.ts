@@ -222,6 +222,7 @@ export type DocKind =
   | 'quote'
   | 'sales_order'
   | 'invoice'
+  | 'retainer_invoice'
   | 'recurring_invoice'
   | 'delivery_challan'
   | 'credit_note'
@@ -371,6 +372,8 @@ export interface PaymentReceived {
   tdsDeducted: boolean;
   tdsAmount: number;
   allocations: Allocation[];
+  /** advance collected against an advance invoice: kept as client credit until applied to invoices */
+  retainerInvoiceId?: ID;
   notes?: string;
   attachments: Attachment[];
   sendThankYou: boolean;

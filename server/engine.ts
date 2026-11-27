@@ -91,6 +91,15 @@ export function recompute(db: Database = getDb()) {
     if (['credit_note', 'vendor_credit', 'invoice', 'bill'].includes(d.kind)) continue;
     applyTotals(d);
     d.balance = d.total;
+    if (d.kind === 'retainer_invoice') {
+      // advance invoices never post: the advance itself is a client payment kept as credit
+      const paid = round2(sum(db.paymentsReceived.filter((p) => p.status === 'paid' && p.retainerInvoiceId === d.id).map((p) => p.amount + (p.tdsDeducted ? p.tdsAmount : 0))));
+      d.amountPaid = paid;
+      if (isUnposted(d.status) || d.status === 'void') continue;
+      d.balance = round2(Math.max(0, d.total - paid));
+      d.status = d.balance <= 0.004 ? 'paid' : paid > 0 ? 'partially_paid' : 'sent';
+      continue;
+    }
     if (d.kind === 'quote') {
       const inv = liveInvoices.some((i) => i.quoteId === d.id) || db.docs.some((s) => s.kind === 'sales_order' && s.quoteId === d.id && s.status !== 'void');
       if (inv && liveInvoices.some((i) => i.quoteId === d.id)) d.status = 'invoiced';

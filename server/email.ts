@@ -304,7 +304,7 @@ function logoAttachment(db: Database) {
 
 // ------------------------------------------------------------ share links
 
-const LINK_KINDS = new Set(['quote', 'sales_order', 'invoice', 'credit_note']);
+const LINK_KINDS = new Set(['quote', 'sales_order', 'invoice', 'retainer_invoice', 'credit_note']);
 
 export function createShareLink(entityType: ShareLink['entityType'], entityId: string, expiresOn?: string, source: ShareLink['source'] = 'manual') {
   const db = getDb();
@@ -485,6 +485,7 @@ function afterSent(r: Resolved, mail: Mail) {
     if (d.kind === 'quote' && ready) d.status = 'sent';
     if (d.kind === 'sales_order' && ready) d.status = 'confirmed';
     if (d.kind === 'invoice' && ready) d.status = 'open';
+    if (d.kind === 'retainer_invoice' && ready) d.status = 'sent';
     if (d.kind === 'purchase_order' && ready) d.status = 'issued';
     if ((d.kind === 'credit_note' || d.kind === 'vendor_credit') && ready) d.status = 'open';
     d.emailRecipients = Array.from(new Set([...(d.emailRecipients || []), ...mail.to]));

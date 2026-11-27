@@ -30,6 +30,7 @@ const DOC_ROUTES: [string, DocKind][] = [
   ['sales/quotes', 'quote'],
   ['sales/sales-orders', 'sales_order'],
   ['sales/invoices', 'invoice'],
+  ['sales/retainer-invoices', 'retainer_invoice'],
   ['sales/recurring-invoices', 'recurring_invoice'],
   ['sales/delivery-challans', 'delivery_challan'],
   ['sales/credit-notes', 'credit_note'],

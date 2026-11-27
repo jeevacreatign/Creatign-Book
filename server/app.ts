@@ -366,7 +366,9 @@ export function createApp() {
           ? db.paymentsReceived.filter((x) => x.allocations.some((a) => a.docId === d.id)).map((x) => ({ id: x.id, number: x.number, date: x.date, mode: x.mode, status: x.status, amount: x.allocations.find((a) => a.docId === d.id)!.amount }))
           : d.kind === 'bill'
             ? db.paymentsMade.filter((x) => x.allocations.some((a) => a.docId === d.id)).map((x) => ({ id: x.id, number: x.number, date: x.date, mode: x.mode, status: x.status, amount: x.allocations.find((a) => a.docId === d.id)!.amount }))
-            : [],
+            : d.kind === 'retainer_invoice'
+              ? db.paymentsReceived.filter((x) => x.retainerInvoiceId === d.id).map((x) => ({ id: x.id, number: x.number, date: x.date, mode: x.mode, status: x.status, amount: x.amount, unused: x.unusedAmount }))
+              : [],
       creditsApplied: db.docs.filter((c) => c.creditApplications.some((a) => a.invoiceId === d.id)).flatMap((c) => c.creditApplications.filter((a) => a.invoiceId === d.id).map((a) => ({ ...a, creditId: c.id, creditNumber: c.number }))),
       appliedTo: d.creditApplications.map((a) => ({ ...a, number: db.docs.find((x) => x.id === a.invoiceId)?.number })),
     };

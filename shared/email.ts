@@ -111,6 +111,7 @@ export function fillPlaceholders(text: string, values: Record<string, string | u
 /** Template kind used when emailing a transaction of this kind. */
 export function templateKindForDoc(kind: DocKind | string, overdue = false): EmailTemplateKind | undefined {
   if (kind === 'invoice') return overdue ? 'payment_reminder' : 'invoice';
+  if (kind === 'retainer_invoice') return 'invoice';
   if (kind === 'quote' || kind === 'sales_order' || kind === 'credit_note' || kind === 'purchase_order') return kind;
   if (kind === 'payment_received' || kind === 'payment_made') return kind;
   return undefined;

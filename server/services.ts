@@ -399,6 +399,7 @@ export function deleteDoc(id: string) {
     if (paid || credited) throw bad(`Delete the payments and credits applied to this ${DOC_META[d.kind].label.toLowerCase()} first`);
   }
   if ((d.kind === 'credit_note' || d.kind === 'vendor_credit') && (d.creditApplications.length || d.refunds.length)) throw bad('Remove the applied credits and refunds first');
+  if (d.kind === 'retainer_invoice' && db.paymentsReceived.some((p) => p.retainerInvoiceId === id && p.status !== 'void')) throw bad('Delete the advance payments recorded for this advance invoice first');
   db.docs = db.docs.filter((x) => x.id !== id);
   // detach links
   for (const x of db.docs) {
@@ -502,19 +503,19 @@ export function convertTemplate(sourceId: string, to: DocKind): Partial<TxnDoc> 
 }
 
 const SIMPLE_STATUS: Record<string, Partial<Record<DocKind, string>>> = {
-  mark_sent: { quote: 'sent', invoice: 'open', purchase_order: 'issued', sales_order: 'confirmed' },
+  mark_sent: { quote: 'sent', invoice: 'open', retainer_invoice: 'sent', purchase_order: 'issued', sales_order: 'confirmed' },
   accept: { quote: 'accepted' },
   decline: { quote: 'declined' },
   confirm: { sales_order: 'confirmed' },
   convert_to_open: { delivery_challan: 'open', credit_note: 'open', vendor_credit: 'open', bill: 'open', invoice: 'open' },
   mark_delivered: { delivery_challan: 'delivered' },
   revert_to_open: { delivery_challan: 'open' },
-  void: { invoice: 'void', bill: 'void', credit_note: 'void', vendor_credit: 'void', sales_order: 'void', delivery_challan: 'void' },
+  void: { invoice: 'void', retainer_invoice: 'void', bill: 'void', credit_note: 'void', vendor_credit: 'void', sales_order: 'void', delivery_challan: 'void' },
   cancel: { purchase_order: 'cancelled' },
   reopen: { purchase_order: 'issued' },
   stop: { recurring_invoice: 'stopped', recurring_bill: 'stopped' },
   resume: { recurring_invoice: 'active', recurring_bill: 'active' },
-  revert_to_draft: { quote: 'draft', delivery_challan: 'draft', invoice: 'draft', bill: 'draft', sales_order: 'draft', purchase_order: 'draft', credit_note: 'draft', vendor_credit: 'draft' },
+  revert_to_draft: { quote: 'draft', retainer_invoice: 'draft', delivery_challan: 'draft', invoice: 'draft', bill: 'draft', sales_order: 'draft', purchase_order: 'draft', credit_note: 'draft', vendor_credit: 'draft' },
 };
 
 export function docAction(id: string, action: string, body: Record<string, unknown> = {}) {
@@ -563,6 +564,7 @@ export function docAction(id: string, action: string, body: Record<string, unkno
   const target = SIMPLE_STATUS[action]?.[d.kind];
   if (target) {
     if (action === 'void') {
+      if (d.kind === 'retainer_invoice' && db.paymentsReceived.some((p) => p.status === 'paid' && p.retainerInvoiceId === d.id)) throw bad('Delete the advance payments recorded for this advance invoice before voiding it');
       if (d.kind === 'invoice' && db.paymentsReceived.some((p) => p.status === 'paid' && p.allocations.some((a) => a.docId === d.id))) throw bad('Delete the payments recorded for this invoice before voiding it');
       if (d.kind === 'bill' && db.paymentsMade.some((p) => p.status === 'paid' && p.allocations.some((a) => a.docId === d.id))) throw bad('Delete the payments recorded for this bill before voiding it');
       if (db.docs.some((c) => c.creditApplications.some((a) => a.invoiceId === d.id))) throw bad('Remove the credits applied to this document before voiding it');
@@ -719,6 +721,15 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
     const prev = existing?.allocations.find((x) => x.docId === a.docId)?.amount ?? 0;
     if (a.amount > inv.balance + (existing?.status === 'paid' ? prev : 0) + 0.004) throw bad(`${inv.number}: payment exceeds the balance due`);
   }
+  // advance against an advance invoice: held as client credit, applied to invoices later
+  const retainerInvoiceId = body.retainerInvoiceId === null ? undefined : str(body.retainerInvoiceId) ?? existing?.retainerInvoiceId;
+  if (retainerInvoiceId) {
+    const ri = getDoc(retainerInvoiceId, 'retainer_invoice');
+    if (ri.contactId !== contact.id) throw bad('The advance invoice belongs to another client');
+    if (isUnposted(ri.status) || ri.status === 'void') throw bad(`${ri.number} is ${ri.status.replace(/_/g, ' ')}. Send it before recording the advance.`);
+    const others = db.paymentsReceived.filter((x) => x.retainerInvoiceId === ri.id && x.status === 'paid' && x.id !== id).reduce((s, x) => s + x.amount + (x.tdsDeducted ? x.tdsAmount : 0), 0);
+    if (amount + tdsAmount > ri.total - others + 0.004) throw bad(`${ri.number}: the advance exceeds the amount still due (${money(round2(ri.total - others))})`);
+  }
   const number = str(body.number) ?? existing?.number ?? peekNumber('payment_received', '', 1);
   if (db.paymentsReceived.some((p) => p.number === number && p.id !== id)) throw bad(`Payment #${number} already exists`);
   const ts = now();
@@ -744,6 +755,7 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
     tdsDeducted,
     tdsAmount,
     allocations,
+    retainerInvoiceId,
     status: (body.status as PaymentReceived['status']) ?? existing?.status ?? 'paid',
     updatedAt: ts,
   } as PaymentReceived;
@@ -759,6 +771,10 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
   for (const a of allocations) {
     const inv = getDoc(a.docId);
     logActivity(db, 'invoice', inv.id, inv.contactId, `Payment of ${money(a.amount)} recorded`, `Payment #${number} via ${p.mode}`);
+  }
+  if (retainerInvoiceId && !existing) {
+    const ri = getDoc(retainerInvoiceId);
+    logActivity(db, 'retainer_invoice', ri.id, ri.contactId, `Advance of ${money(amount)} received`, `Payment #${number} via ${p.mode}. Kept as client credit until it is applied to invoices.`);
   }
   logActivity(db, 'payment_received', p.id, p.contactId, existing ? 'Payment updated' : 'Payment recorded', `${money(amount)} received via ${p.mode}`);
   return p;

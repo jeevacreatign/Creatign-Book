@@ -18,6 +18,7 @@ const SALES: NavItem[] = [
   { to: '/sales/quotes', label: 'Estimates' },
   { to: '/sales/sales-orders', label: 'Sales Orders' },
   { to: '/sales/invoices', label: 'Invoices' },
+  { to: '/sales/retainer-invoices', label: 'Advance Invoices' },
   { to: '/sales/recurring-invoices', label: 'Invoice Schedules' },
   { to: '/sales/delivery-challans', label: 'Delivery Challans' },
   { to: '/sales/payments-received', label: 'Client Payments' },
@@ -206,7 +207,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 
 const QUICK_CREATE: { group: string; items: NavItem[] }[] = [
   { group: 'General', items: [{ to: '/items/new', label: 'Product or Service' }, { to: '/accountant/manual-journals/new', label: 'Journal Voucher' }, { to: '/time-tracking/timesheet?new=1', label: 'Log Time' }, { to: '/time-tracking/projects/new', label: 'Project' }] },
-  { group: 'Receivables', items: [{ to: '/sales/customers/new', label: 'Client' }, { to: '/sales/quotes/new', label: 'Estimate' }, { to: '/sales/sales-orders/new', label: 'Sales Order' }, { to: '/sales/invoices/new', label: 'Invoice' }, { to: '/sales/recurring-invoices/new', label: 'Invoice Schedule' }, { to: '/sales/delivery-challans/new', label: 'Delivery Challan' }, { to: '/sales/payments-received/new', label: 'Client Payment' }, { to: '/sales/credit-notes/new', label: 'Credit Note' }] },
+  { group: 'Receivables', items: [{ to: '/sales/customers/new', label: 'Client' }, { to: '/sales/quotes/new', label: 'Estimate' }, { to: '/sales/sales-orders/new', label: 'Sales Order' }, { to: '/sales/invoices/new', label: 'Invoice' }, { to: '/sales/retainer-invoices/new', label: 'Advance Invoice' }, { to: '/sales/recurring-invoices/new', label: 'Invoice Schedule' }, { to: '/sales/delivery-challans/new', label: 'Delivery Challan' }, { to: '/sales/payments-received/new', label: 'Client Payment' }, { to: '/sales/credit-notes/new', label: 'Credit Note' }] },
   { group: 'Payables', items: [{ to: '/purchases/vendors/new', label: 'Supplier' }, { to: '/purchases/expenses/new', label: 'Expense' }, { to: '/purchases/recurring-expenses/new', label: 'Expense Schedule' }, { to: '/purchases/purchase-orders/new', label: 'Purchase Order' }, { to: '/purchases/bills/new', label: 'Bill' }, { to: '/purchases/recurring-bills/new', label: 'Bill Schedule' }, { to: '/purchases/payments-made/new', label: 'Supplier Payment' }, { to: '/purchases/vendor-credits/new', label: 'Debit Note' }] },
 ];
 
