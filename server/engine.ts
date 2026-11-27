@@ -8,6 +8,8 @@ import { ACCOUNT_IDS as A, DOC_META } from '../shared/docmeta';
 import { nextRecurrence, round2, today, addDays, dueDateFor } from '../shared/format';
 import type { Database, Journal, JournalLine, JournalSource, TxnDoc, Expense, ExpenseGst, RecurringExpense } from '../shared/types';
 import { getDb, newId, now, peekNumber, takeNumber } from './db';
+import { fxOf, roundRate, rateOn, toBase } from '../shared/currency';
+import { balanceWithFx, linesInBase, revaluationJournal } from './fx';
 
 const OPEN_FAMILY_INVOICE = new Set(['open', 'sent', 'due_today', 'overdue', 'partially_paid', 'paid']);
 
@@ -137,6 +139,14 @@ export function recompute(db: Database = getDb()) {
     if (e.status === 'active' && !e.neverExpires && e.endsOn && e.endsOn < t && (!e.nextDate || e.nextDate > e.endsOn)) e.status = 'expired';
   }
 
+  // base-currency figures shown next to foreign-currency amounts
+  for (const d of db.docs) {
+    const { rate } = fxOf(d);
+    d.baseTotal = toBase(d.total, rate);
+    d.baseBalance = toBase(d.balance, rate);
+  }
+  for (const p of [...db.paymentsReceived, ...db.paymentsMade]) p.baseAmount = toBase(p.amount, fxOf(p).rate);
+
   rebuildJournals(db);
 }
 
@@ -215,38 +225,106 @@ export function rebuildJournals(db: Database = getDb()) {
     else add('opening_balance', c.id, migration, [jl(A.openingBalanceAdj, c.openingBalance, 0), jl(c.accountId || A.ap, 0, c.openingBalance, 'Opening balance', c.id)], 'Opening Balance', c.id);
   }
 
+  // Every amount below is converted to the base currency (INR). Documents post at their own rate;
+  // settlements credit/debit AR and AP at the rate of the document they settle and the rest at the
+  // payment's rate, and the difference is the realized exchange gain or loss.
+  const docById = new Map(db.docs.map((d) => [d.id, d]));
+  const rateOfDoc = (id: string) => fxOf(docById.get(id)).rate;
+  const refundRate = (r: { exchangeRate?: number }, fallback: number) => (Number(r.exchangeRate) > 0 ? Number(r.exchangeRate) : fallback);
+  const B = toBase;
+
   for (const d of db.docs) {
+    const { rate } = fxOf(d);
+    const ar = d.accountId || A.ar;
+    const ap = d.accountId || A.ap;
     if (isPostedInvoice(d)) {
-      add('invoice', d.id, d.date, salesDocLines(d), d.number, d.contactId);
-      if (d.writeOff?.amount) add('write_off', d.id, d.writeOff.date, [jl(A.badDebt, d.writeOff.amount, 0), jl(d.accountId || A.ar, 0, d.writeOff.amount, 'Write off', d.contactId)], d.number, d.contactId);
+      add('invoice', d.id, d.date, linesInBase(salesDocLines(d), rate, ar), d.number, d.contactId);
+      if (d.writeOff?.amount) add('write_off', d.id, d.writeOff.date, [jl(A.badDebt, B(d.writeOff.amount, rate), 0), jl(ar, 0, B(d.writeOff.amount, rate), 'Write off', d.contactId)], d.number, d.contactId);
     }
     if (d.kind === 'credit_note' && isPostedCredit(d)) {
-      add('credit_note', d.id, d.date, salesDocLines(d, true), d.number, d.contactId);
-      for (const r of d.refunds) add('credit_note_refund', d.id, r.date, [jl(d.accountId || A.ar, r.amount, 0, 'Refund', d.contactId), jl(r.accountId, 0, r.amount)], d.number, d.contactId, `_${r.id}`);
+      add('credit_note', d.id, d.date, linesInBase(salesDocLines(d, true), rate, ar), d.number, d.contactId);
+      for (const r of d.refunds) {
+        const lines = [jl(ar, B(r.amount, rate), 0, 'Refund', d.contactId), jl(r.accountId, 0, B(r.amount, refundRate(r, rate)))];
+        balanceWithFx(lines);
+        add('credit_note_refund', d.id, r.date, lines, d.number, d.contactId, `_${r.id}`);
+      }
+      // applying a credit booked at one rate to an invoice booked at another realizes the difference
+      for (const c of d.creditApplications) {
+        const inv = docById.get(c.invoiceId);
+        if (!inv || fxOf(inv).rate === rate) continue;
+        const lines = [jl(ar, B(c.amount, rate), 0, `Credit applied to ${inv.number}`, d.contactId), jl(inv.accountId || A.ar, 0, B(c.amount, fxOf(inv).rate), `Credit from ${d.number}`, d.contactId)];
+        balanceWithFx(lines);
+        add('credit_application', d.id, c.date, lines, d.number, d.contactId, `_${c.id}`);
+      }
     }
-    if (isPostedBill(d)) add('bill', d.id, d.date, purchaseDocLines(d), d.number, d.contactId);
+    if (isPostedBill(d)) add('bill', d.id, d.date, linesInBase(purchaseDocLines(d), rate, ap), d.number, d.contactId);
     if (d.kind === 'vendor_credit' && isPostedCredit(d)) {
-      add('vendor_credit', d.id, d.date, purchaseDocLines(d, true), d.number, d.contactId);
-      for (const r of d.refunds) add('credit_note_refund', d.id, r.date, [jl(r.accountId, r.amount, 0), jl(d.accountId || A.ap, 0, r.amount, 'Refund', d.contactId)], d.number, d.contactId, `_${r.id}`);
+      add('vendor_credit', d.id, d.date, linesInBase(purchaseDocLines(d, true), rate, ap), d.number, d.contactId);
+      for (const r of d.refunds) {
+        const lines = [jl(r.accountId, B(r.amount, refundRate(r, rate)), 0), jl(ap, 0, B(r.amount, rate), 'Refund', d.contactId)];
+        balanceWithFx(lines);
+        add('credit_note_refund', d.id, r.date, lines, d.number, d.contactId, `_${r.id}`);
+      }
+      for (const c of d.creditApplications) {
+        const bill = docById.get(c.invoiceId);
+        if (!bill || fxOf(bill).rate === rate) continue;
+        const lines = [jl(bill.accountId || A.ap, B(c.amount, fxOf(bill).rate), 0, `Credit from ${d.number}`, d.contactId), jl(ap, 0, B(c.amount, rate), `Credit applied to ${bill.number}`, d.contactId)];
+        balanceWithFx(lines);
+        add('credit_application', d.id, c.date, lines, d.number, d.contactId, `_${c.id}`);
+      }
     }
   }
 
   for (const p of db.paymentsReceived) {
+    p.fxGainLoss = 0;
     if (p.status !== 'paid') continue;
+    const { rate } = fxOf(p);
     const tds = p.tdsDeducted ? p.tdsAmount : 0;
-    add('payment_received', p.id, p.date, [
-      jl(p.depositToAccountId, p.amount - p.bankCharges, 0),
-      jl(A.bankCharges, p.bankCharges, 0),
-      jl(A.tdsReceivable, tds, 0),
-      jl(A.ar, 0, p.amount + tds, undefined, p.contactId),
-    ], p.number, p.contactId);
-    for (const r of p.refunds) add('payment_refund', p.id, r.date, [jl(A.ar, r.amount, 0, 'Refund', p.contactId), jl(r.accountId, 0, r.amount)], p.number, p.contactId, `_${r.id}`);
+    const charges = B(p.bankCharges, rate);
+    const tdsB = B(tds, rate);
+    const gross = B(p.amount, rate);
+    const lines = [jl(p.depositToAccountId, gross - charges, 0), jl(A.bankCharges, charges, 0), jl(A.tdsReceivable, tdsB, 0)];
+    let unused = p.amount + tds;
+    for (const a of p.allocations) {
+      lines.push(jl(A.ar, 0, B(a.amount, rateOfDoc(a.docId)), undefined, p.contactId));
+      unused -= a.amount;
+    }
+    lines.push(jl(A.ar, 0, B(round2(unused), rate), undefined, p.contactId));
+    p.fxGainLoss = rate === 1 && p.allocations.every((a) => rateOfDoc(a.docId) === 1) ? 0 : balanceWithFx(lines);
+    add('payment_received', p.id, p.date, lines, p.number, p.contactId);
+    for (const r of p.refunds) {
+      const rl = [jl(A.ar, B(r.amount, rate), 0, 'Refund', p.contactId), jl(r.accountId, 0, B(r.amount, refundRate(r, rate)))];
+      balanceWithFx(rl);
+      add('payment_refund', p.id, r.date, rl, p.number, p.contactId, `_${r.id}`);
+    }
   }
 
   for (const p of db.paymentsMade) {
+    p.fxGainLoss = 0;
     if (p.status !== 'paid') continue;
-    add('payment_made', p.id, p.date, [jl(A.ap, p.amount, 0, undefined, p.contactId), jl(p.paidThroughAccountId, 0, p.amount)], p.number, p.contactId);
-    for (const r of p.refunds ?? []) add('payment_refund', p.id, r.date, [jl(r.accountId, r.amount, 0), jl(A.ap, 0, r.amount, 'Supplier refund', p.contactId)], p.number, p.contactId, `_${r.id}`);
+    const { rate } = fxOf(p);
+    const lines = [jl(p.paidThroughAccountId, 0, B(p.amount, rate))];
+    let unused = p.amount;
+    for (const a of p.allocations) {
+      lines.push(jl(A.ap, B(a.amount, rateOfDoc(a.docId)), 0, undefined, p.contactId));
+      unused -= a.amount;
+    }
+    lines.unshift(jl(A.ap, B(round2(unused), rate), 0, undefined, p.contactId));
+    p.fxGainLoss = rate === 1 && p.allocations.every((a) => rateOfDoc(a.docId) === 1) ? 0 : balanceWithFx(lines);
+    add('payment_made', p.id, p.date, lines, p.number, p.contactId);
+    for (const r of p.refunds ?? []) {
+      const rl = [jl(r.accountId, B(r.amount, refundRate(r, rate)), 0), jl(A.ap, 0, B(r.amount, rate), 'Supplier refund', p.contactId)];
+      balanceWithFx(rl);
+      add('payment_refund', p.id, r.date, rl, p.number, p.contactId, `_${r.id}`);
+    }
+  }
+
+  // FX revaluations: unrealized gain/loss on the date, reversed the next day
+  for (const adj of db.currencyAdjustments ?? []) {
+    const lines = revaluationJournal(db, adj.lines ?? []);
+    if (!lines.length) continue;
+    add('fx_revaluation', adj.id, adj.date, lines, `FX revaluation ${adj.currencyCode}`);
+    add('fx_revaluation', adj.id, addDays(adj.date, 1), lines.map((l) => ({ ...l, debit: l.credit, credit: l.debit, description: `Reversal: ${l.description ?? ''}`.trim() })), `FX revaluation ${adj.currencyCode} (reversal)`, undefined, '_rev');
   }
 
   for (const e of db.expenses) {
@@ -312,6 +390,8 @@ export function makeDocFromProfile(profile: TxnDoc, date: string): TxnDoc {
     createdAt: ts,
     updatedAt: ts,
   };
+  // each generated document takes the exchange rate on its own date
+  if (doc.currencyCode && doc.currencyCode !== 'INR') doc.exchangeRate = roundRate(rateOn(getDb().currencies.find((c) => c.code === doc.currencyCode), date));
   doc.lineItems = doc.lineItems.map((l) => ({ ...l, id: newId('li') }));
   applyTotals(doc);
   doc.balance = doc.total;

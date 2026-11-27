@@ -80,6 +80,7 @@ export const PLACEHOLDERS: PlaceholderDef[] = [
   { key: 'ReferenceNumber', label: 'Reference number', group: 'document' },
   { key: 'Total', label: 'Total amount', group: 'document' },
   { key: 'BalanceDue', label: 'Balance due', group: 'document' },
+  { key: 'CurrencyCode', label: 'Currency code', group: 'document' },
   { key: 'DaysOverdue', label: 'Days overdue', group: 'document' },
   { key: 'DocumentLink', label: 'Link to view online', group: 'document' },
   { key: 'PaymentNumber', label: 'Payment number', group: 'payment' },

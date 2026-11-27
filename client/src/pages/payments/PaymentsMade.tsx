@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronDown, FileText, Mail, MoreHorizontal, Pencil, Plus, Printer, X, Ban, Trash2, BookOpen, RotateCcw } from 'lucide-react';
-import { fmtDate, money, num, today, round2 } from '@shared/format';
+import { fmtDate, money, today, round2 } from '@shared/format';
+import { fxOf, moneyIn } from '@shared/currency';
+import { CurrencyBadge, CurrencyFacts, PaymentRateField, usePaymentRate } from '../../components/currency';
 import { PAYMENT_MODES, TDS_RATES, type Contact, type Journal, type PaymentMade, type TxnDoc } from '@shared/types';
 import { api, qs, useAction, useApi } from '../../api';
 import { useBoot, isCashLike } from '../../lib/app';
@@ -103,8 +105,11 @@ function List() {
                   <td>
                     <Status status={p.status} />
                   </td>
-                  <td className="text-right tabular-nums">{money(p.amount)}</td>
-                  <td className="text-right tabular-nums">{money(p.unusedAmount)}</td>
+                  <td className="text-right tabular-nums">
+                    {moneyIn(p.amount, p.currencyCode)}
+                    {(p.currencyCode || 'INR') !== 'INR' && <span className="block text-xxs text-slate-400">{moneyIn(p.baseAmount, 'INR')}</span>}
+                  </td>
+                  <td className="text-right tabular-nums">{moneyIn(p.unusedAmount, p.currencyCode)}</td>
                 </tr>
               ))}
             </tbody>
@@ -133,6 +138,8 @@ function PaymentDrawer() {
     } else if (!id && next) setF({ type: 'bill_payment', number: next.number, date: today(), mode: 'Cash', paidThroughAccountId: 'acc_petty_cash', contactId: search.get('contactId') || undefined, attachments: [], tdsRate: 0 });
   }, [existing, next, f, id, search]);
   const contactId = f?.contactId;
+  const { data: payee } = useApi<Contact>(contactId ? `/contacts/${contactId}` : null);
+  const fx = usePaymentRate(payee?.currencyCode, f?.date, existing);
   const { data: bills = [] } = useApi<TxnDoc[]>(contactId ? `/docs${qs({ kind: 'bill', contactId })}` : null);
   const unpaid = useMemo(
     () =>
@@ -161,7 +168,9 @@ function PaymentDrawer() {
   async function save() {
     setSaving(true);
     try {
-      const body = { ...f, status: 'paid', allocations: advance ? [] : Object.entries(alloc).map(([docId, a]) => ({ docId, amount: Number(a) || 0 })) };
+      const rate = fx.body();
+      if (rate.error) throw new Error(rate.error);
+      const body = { ...f, ...rate.fields, status: 'paid', allocations: advance ? [] : Object.entries(alloc).map(([docId, a]) => ({ docId, amount: Number(a) || 0 })) };
       const saved = await api<PaymentMade>(id ? `/payments-made/${id}` : '/payments-made', { method: id ? 'PUT' : 'POST', body });
       toast.success('Payment recorded');
       navigate(`/purchases/payments-made/${saved.id}`);
@@ -213,8 +222,15 @@ function PaymentDrawer() {
         <Field label="Payment #" required>
           <input className="input max-w-xs" value={f.number || ''} onChange={(e) => set({ number: e.target.value })} />
         </Field>
+        {contactId && (
+          <Field label="Currency">
+            <div className="flex items-center gap-2 text-[13px] text-slate-600">
+              <CurrencyBadge code={fx.code} /> {fx.foreign ? `Paid in ${fx.code}. Only ${fx.code} bills of this supplier can be paid with it.` : 'Indian Rupee (base currency)'}
+            </div>
+          </Field>
+        )}
         <Field label="Supplier Payment" required>
-          <MoneyInput className="max-w-xs" value={f.amount} onChange={(v) => set({ amount: v as unknown as number })} />
+          <MoneyInput prefix={fx.code} className="max-w-xs" value={f.amount} onChange={(v) => set({ amount: v as unknown as number })} />
           {!advance && unpaid.length > 0 && (
             <button
               type="button"
@@ -225,7 +241,7 @@ function PaymentDrawer() {
                 setAlloc(Object.fromEntries(unpaid.map((b) => [b.id, String(b.due)])));
               }}
             >
-              Pay full amount ({money(unpaid.reduce((s, b) => s + b.due, 0))})
+              Pay full amount ({moneyIn(unpaid.reduce((s, b) => s + b.due, 0), fx.code)})
             </button>
           )}
         </Field>
@@ -237,6 +253,11 @@ function PaymentDrawer() {
         <Field label="Payment Date" required>
           <DateInput className="max-w-[200px]" value={f.date} onChange={(v) => set({ date: v })} />
         </Field>
+        {fx.foreign && (
+          <Field label="Exchange Rate" required>
+            <PaymentRateField made fx={fx} amount={amount} allocations={advance ? [] : unpaid.filter((b) => Number(alloc[b.id]) > 0).map((b) => ({ amount: Number(alloc[b.id]), rate: fxOf(b).rate }))} />
+          </Field>
+        )}
         <Field label="Payment Mode">
           <Select className="max-w-xs" value={f.mode} onChange={(e) => set({ mode: e.target.value })} options={PAYMENT_MODES.map((m) => ({ value: m, label: m }))} />
         </Field>
@@ -289,8 +310,8 @@ function PaymentDrawer() {
                   </td>
                   <td>{b.number}</td>
                   <td>{b.orderNumber}</td>
-                  <td className="text-right">{money(b.total)}</td>
-                  <td className="text-right">{money(b.due)}</td>
+                  <td className="text-right">{moneyIn(b.total, b.currencyCode)}</td>
+                  <td className="text-right">{moneyIn(b.due, b.currencyCode)}</td>
                   <td>
                     <input type="number" className="input text-right" value={alloc[b.id] ?? ''} onChange={(e) => setAlloc({ ...alloc, [b.id]: e.target.value })} />
                     <button type="button" className="link mt-1 block w-full text-right text-xxs" onClick={() => setAlloc({ ...alloc, [b.id]: String(b.due) })}>
@@ -305,15 +326,15 @@ function PaymentDrawer() {
             <div className="w-80 space-y-1 rounded-md bg-slate-50 p-4 text-[13px]">
               <div className="flex justify-between">
                 <span>Amount Paid:</span>
-                <span>₹{num(amount)}</span>
+                <span>{moneyIn(amount, fx.code)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Amount used for Payments:</span>
-                <span>₹{num(used)}</span>
+                <span>{moneyIn(used, fx.code)}</span>
               </div>
               <div className={clsx('flex justify-between', amount - used < 0 && 'text-red-600')}>
                 <span>Amount in Excess:</span>
-                <span>₹{num(amount - used)}</span>
+                <span>{moneyIn(amount - used, fx.code)}</span>
               </div>
             </div>
           </div>
@@ -357,7 +378,7 @@ function DetailView() {
           <Link key={x.id} to={`/purchases/payments-made/${x.id}`} className={clsx('block border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50', x.id === id && 'bg-brand-50/70')}>
             <div className="flex justify-between">
               <span className="font-medium">{x.contactName}</span>
-              <span className="tabular-nums">{money(x.amount)}</span>
+              <span className="tabular-nums">{moneyIn(x.amount, x.currencyCode)}</span>
             </div>
             <div className="text-xs text-slate-500">
               {x.number} • {fmtDate(x.date)} • {x.mode}
@@ -402,10 +423,16 @@ function DetailView() {
             </Dropdown>
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4">
+            <CurrencyFacts x={p} amounts={[['Amount', p.amount], ['Unused', p.unusedAmount]]} />
+            {(p.currencyCode || 'INR') !== 'INR' && !!p.fxGainLoss && (
+              <div className={clsx('no-print mb-3 text-[13px]', p.fxGainLoss > 0 ? 'text-emerald-700' : 'text-red-600')} data-testid="fx-realized">
+                Realized exchange {p.fxGainLoss > 0 ? 'gain' : 'loss'}: <b>{moneyIn(Math.abs(p.fxGainLoss), 'INR')}</b>
+              </div>
+            )}
             {p.status === 'paid' && p.unusedAmount > 0 && (
               <div className="no-print mb-3 flex items-center justify-between rounded-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px]">
                 <span>
-                  <b>{money(p.unusedAmount)}</b> of this payment is unused. Apply it to bills or record a refund from the vendor.
+                  <b>{moneyIn(p.unusedAmount, p.currencyCode)}</b> of this payment is unused. Apply it to bills or record a refund from the vendor.
                 </span>
                 <span className="flex gap-2">
                   <button className="btn-secondary btn-sm" onClick={() => navigate(`/purchases/payments-made/${p.id}/edit`)}>Apply to Bills</button>
@@ -434,7 +461,7 @@ function DetailView() {
                         <td>{r.mode}</td>
                         <td>{r.referenceNumber}</td>
                         <td>{accounts.find((a) => a.id === r.accountId)?.name}</td>
-                        <td className="text-right tabular-nums">{money(r.amount)}</td>
+                        <td className="text-right tabular-nums">{moneyIn(r.amount, p.currencyCode)}</td>
                         <td className="text-right">
                           <button className="text-slate-400 hover:text-red-500" aria-label="Delete refund" onClick={() => confirm.ask('Delete refund', 'The refund and its journal entry will be removed.', () => delRefund.mutate(r.id), { danger: true, label: 'Delete' })}>
                             <Trash2 size={13} />
@@ -452,7 +479,7 @@ function DetailView() {
             {tab === 'activity' && <Timeline entityId={p.id} />}
           </div>
           {email && (
-            <EmailModal open onClose={() => setEmail(false)} title={`Email To ${p.contactName}`} to={p.contact?.email ? [p.contact.email] : []} subject={`Payment of ${money(p.amount)} from ${org.name}`} body={`Dear ${p.contactName},\n\nWe have made a payment of ${money(p.amount)} on ${fmtDate(p.date)} via ${p.mode}.\n\nRegards,\n${org.name}`} contactId={p.contactId} entityType="payment_made" entityId={p.id} attachmentOptions={[{ key: 'pdf', label: 'Attach Payment PDF' }]} />
+            <EmailModal open onClose={() => setEmail(false)} title={`Email To ${p.contactName}`} to={p.contact?.email ? [p.contact.email] : []} subject={`Payment of ${moneyIn(p.amount, p.currencyCode)} from ${org.name}`} body={`Dear ${p.contactName},\n\nWe have made a payment of ${moneyIn(p.amount, p.currencyCode)} on ${fmtDate(p.date)} via ${p.mode}.\n\nRegards,\n${org.name}`} contactId={p.contactId} entityType="payment_made" entityId={p.id} attachmentOptions={[{ key: 'pdf', label: 'Attach Payment PDF' }]} />
           )}
           {refund && <VendorRefund p={p} onClose={() => setRefund(false)} />}
           {confirm.node}
@@ -466,7 +493,8 @@ function DetailView() {
 function VendorRefund({ p, onClose }: { p: Detail; onClose: () => void }) {
   const { accounts } = useBoot();
   const [f, setF] = useState({ amount: String(p.unusedAmount), date: today(), mode: 'Bank Transfer', referenceNumber: '', accountId: p.paidThroughAccountId, description: '' });
-  const save = useAction(() => api(`/payments-made/${p.id}/refunds`, { body: f }), 'Refund recorded');
+  const fx = usePaymentRate(p.currencyCode, f.date);
+  const save = useAction(() => api(`/payments-made/${p.id}/refunds`, { body: { ...f, ...(fx.foreign ? { exchangeRate: fx.rate } : {}) } }), 'Refund recorded');
   return (
     <Modal
       open
@@ -488,12 +516,17 @@ function VendorRefund({ p, onClose }: { p: Detail; onClose: () => void }) {
         <Field label="Supplier">
           <div className="pt-2 text-[13px] font-medium">{p.contactName}</div>
         </Field>
-        <Field label="Amount" required hint={`Balance : ${money(p.unusedAmount)}`}>
-          <MoneyInput value={f.amount} onChange={(v) => setF({ ...f, amount: v })} />
+        <Field label="Amount" required hint={`Balance : ${moneyIn(p.unusedAmount, p.currencyCode)}`}>
+          <MoneyInput prefix={fx.code} value={f.amount} onChange={(v) => setF({ ...f, amount: v })} />
         </Field>
         <Field label="Refunded On" required>
           <DateInput value={f.date} onChange={(v) => setF({ ...f, date: v })} />
         </Field>
+        {fx.foreign && (
+          <Field label="Exchange Rate" required hint="Rate on the refund date. The difference from the payment's rate is posted as an exchange gain or loss.">
+            <PaymentRateField fx={fx} amount={Number(f.amount) || 0} />
+          </Field>
+        )}
         <Field label="Payment Mode">
           <Select value={f.mode} onChange={(e) => setF({ ...f, mode: e.target.value })} options={PAYMENT_MODES.map((m) => ({ value: m, label: m }))} />
         </Field>
@@ -527,7 +560,9 @@ function BulkPayment() {
   const [saving, setSaving] = useState(false);
   const amt = (b: TxnDoc) => (amounts[b.id] !== undefined ? Number(amounts[b.id]) || 0 : b.balance);
   const vendors = Array.from(new Set(picked.map((b) => b.contactId)));
-  const total = round2(picked.reduce((s2, b) => s2 + amt(b), 0));
+  // bills can be in different currencies: the total is shown in INR at each bill's rate
+  const total = round2(picked.reduce((s2, b) => s2 + round2(amt(b) * fxOf(b).rate), 0));
+  const mixed = picked.some((b) => (b.currencyCode || 'INR') !== 'INR');
   async function save() {
     setSaving(true);
     try {
@@ -591,7 +626,7 @@ function BulkPayment() {
                     <td>{b.number}</td>
                     <td>{fmtDate(b.date)}</td>
                     <td>{fmtDate(b.dueDate)}</td>
-                    <td className="text-right tabular-nums">{money(b.balance)}</td>
+                    <td className="text-right tabular-nums">{moneyIn(b.balance, b.currencyCode)}</td>
                     <td>
                       <input type="number" className="input text-right" value={amounts[b.id] ?? String(b.balance)} onChange={(e) => setAmounts({ ...amounts, [b.id]: e.target.value })} />
                     </td>
@@ -603,15 +638,15 @@ function BulkPayment() {
             <tfoot>
               <tr className="font-semibold">
                 <td colSpan={5} className="text-right">
-                  Total ({vendors.length} vendor{vendors.length === 1 ? '' : 's'})
+                  Total ({vendors.length} vendor{vendors.length === 1 ? '' : 's'}){mixed ? ', in INR at bill rates' : ''}
                 </td>
-                <td className="text-right tabular-nums">{money(total)}</td>
+                <td className="text-right tabular-nums">{moneyIn(total, 'INR')}</td>
                 <td />
               </tr>
             </tfoot>
           </table>
         )}
-        <div className="mt-2 text-xs text-slate-500">One payment is recorded for each supplier and applied to their bills.</div>
+        <div className="mt-2 text-xs text-slate-500">One payment is recorded for each supplier, in that supplier's currency, and applied to their bills.{mixed ? ' Foreign-currency payments use the rate on the payment date from Settings > Currencies.' : ''}</div>
       </div>
       <div className="sticky bottom-0 flex gap-2 border-t border-slate-200 bg-white px-5 py-3">
         <button className="btn-primary" disabled={saving || !picked.length || total <= 0} onClick={save}>

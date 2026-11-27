@@ -25,11 +25,10 @@ import type {
 import { getDb, newId, now, peekNumber, persist, takeNumber } from './db';
 import { applyTotals, expenseFromProfile, expenseGst, logActivity, makeDocFromProfile, recompute, runRecurring } from './engine';
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+import { HttpError } from './http';
+import { assertSameCurrency, codeOf, contactCurrency, describeAmount, findCurrency, refundRate, resolveFx } from './fx';
+import { moneyIn, rateLabel, toBase, fxOf, isIsoCode } from '../shared/currency';
+export { HttpError };
 const bad = (msg: string) => new HttpError(400, msg);
 const notFound = (what: string) => new HttpError(404, `${what} not found`);
 
@@ -54,26 +53,28 @@ export function getContact(id: string) {
   return c;
 }
 
+/**
+ * Outstanding receivable/payable and unused credits of a contact, in the contact's currency (every
+ * transaction of a contact is in its currency) and in INR at each transaction's own rate. The opening
+ * balance is always entered in INR, so it is part of the INR figures only for foreign-currency contacts.
+ */
 export function contactSummary(c: Contact) {
   const db = getDb();
-  if (c.kind === 'customer') {
-    const outstanding = round2(
-      db.docs.filter((d) => d.kind === 'invoice' && d.contactId === c.id && d.status !== 'void' && !isUnposted(d.status)).reduce((a, d) => a + d.balance, 0) + (c.openingBalance || 0),
-    );
-    const unusedCredits = round2(
-      db.paymentsReceived.filter((p) => p.contactId === c.id && p.status === 'paid').reduce((a, p) => a + p.unusedAmount, 0) +
-        db.docs.filter((d) => d.kind === 'credit_note' && d.contactId === c.id && d.status === 'open').reduce((a, d) => a + d.balance, 0),
-    );
-    return { outstanding, unusedCredits };
-  }
-  const outstanding = round2(
-    db.docs.filter((d) => d.kind === 'bill' && d.contactId === c.id && d.status !== 'void' && !isUnposted(d.status)).reduce((a, d) => a + d.balance, 0) + (c.openingBalance || 0),
-  );
-  const unusedCredits = round2(
-    db.paymentsMade.filter((p) => p.contactId === c.id && p.status === 'paid').reduce((a, p) => a + p.unusedAmount, 0) +
-      db.docs.filter((d) => d.kind === 'vendor_credit' && d.contactId === c.id && d.status === 'open').reduce((a, d) => a + d.balance, 0),
-  );
-  return { outstanding, unusedCredits };
+  const sales = c.kind === 'customer';
+  const code = contactCurrency(c);
+  const foreign = code !== 'INR';
+  const docs = db.docs.filter((d) => d.contactId === c.id);
+  const open = docs.filter((d) => d.kind === (sales ? 'invoice' : 'bill') && d.status !== 'void' && !isUnposted(d.status));
+  const credits = docs.filter((d) => d.kind === (sales ? 'credit_note' : 'vendor_credit') && d.status === 'open');
+  const pays = (sales ? db.paymentsReceived : db.paymentsMade).filter((p) => p.contactId === c.id && p.status === 'paid');
+  const fc = (xs: { balance?: number; unusedAmount?: number }[]) => xs.reduce((a, x) => a + (x.balance ?? x.unusedAmount ?? 0), 0);
+  const inBase = (xs: ({ balance?: number; unusedAmount?: number } & { currencyCode?: string; exchangeRate?: number })[]) => xs.reduce((a, x) => a + toBase(x.balance ?? x.unusedAmount ?? 0, fxOf(x).rate), 0);
+  const opening = c.openingBalance || 0;
+  const outstanding = round2(fc(open) + (foreign ? 0 : opening));
+  const unusedCredits = round2(fc(pays.map((p) => ({ unusedAmount: p.unusedAmount }))) + fc(credits));
+  const baseOutstanding = round2(inBase(open) + opening);
+  const baseUnusedCredits = round2(inBase(pays.map((p) => ({ unusedAmount: p.unusedAmount, currencyCode: p.currencyCode, exchangeRate: p.exchangeRate }))) + inBase(credits));
+  return { currencyCode: code, outstanding, unusedCredits, baseOutstanding, baseUnusedCredits };
 }
 
 
@@ -113,6 +114,14 @@ export function upsertContact(body: Partial<Contact>, id?: string): Contact {
     updatedAt: ts,
   } as Contact;
   if ((merged.documents?.length ?? 0) > 10) throw bad('You can upload a maximum of 10 documents');
+  merged.currencyCode = String(merged.currencyCode || 'INR').toUpperCase();
+  if (!isIsoCode(merged.currencyCode)) throw bad(`${merged.currencyCode} is not an ISO 4217 currency code`);
+  if (!findCurrency(db, merged.currencyCode)) throw bad(`${merged.currencyCode} is not set up. Add it in Settings > Currencies first.`);
+  if (merged.currencyCode !== 'INR' && merged.openingBalance) throw bad(`Opening balances are kept in INR. For a ${merged.currencyCode} ${kind === 'customer' ? 'client' : 'supplier'}, record the opening amount as a ${merged.currencyCode} ${kind === 'customer' ? 'invoice' : 'bill'} instead.`);
+  if (existing && contactCurrency(existing) !== merged.currencyCode) {
+    const used = db.docs.some((d) => d.contactId === existing.id && codeOf(d) !== merged.currencyCode) || db.paymentsReceived.some((p) => p.contactId === existing.id) || db.paymentsMade.some((p) => p.contactId === existing.id);
+    if (used) throw bad(`${existing.displayName} already has transactions in ${contactCurrency(existing)}, so the currency cannot be changed to ${merged.currencyCode}. Create a separate ${kind === 'customer' ? 'client' : 'supplier'} for ${merged.currencyCode}.`);
+  }
   if ((body.priceListId as unknown) === '' || body.priceListId === null) merged.priceListId = undefined;
   if (merged.priceListId && (kind !== 'customer' || !db.priceLists?.some((l) => l.id === merged.priceListId))) throw bad('Select a valid price list');
   if (merged.gstin) {
@@ -280,6 +289,12 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
 
   const ts = now();
   const paymentTerms = body.paymentTerms ?? existing?.paymentTerms ?? contact.paymentTerms;
+  // currency follows the contact; the rate is fixed on creation and changes only when confirmed
+  const appliedTo = existing && ((existing.amountPaid || 0) > 0.004 || existing.creditApplications.length || existing.refunds.length || db.docs.some((c) => c.creditApplications.some((a) => a.invoiceId === existing.id)))
+    ? 'payments, credits or refunds are applied to it'
+    : undefined;
+  const fx = resolveFx(db, { label: meta.label.toLowerCase(), contact, body: body as TxnDoc & { confirmRateChange?: unknown }, existing, date, applied: appliedTo });
+  delete (body as Record<string, unknown>).confirmRateChange;
   const doc: TxnDoc = {
     creditApplications: [],
     refunds: [],
@@ -305,8 +320,12 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
     shippingAddress: body.shippingAddress ?? existing?.shippingAddress ?? contact.shippingAddress,
     emailRecipients: body.emailRecipients ?? existing?.emailRecipients ?? (contact.email ? [contact.email] : []),
     customFields,
+    currencyCode: fx.currencyCode,
+    exchangeRate: fx.exchangeRate,
     updatedAt: ts,
   } as TxnDoc;
+  delete (doc as Partial<TxnDoc>).baseTotal;
+  delete (doc as Partial<TxnDoc>).baseBalance;
   // GST: defaults come from the contact (source of supply) and the organization (destination)
   if (meta.side === 'purchase') {
     doc.gstTreatment = doc.gstTreatment || contact.gstTreatment || (contact.gstin ? 'registered_business' : undefined);
@@ -393,7 +412,8 @@ export function saveDoc(kind: DocKind, body: Partial<TxnDoc>, mode: SaveMode = '
     const po = db.docs.find((d) => d.id === doc.purchaseOrderId);
     if (po) logActivity(db, 'purchase_order', po.id, po.contactId, `Converted to bill ${doc.number}`);
   }
-  logActivity(db, kind, doc.id, doc.contactId, `${meta.label} ${existing ? 'updated' : 'added'}`, `${meta.label} ${doc.number || doc.profileName} of amount ${money(doc.total)} ${existing ? 'updated' : 'created'}`);
+  logActivity(db, kind, doc.id, doc.contactId, `${meta.label} ${existing ? 'updated' : 'added'}`, `${meta.label} ${doc.number || doc.profileName} of amount ${describeAmount(doc.total, doc)} ${existing ? 'updated' : 'created'}`);
+  if (fx.rateChanged) logActivity(db, kind, doc.id, doc.contactId, 'Exchange rate changed', `${rateLabel(doc.currencyCode!, fx.rateChanged.from)} changed to ${rateLabel(doc.currencyCode!, fx.rateChanged.to)} (confirmed by the user)`);
   if (submitted) logActivity(db, kind, doc.id, doc.contactId, `${meta.label} submitted for approval`, `${meta.label} ${doc.number} submitted for approval`);
   if (mode === 'send' && doc.sentAt === ts) logActivity(db, kind, doc.id, doc.contactId, `${meta.label} marked as sent`);
   return doc;
@@ -665,11 +685,12 @@ export function applyCredits(id: string, apps: { invoiceId: string; amount: numb
   const targetKind = c.kind === 'credit_note' ? 'invoice' : 'bill';
   const clean = apps.filter((a) => n(a.amount) > 0);
   const totalApply = round2(clean.reduce((s, a) => s + n(a.amount), 0));
-  if (totalApply > c.balance + 0.004) throw bad(`Amount to credit (${money(totalApply)}) exceeds the available credits (${money(c.balance)})`);
+  if (totalApply > c.balance + 0.004) throw bad(`Amount to credit (${moneyIn(totalApply, codeOf(c))}) exceeds the available credits (${moneyIn(c.balance, codeOf(c))})`);
   for (const a of clean) {
     const inv = getDoc(a.invoiceId, targetKind);
     if (inv.contactId !== c.contactId) throw bad('Credits can only be applied to the same contact');
-    if (n(a.amount) > inv.balance + 0.004) throw bad(`${inv.number}: amount exceeds the balance due (${money(inv.balance)})`);
+    assertSameCurrency(c, c.number, inv, inv.number);
+    if (n(a.amount) > inv.balance + 0.004) throw bad(`${inv.number}: amount exceeds the balance due (${moneyIn(inv.balance, codeOf(inv))})`);
     c.creditApplications.push({ id: newId('ca'), invoiceId: inv.id, amount: round2(n(a.amount)), date: today() });
     logActivity(db, targetKind, inv.id, inv.contactId, `Credits of ${money(a.amount)} applied from ${c.number}`);
   }
@@ -683,13 +704,17 @@ export function removeCreditApplication(id: string, appId: string) {
   return c;
 }
 
-function validRefund(body: Partial<Refund>, available: number): Refund {
+/** A refund is always in the currency of the payment or credit it refunds, at the rate on the refund date. */
+function validRefund(body: Partial<Refund> & { currencyCode?: string }, available: number, parent: { currencyCode?: string }): Refund {
+  const code = codeOf(parent);
+  if (body.currencyCode && String(body.currencyCode).toUpperCase() !== code) throw bad(`Currency mismatch: the refund must be in ${code}, the currency of the original transaction`);
   const amount = round2(n(body.amount));
   if (amount <= 0) throw bad('Enter a valid refund amount');
-  if (amount > available + 0.004) throw bad(`Refund amount cannot exceed ${money(available)}`);
+  if (amount > available + 0.004) throw bad(`Refund amount cannot exceed ${moneyIn(available, code)}`);
   if (!body.accountId) throw bad('From Account is required');
   if (!body.date) throw bad('Refunded On date is required');
-  return { id: newId('rf'), amount, date: body.date, mode: body.mode || 'Cash', referenceNumber: str(body.referenceNumber), accountId: body.accountId, description: str(body.description) };
+  const exchangeRate = refundRate(getDb(), code, body.date, body.exchangeRate);
+  return { id: newId('rf'), amount, exchangeRate, date: body.date, mode: body.mode || 'Cash', referenceNumber: str(body.referenceNumber), accountId: body.accountId, description: str(body.description) };
 }
 
 export function refundCredit(id: string, body: Partial<Refund>) {
@@ -697,7 +722,7 @@ export function refundCredit(id: string, body: Partial<Refund>) {
   const c = getDoc(id);
   if (c.kind !== 'credit_note' && c.kind !== 'vendor_credit') throw bad('Refunds are only available for credits');
   if (c.status !== 'open') throw bad('Only open credits can be refunded');
-  const r = validRefund(body, c.balance);
+  const r = validRefund(body, c.balance, c);
   c.refunds.push(r);
   logActivity(db, c.kind, c.id, c.contactId, `Refund of ${money(r.amount)} recorded`);
   return c;
@@ -724,9 +749,13 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
   const allocations = (body.allocations ?? existing?.allocations ?? []).filter((a) => n(a.amount) > 0).map((a) => ({ docId: a.docId, amount: round2(n(a.amount)) }));
   const used = round2(allocations.reduce((s, a) => s + a.amount, 0));
   if (used > amount + tdsAmount + 0.004) throw bad(`The amount applied to invoices (${money(used)}) exceeds the amount received (${money(amount + tdsAmount)})`);
+  const payDate = str(body.date) ?? existing?.date ?? today();
+  const pfx = resolveFx(db, { label: 'payment', contact, body: body as PaymentReceived & { confirmRateChange?: unknown }, existing, date: payDate, applied: existing?.refunds.length ? 'refunds are recorded against it' : undefined });
+  delete (body as Record<string, unknown>).confirmRateChange;
   for (const a of allocations) {
     const inv = getDoc(a.docId, 'invoice');
     if (inv.contactId !== contact.id) throw bad('Payments can only be applied to invoices of the same client');
+    assertSameCurrency(pfx, 'the payment', inv, `invoice ${inv.number}`);
     if (isUnposted(inv.status) || inv.status === 'void') throw bad(`${inv.number} is ${inv.status.replace(/_/g, ' ')} and cannot receive payments`);
     const prev = existing?.allocations.find((x) => x.docId === a.docId)?.amount ?? 0;
     if (a.amount > inv.balance + (existing?.status === 'paid' ? prev : 0) + 0.004) throw bad(`${inv.number}: payment exceeds the balance due`);
@@ -736,6 +765,7 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
   if (retainerInvoiceId) {
     const ri = getDoc(retainerInvoiceId, 'retainer_invoice');
     if (ri.contactId !== contact.id) throw bad('The advance invoice belongs to another client');
+    assertSameCurrency(pfx, 'the payment', ri, `advance invoice ${ri.number}`);
     if (isUnposted(ri.status) || ri.status === 'void') throw bad(`${ri.number} is ${ri.status.replace(/_/g, ' ')}. Send it before recording the advance.`);
     const others = db.paymentsReceived.filter((x) => x.retainerInvoiceId === ri.id && x.status === 'paid' && x.id !== id).reduce((s, x) => s + x.amount + (x.tdsDeducted ? x.tdsAmount : 0), 0);
     if (amount + tdsAmount > ri.total - others + 0.004) throw bad(`${ri.number}: the advance exceeds the amount still due (${money(round2(ri.total - others))})`);
@@ -760,7 +790,9 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
     contactId: contact.id,
     amount,
     bankCharges,
-    date: str(body.date) ?? existing?.date ?? today(),
+    date: payDate,
+    currencyCode: pfx.currencyCode,
+    exchangeRate: pfx.exchangeRate,
     depositToAccountId,
     tdsDeducted,
     tdsAmount,
@@ -786,7 +818,8 @@ export function savePaymentReceived(body: Partial<PaymentReceived>, id?: string)
     const ri = getDoc(retainerInvoiceId);
     logActivity(db, 'retainer_invoice', ri.id, ri.contactId, `Advance of ${money(amount)} received`, `Payment #${number} via ${p.mode}. Kept as client credit until it is applied to invoices.`);
   }
-  logActivity(db, 'payment_received', p.id, p.contactId, existing ? 'Payment updated' : 'Payment recorded', `${money(amount)} received via ${p.mode}`);
+  logActivity(db, 'payment_received', p.id, p.contactId, existing ? 'Payment updated' : 'Payment recorded', `${describeAmount(amount, p)} received via ${p.mode}`);
+  if (pfx.rateChanged) logActivity(db, 'payment_received', p.id, p.contactId, 'Exchange rate changed', `${rateLabel(p.currencyCode!, pfx.rateChanged.from)} changed to ${rateLabel(p.currencyCode!, pfx.rateChanged.to)} (confirmed by the user)`);
   return p;
 }
 
@@ -809,7 +842,7 @@ export function paymentReceivedAction(id: string, action: string, body: Record<s
       break;
     case 'refund': {
       if (p.status !== 'paid') throw bad('Only paid payments can be refunded');
-      p.refunds.push(validRefund(body as Partial<Refund>, p.unusedAmount));
+      p.refunds.push(validRefund(body as Partial<Refund>, p.unusedAmount, p));
       break;
     }
     case 'apply': {
@@ -847,9 +880,13 @@ export function savePaymentMade(body: Partial<PaymentMade>, id?: string): Paymen
   const allocations = type === 'vendor_advance' ? [] : (body.allocations ?? existing?.allocations ?? []).filter((a) => n(a.amount) > 0).map((a) => ({ docId: a.docId, amount: round2(n(a.amount)) }));
   const used = round2(allocations.reduce((s, a) => s + a.amount, 0));
   if (used > amount + 0.004) throw bad(`The amount applied to bills (${money(used)}) exceeds the payment (${money(amount)})`);
+  const payDate = str(body.date) ?? existing?.date ?? today();
+  const pfx = resolveFx(db, { label: 'payment', contact: vendor, body: body as PaymentMade & { confirmRateChange?: unknown }, existing, date: payDate, applied: existing?.refunds?.length ? 'refunds are recorded against it' : undefined });
+  delete (body as Record<string, unknown>).confirmRateChange;
   for (const a of allocations) {
     const bill = getDoc(a.docId, 'bill');
     if (bill.contactId !== vendor.id) throw bad('Payments can only be applied to bills of the same supplier');
+    assertSameCurrency(pfx, 'the payment', bill, `bill ${bill.number}`);
     if (isUnposted(bill.status) || bill.status === 'void') throw bad(`${bill.number} is ${bill.status.replace(/_/g, ' ')}`);
     const prev = existing?.allocations.find((x) => x.docId === a.docId)?.amount ?? 0;
     if (a.amount > bill.balance + prev + 0.004) throw bad(`${bill.number}: payment exceeds the balance due`);
@@ -871,7 +908,9 @@ export function savePaymentMade(body: Partial<PaymentMade>, id?: string): Paymen
     number,
     contactId: vendor.id,
     amount,
-    date: str(body.date) ?? existing?.date ?? today(),
+    date: payDate,
+    currencyCode: pfx.currencyCode,
+    exchangeRate: pfx.exchangeRate,
     paidThroughAccountId,
     allocations,
     updatedAt: ts,
@@ -888,7 +927,8 @@ export function savePaymentMade(body: Partial<PaymentMade>, id?: string): Paymen
     const b = getDoc(a.docId);
     logActivity(db, 'bill', b.id, b.contactId, `Payment of ${money(a.amount)} made`, `Payment #${number} via ${p.mode}`);
   }
-  logActivity(db, 'payment_made', p.id, p.contactId, existing ? 'Payment updated' : type === 'vendor_advance' ? 'Supplier advance recorded' : 'Bill payment recorded', `${money(amount)} paid via ${p.mode}`);
+  logActivity(db, 'payment_made', p.id, p.contactId, existing ? 'Payment updated' : type === 'vendor_advance' ? 'Supplier advance recorded' : 'Bill payment recorded', `${describeAmount(amount, p)} paid via ${p.mode}`);
+  if (pfx.rateChanged) logActivity(db, 'payment_made', p.id, p.contactId, 'Exchange rate changed', `${rateLabel(p.currencyCode!, pfx.rateChanged.from)} changed to ${rateLabel(p.currencyCode!, pfx.rateChanged.to)} (confirmed by the user)`);
   return p;
 }
 
@@ -1075,7 +1115,8 @@ export function applyPaymentMade(id: string, add: { docId: string; amount: numbe
     if (!(n(a.amount) > 0)) continue;
     const bill = getDoc(a.docId, 'bill');
     if (bill.contactId !== p.contactId) throw bad('Payments can only be applied to bills of the same supplier');
-    if (n(a.amount) > bill.balance + 0.004) throw bad(`${bill.number}: amount exceeds the balance due (${money(bill.balance)})`);
+    assertSameCurrency(p, 'the payment', bill, `bill ${bill.number}`);
+    if (n(a.amount) > bill.balance + 0.004) throw bad(`${bill.number}: amount exceeds the balance due (${moneyIn(bill.balance, codeOf(bill))})`);
     const cur = p.allocations.find((x) => x.docId === a.docId);
     if (cur) cur.amount = round2(cur.amount + n(a.amount));
     else p.allocations.push({ docId: a.docId, amount: round2(n(a.amount)) });
@@ -1092,7 +1133,7 @@ export function refundPaymentMade(id: string, body: Partial<Refund>) {
   const p = db.paymentsMade.find((x) => x.id === id);
   if (!p) throw notFound('Payment');
   if (p.status !== 'paid') throw bad('Only paid payments can be refunded');
-  const r = validRefund(body, p.unusedAmount);
+  const r = validRefund(body, p.unusedAmount, p);
   p.refunds = [...(p.refunds ?? []), r];
   logActivity(db, 'payment_made', p.id, p.contactId, 'Refund recorded', `${money(r.amount)} refunded via ${r.mode}`);
   return p;

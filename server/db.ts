@@ -8,6 +8,7 @@ import { customAlphabet } from 'nanoid';
 import type { Database } from '../shared/types';
 import * as my from './mysql';
 import { seedDatabase } from './seed';
+import { normalizeCurrencies } from '../shared/currency';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = path.join(here, 'data');
@@ -33,6 +34,7 @@ function emptyDefaults(d: Partial<Database>): Database {
     out.manualJournals = (out.journals || []).filter((j) => j.sourceType === 'manual').map((j) => ({ ...j, status: j.status ?? 'published', reportingMethod: j.reportingMethod ?? 'accrual_and_cash' }));
   }
   if (!out.transactionLocks?.modules) out.transactionLocks = { modules: {}, history: [] };
+  normalizeCurrencies(out);
   return out;
 }
 
@@ -128,3 +130,4 @@ export function takeNumber(series: string, prefix: string, used: string, width =
   if (Number.isFinite(m) && m > (d.counters[series] || 0)) d.counters[series] = m;
   else if (used === peekNumber(series, prefix, width)) d.counters[series] = (d.counters[series] || 0) + 1;
 }
+

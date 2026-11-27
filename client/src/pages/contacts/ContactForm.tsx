@@ -9,6 +9,7 @@ import { useBoot } from '../../lib/app';
 import { toast } from '../../lib/toast';
 import { AccountSelect, Checkbox, Field, FormFooter, MoneyInput, PageHeader, Radio, Select, Spinner, Tabs } from '../../components/ui';
 import { Attachments } from '../../components/shared';
+import { currencyOptions, useCurrencies } from '../../components/currency';
 
 const SALUTATIONS = ['Mr.', 'Mrs.', 'Ms.', 'Miss.', 'Dr.'];
 const LANGUAGES = ['English', 'Tamil', 'Hindi', 'Telugu', 'Kannada', 'Malayalam'];
@@ -62,6 +63,7 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
   const base = kind === 'customer' ? '/sales/customers' : '/purchases/vendors';
   const { data: existing } = useApi<Contact>(id ? `/contacts/${id}` : null);
   const { data: priceLists = [] } = useApi<PriceList[]>(kind === 'customer' ? '/price-lists' : null);
+  const { data: currencies = [] } = useCurrencies();
   const [f, setF] = useState<Partial<Contact> | null>(
     id ? null : { kind, customerType: 'business', language: 'English', currencyCode: 'INR', paymentTerms: 'due_on_receipt', billingAddress: { country: 'India', state: 'Tamil Nadu' }, shippingAddress: { country: 'India' }, contactPersons: [], bankDetails: [], documents: [], customFields: {}, reportingTags: {}, portalEnabled: false, openingBalance: 0 },
   );
@@ -175,14 +177,14 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
                   <Checkbox checked={!!f.msmeRegistered} onChange={(v) => set({ msmeRegistered: v })} label="This supplier is MSME registered" />
                 </Field>
               )}
-              <Field label="Currency">
-                <Select className="max-w-xs" value={f.currencyCode || 'INR'} onChange={(e) => set({ currencyCode: e.target.value })} options={[{ value: 'INR', label: 'INR- Indian Rupee' }]} />
+              <Field label="Currency" hint={`Transactions with this ${kind === 'customer' ? 'client' : 'supplier'} are recorded in this currency. It cannot be changed once transactions exist. Add currencies in Settings > Currencies.`}>
+                <Select aria-label="Currency" className="max-w-xs" value={f.currencyCode || 'INR'} onChange={(e) => set({ currencyCode: e.target.value, ...(e.target.value !== 'INR' ? { openingBalance: 0 } : {}) })} options={currencies.length ? currencyOptions(currencies) : [{ value: 'INR', label: 'INR - Indian Rupee (base)' }]} />
               </Field>
               <Field label={kind === 'customer' ? 'Accounts Receivable' : 'Accounts Payable'}>
                 <AccountSelect className="max-w-xs" accounts={accounts} value={f.accountId || (kind === 'customer' ? 'acc_ar' : 'acc_ap')} onChange={(v) => set({ accountId: v })} filter={(a) => a.subType === (kind === 'customer' ? 'accounts_receivable' : 'accounts_payable')} />
               </Field>
-              <Field label="Opening Balance">
-                <MoneyInput className="max-w-xs" value={f.openingBalance} onChange={(v) => set({ openingBalance: v as unknown as number })} />
+              <Field label="Opening Balance (INR)" hint={(f.currencyCode || 'INR') !== 'INR' ? `Opening balances are kept in INR. For a ${f.currencyCode} ${kind === 'customer' ? 'client' : 'supplier'}, record the opening amount as a ${f.currencyCode} ${kind === 'customer' ? 'invoice' : 'bill'}.` : undefined}>
+                <MoneyInput className="max-w-xs" value={f.openingBalance} disabled={(f.currencyCode || 'INR') !== 'INR'} onChange={(v) => set({ openingBalance: v as unknown as number })} />
               </Field>
               <Field label="Payment Terms">
                 <Select className="max-w-xs" value={f.paymentTerms || 'due_on_receipt'} onChange={(e) => set({ paymentTerms: e.target.value as Contact['paymentTerms'] })} options={PAYMENT_TERMS} />

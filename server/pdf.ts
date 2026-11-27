@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
-import { fmtDate, money } from '../shared/format';
+import { fmtDate } from '../shared/format';
+import { BASE_CURRENCY, fxOf, moneyIn, rateLabel, toBase } from '../shared/currency';
 import { addressLines, buildPdfModel, orgLines, pageSize, resolveTemplate, type PdfColumn, type PdfModel, type PdfTemplate } from '../shared/pdfTemplate';
 import type { Address, PaymentMade, PaymentReceived, TxnDoc } from '../shared/types';
 import { getDb } from './db';
@@ -594,6 +595,8 @@ export function renderPaymentPdf(p: PaymentReceived | PaymentMade, made = false)
   const t = resolveTemplate(db.pdfTemplates, db.preferences, 'payment');
   const org = orgLines(db.organization, t);
   const contact = db.contacts.find((x) => x.id === p.contactId);
+  const fx = fxOf(p);
+  const money = (n: number) => moneyIn(n, fx.code);
   return create(t, (c) => {
     const { doc, x, w } = c;
     header(c, { title: made ? 'Supplier Payment' : 'Payment Receipt', number: p.number, numberLabel: t.details.numberLabel, org });
@@ -603,6 +606,11 @@ export function renderPaymentPdf(p: PaymentReceived | PaymentMade, made = false)
       ['Payment Mode', p.mode],
     ];
     if (p.referenceNumber) facts.push(['Reference Number', p.referenceNumber]);
+    if (fx.code !== BASE_CURRENCY) {
+      facts.push(['Currency', fx.code]);
+      facts.push(['Exchange Rate', rateLabel(fx.code, fx.rate)]);
+      facts.push(['Amount in INR', moneyIn(toBase(p.amount, fx.rate), BASE_CURRENCY)]);
+    }
     if ('tdsDeducted' in p && p.tdsDeducted) facts.push(['TDS Deducted', money(p.tdsAmount)]);
     const fy = factsBlock(c, facts, x, y, Math.min(260, w * 0.5));
     const bw = Math.min(200, w * 0.4);
@@ -642,11 +650,13 @@ export function renderStatementPdf(s: {
   invoiced: number;
   paid: number;
   closing: number;
+  currencyCode?: string;
   rows: { date: string; type: string; number: string; details: string; amount: number; payment: number; balance: number }[];
 }): Promise<Buffer> {
   const db = getDb();
   const t = resolveTemplate(db.pdfTemplates, db.preferences, 'payment');
   const org = orgLines(db.organization, t);
+  const money = (n: number) => moneyIn(n, s.currencyCode || BASE_CURRENCY);
   return create(t, (c) => {
     const { doc, x, w } = c;
     header(c, { title: 'Statement of Accounts', number: `${fmtDate(s.from)} To ${fmtDate(s.to)}`, numberLabel: '', org });

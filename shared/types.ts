@@ -276,7 +276,10 @@ export interface CreditApplication {
 
 export interface Refund {
   id: ID;
+  /** in the currency of the payment or credit it refunds */
   amount: number;
+  /** base currency per unit on the refund date */
+  exchangeRate?: number;
   date: string;
   mode: string;
   referenceNumber?: string;
@@ -292,6 +295,10 @@ export interface TxnDoc {
   orderNumber?: string;
   contactId: ID;
   date: string;
+  /** ISO 4217 code; amounts on this record are in this currency (missing = INR) */
+  currencyCode?: string;
+  /** base currency (INR) per 1 unit on the transaction date, fixed when the record is created */
+  exchangeRate?: number;
   dueDate?: string;
   expiryDate?: string;
   expectedShipmentDate?: string;
@@ -334,6 +341,9 @@ export interface TxnDoc {
   taxBreakdown?: TaxBreakdownRow[];
   total: number;
   balance: number; // invoices/bills: amount due; credit notes/vendor credits: credits remaining
+  /** computed: total and balance in the base currency at the document's rate */
+  baseTotal?: number;
+  baseBalance?: number;
   // workflow
   status: string;
   invoiceStatus?: 'not_invoiced' | 'partially_invoiced' | 'invoiced';
@@ -415,6 +425,13 @@ export interface PaymentReceived {
   notes?: string;
   attachments: Attachment[];
   sendThankYou: boolean;
+  /** ISO 4217 code; amounts on this record are in this currency (missing = INR) */
+  currencyCode?: string;
+  /** base currency (INR) per 1 unit on the transaction date, fixed when the record is created */
+  exchangeRate?: number;
+  /** computed: amount in the base currency and the realized exchange gain (+) or loss (-) */
+  baseAmount?: number;
+  fxGainLoss?: number;
   status: 'draft' | 'paid' | 'void';
   refunds: Refund[];
   locked: boolean;
@@ -430,6 +447,12 @@ export interface PaymentMade {
   id: ID;
   number: string;
   type: 'bill_payment' | 'vendor_advance';
+  /** ISO 4217 code; amounts on this record are in this currency (missing = INR) */
+  currencyCode?: string;
+  /** base currency (INR) per 1 unit on the transaction date, fixed when the record is created */
+  exchangeRate?: number;
+  baseAmount?: number;
+  fxGainLoss?: number;
   contactId: ID;
   amount: number;
   date: string;
@@ -549,6 +572,8 @@ export type JournalSource =
   | 'expense'
   | 'opening_balance'
   | 'bank_transaction'
+  | 'credit_application'
+  | 'fx_revaluation'
   | 'manual';
 
 export type ReportingMethod = 'accrual_and_cash' | 'accrual_only' | 'cash_only';
@@ -610,11 +635,28 @@ export interface RecurringJournal {
 }
 
 export interface Currency {
+  /** ISO 4217 code */
   code: string;
   name: string;
   symbol: string;
-  /** units of the base currency (INR) per 1 unit */
+  /** units of the base currency (INR) per 1 unit: the rate offered for new transactions */
   rate: number;
+  /** manually entered rates by date; a transaction defaults to the latest one on or before its date */
+  history?: { date: string; rate: number }[];
+}
+
+/** One open foreign-currency balance revalued by an FX revaluation. */
+export interface RevaluationLine {
+  sourceType: 'invoice' | 'bill' | 'credit_note' | 'vendor_credit' | 'payment_received' | 'payment_made';
+  sourceId: ID;
+  number: string;
+  contactId: ID;
+  /** open balance in the foreign currency */
+  balance: number;
+  /** rate the balance is carried at */
+  bookedRate: number;
+  /** base-currency gain (+) or loss (-) */
+  gainOrLoss: number;
 }
 
 export interface CurrencyAdjustment {
@@ -623,7 +665,10 @@ export interface CurrencyAdjustment {
   date: string;
   rate: number;
   notes: string;
+  /** total unrealized gain (+) or loss (-) in the base currency */
   gainOrLoss: number;
+  /** balances revalued; posted on the date and reversed the next day */
+  lines?: RevaluationLine[];
   createdAt: string;
 }
 

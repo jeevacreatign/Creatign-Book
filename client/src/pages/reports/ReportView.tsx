@@ -227,6 +227,7 @@ export default function ReportView() {
               <div className="text-xs uppercase tracking-wide text-slate-500">{org.name}</div>
               <h2 className="mt-1 text-xl font-semibold">{saved ? saved.name : rep.title}</h2>
               <div className="mt-0.5 text-[13px] text-slate-500">{rep.subtitle}</div>
+              <div className="mt-0.5 text-[11px] text-slate-400">Amounts in INR (base currency); foreign-currency transactions are converted at their own exchange rates</div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]">

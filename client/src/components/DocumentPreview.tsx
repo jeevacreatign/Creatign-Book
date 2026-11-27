@@ -2,7 +2,8 @@
 // The same render model feeds the server's PDFKit renderer, so the on-screen preview,
 // browser print and the emailed attachment all match.
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { fmtDate, money } from '@shared/format';
+import { fmtDate } from '@shared/format';
+import { BASE_CURRENCY, fxOf, moneyIn, rateLabel, toBase } from '@shared/currency';
 import { PDF_FONTS, addressLines, buildPdfModel, orgLines, pageSize, type PdfModel, type PdfTemplate } from '@shared/pdfTemplate';
 import type { Address, Contact, Organization, PaymentMade, PaymentReceived, TxnDoc } from '@shared/types';
 import { clsx } from './ui';
@@ -517,6 +518,11 @@ export function ReceiptPreview({ payment, org, contact, kind, rows, template }: 
     ['Reference Number', payment.referenceNumber || '-'],
     ['Payment Mode', payment.mode],
   ];
+  const fx = fxOf(payment);
+  const money = (n: number | undefined) => moneyIn(n, fx.code);
+  if (fx.code !== BASE_CURRENCY) {
+    facts.push(['Currency', fx.code], ['Exchange Rate', rateLabel(fx.code, fx.rate)], ['Amount in INR', moneyIn(toBase(payment.amount, fx.rate), BASE_CURRENCY)]);
+  }
   if ('tdsDeducted' in payment && payment.tdsDeducted) facts.push(['TDS Deducted', money(payment.tdsAmount)]);
   const headBg = t.table.headerBg || t.accentColor;
   const filled = headBg.toLowerCase() !== '#ffffff';

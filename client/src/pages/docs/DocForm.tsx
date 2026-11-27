@@ -4,7 +4,9 @@ import { Plus, Trash2, X, ScanLine, ListPlus, Settings2 } from 'lucide-react';
 import { computeTotals, lineAmount } from '@shared/calc';
 import { isUnposted } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
-import { dueDateFor, money, num, today, addDays } from '@shared/format';
+import { dueDateFor, money, num, round2, today, addDays } from '@shared/format';
+import { BASE_CURRENCY, moneyIn, rateLabel } from '@shared/currency';
+import { CurrencyBadge, RateInput } from '../../components/currency';
 import { PAYMENT_TERMS, TCS_RATES, TDS_RATES, type Contact, type DocKind, type Item, type LineItem, type TxnDoc } from '@shared/types';
 import { api, qs, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
@@ -48,6 +50,10 @@ export function DocForm({ kind }: { kind: DocKind }) {
   const [makeRecurring, setMakeRecurring] = useState(false);
   const [saving, setSaving] = useState(false);
   const prefs = boot.preferences;
+  // currency follows the client/supplier; the exchange rate is fixed when the document is created
+  const [rateStr, setRateStr] = useState<string | null>(null);
+  const [rateTouched, setRateTouched] = useState(false);
+  const [confirmRate, setConfirmRate] = useState(false);
 
   // initialise the draft once its sources are loaded
   useEffect(() => {
@@ -96,8 +102,25 @@ export function DocForm({ kind }: { kind: DocKind }) {
   const { data: pricing } = useApi<{ priceList: { id: string; name: string } | null; rates: Record<string, number> }>(sales && d?.contactId ? `/price-lists/for-contact/${d.contactId}` : null);
   const sellRate = (it: Item) => pricing?.rates[it.id] ?? it.sellingPrice;
 
+  const currencyCode = contact?.currencyCode || d?.currencyCode || BASE_CURRENCY;
+  const rateDate = (meta.recurring ? d?.startOn : d?.date) || today();
+  const { data: dayRate } = useApi<{ rate: number }>(currencyCode !== BASE_CURRENCY ? `/currencies/${currencyCode}/rate${qs({ date: rateDate })}` : null);
+  useEffect(() => {
+    if (existing && rateStr === null) setRateStr(String(existing.exchangeRate ?? 1));
+  }, [existing, rateStr]);
+  useEffect(() => {
+    // new documents take the rate on their date until the user types one
+    if (!editing && dayRate && !rateTouched) setRateStr(String(dayRate.rate));
+  }, [dayRate, editing, rateTouched]);
+
   const totals = useMemo(() => (d ? computeTotals({ ...d, roundOff: d.roundOff }) : null), [d]);
   if (!d || !totals) return <Spinner />;
+  const foreign = currencyCode !== BASE_CURRENCY;
+  const rateNum = foreign ? Number(rateStr) : 1;
+  const originalRate = editing ? existing?.exchangeRate ?? 1 : undefined;
+  const rateChanged = editing && foreign && originalRate !== undefined && rateNum > 0 && Math.abs(rateNum - originalRate) > 1e-9;
+  /** item prices are kept in INR: convert them for a foreign-currency document */
+  const inDocCurrency = (inr: number) => (foreign && rateNum > 0 ? round2(inr / rateNum) : inr);
 
   const set = (patch: Partial<Draft>) => setD((cur) => ({ ...cur!, ...patch }));
   const setLine = (i: number, patch: Partial<LineItem>) => setD((cur) => ({ ...cur!, lineItems: cur!.lineItems.map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
@@ -114,6 +137,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
       patch.sourceOfSupply = c.placeOfSupply || stateFromGstin(c.gstin) || boot.organization.state;
     }
     setContact(c);
+    if ((c?.currencyCode || BASE_CURRENCY) !== currencyCode) setRateTouched(false);
     set(patch);
   };
   const pickItem = (i: number, itemId: string) => {
@@ -123,7 +147,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
       itemId: it.id,
       name: it.name,
       description: sales ? it.salesDescription : it.purchaseDescription,
-      rate: sales ? sellRate(it) : it.costPrice,
+      rate: inDocCurrency(sales ? sellRate(it) : it.costPrice),
       unit: it.unit,
       accountId: sales ? it.salesAccountId : it.purchaseAccountId,
       taxId: it.taxId,
@@ -133,7 +157,12 @@ export function DocForm({ kind }: { kind: DocKind }) {
 
   async function save(mode: 'draft' | 'open' | 'send') {
     if (!d) return;
-    const body = { ...d, kind, mode, lineItems: d.lineItems.filter((l) => l.name.trim() || l.itemId) };
+    const body: Record<string, unknown> = { ...d, kind, mode, lineItems: d.lineItems.filter((l) => l.name.trim() || l.itemId) };
+    if (foreign) {
+      if (!(rateNum > 0)) return toast.error(`Enter the exchange rate for ${currencyCode} (INR per 1 ${currencyCode})`);
+      if (rateChanged && !confirmRate) return toast.error(`This ${meta.label.toLowerCase()} was recorded at ${rateLabel(currencyCode, originalRate!)}. Tick the confirmation to change the exchange rate.`);
+      Object.assign(body, { currencyCode, exchangeRate: rateNum, confirmRateChange: rateChanged ? true : undefined });
+    } else Object.assign(body, { currencyCode: BASE_CURRENCY, exchangeRate: undefined });
     setSaving(true);
     try {
       const saved = await api<TxnDoc>(editing ? `/docs/${id}` : '/docs', { method: editing ? 'PUT' : 'POST', body });
@@ -222,7 +251,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
           )}
           {has('invoiceRef') && (
             <Field label="Invoice#">
-              <Select className="max-w-sm" value={d.invoiceId || ''} onChange={(e) => set({ invoiceId: e.target.value || undefined })} placeholder="Select an invoice" options={contactInvoices.map((i) => ({ value: i.id, label: `${i.number} (${money(i.total)})` }))} />
+              <Select className="max-w-sm" value={d.invoiceId || ''} onChange={(e) => set({ invoiceId: e.target.value || undefined })} placeholder="Select an invoice" options={contactInvoices.map((i) => ({ value: i.id, label: `${i.number} (${moneyIn(i.total, i.currencyCode)})` }))} />
             </Field>
           )}
           {has('recurrence') ? (
@@ -254,6 +283,27 @@ export function DocForm({ kind }: { kind: DocKind }) {
                   set(patch);
                 }}
               />
+            </Field>
+          )}
+          {d.contactId && (
+            <Field label="Currency">
+              <div className="flex items-center gap-2 text-[13px] text-slate-600">
+                <CurrencyBadge code={currencyCode} />
+                <span>{foreign ? `Amounts are in ${currencyCode}, the ${sales ? 'client' : 'supplier'}'s currency.` : 'Indian Rupee (base currency)'}</span>
+              </div>
+            </Field>
+          )}
+          {foreign && (
+            <Field label="Exchange Rate" required>
+              <RateInput code={currencyCode} value={rateStr ?? ''} onChange={(v) => { setRateStr(v); setRateTouched(true); }} amount={totals.total} defaultRate={!editing ? dayRate?.rate : undefined} />
+              {rateChanged && (
+                <div className="mt-2 max-w-md rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                  This {meta.label.toLowerCase()} was recorded at {rateLabel(currencyCode, originalRate!)}. Changing the rate re-posts its journal in INR.
+                  <div className="mt-1">
+                    <Checkbox checked={confirmRate} onChange={setConfirmRate} label={`I confirm the new rate ${rateLabel(currencyCode, rateNum)}`} />
+                  </div>
+                </div>
+              )}
             </Field>
           )}
           {has('expiryDate') && (
@@ -460,7 +510,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
                 </div>
               )}
               <div className="mt-2 flex items-center justify-between border-t border-slate-300 pt-3 text-base font-semibold">
-                <span>Total ( ₹ )</span>
+                <span>Total ( {currencyCode} )</span>
                 <span className="tabular-nums">{num(totals.total)}</span>
               </div>
               {d.reverseCharge && totals.taxAmount > 0 && <div className="mt-2 text-xxs text-amber-700">Tax of {num(totals.taxAmount)} is payable by you under reverse charge and is not part of the amount owed to the vendor.</div>}
@@ -527,7 +577,8 @@ export function DocForm({ kind }: { kind: DocKind }) {
           </div>
         )}
         <div className={clsx('text-right text-xs text-slate-500', !has('makeRecurring') && 'ml-auto')}>
-          Total Amount: <span className="font-semibold text-slate-800">{money(totals.total)}</span>
+          Total Amount: <span className="font-semibold text-slate-800">{moneyIn(totals.total, currencyCode)}</span>
+          {foreign && rateNum > 0 && <span className="ml-2">({moneyIn(round2(totals.total * rateNum), BASE_CURRENCY)})</span>}
         </div>
       </FormFooter>
       <BulkItems
@@ -535,7 +586,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
         onClose={() => setBulk(false)}
         items={items.filter((it) => (sales ? it.sellable : it.purchasable)).map((it) => (sales ? { ...it, sellingPrice: sellRate(it) } : it))}
         sales={sales}
-        onAdd={(lines) => set({ lineItems: [...d.lineItems.filter((l) => l.name || l.itemId), ...lines] })}
+        onAdd={(lines) => set({ lineItems: [...d.lineItems.filter((l) => l.name || l.itemId), ...lines.map((l) => ({ ...l, rate: inDocCurrency(l.rate) }))] })}
       />
     </div>
   );

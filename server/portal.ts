@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import { DOC_META } from '../shared/docmeta';
 import { fmtDate, money, round2, today } from '../shared/format';
+import { moneyIn } from '../shared/currency';
 import { resolveTemplate } from '../shared/pdfTemplate';
 import { DEFAULT_PORTAL_SETTINGS, PORTAL_KINDS, portalSettings, upiLink, visibleToCustomer, type PaymentNotice, type PortalSettings, type PortalUser } from '../shared/portal';
 import { PAYMENT_MODES, type Contact, type Database, type ShareLink, type TxnDoc } from '../shared/types';
@@ -277,7 +278,7 @@ export function staffPortalRoutes(api: Router, commit: () => void) {
     n.status = 'recorded';
     n.paymentId = pmt.id;
     n.resolvedAt = now();
-    logActivity(db, 'invoice', inv.id, inv.contactId, 'Client-reported payment recorded', `Payment #${pmt.number} for ${money(amount)}`);
+    logActivity(db, 'invoice', inv.id, inv.contactId, 'Client-reported payment recorded', `Payment #${pmt.number} for ${moneyIn(amount, inv.currencyCode)}`);
     commit();
     return { notice: n, payment: pmt };
   }));
@@ -370,7 +371,7 @@ async function respondToQuote(d: TxnDoc, body: Record<string, unknown>, who: { n
   d.updatedAt = now();
   logActivity(db, 'quote', d.id, d.contactId, `Estimate ${action} by the client`, [`${name} ${action} estimate ${d.number} via the ${via === 'portal' ? 'customer portal' : 'shared link'}`, comment ? `Comment: ${comment}` : ''].filter(Boolean).join('. '), name);
   S.commit();
-  void notifyOrganization(`Estimate ${d.number} ${action} by ${S.contactName(db, d.contactId)}`, `${name}${who.email ? ` (${who.email})` : ''} ${action} estimate ${d.number} for ${money(d.total)}.${comment ? `\n\nComment: ${comment}` : ''}`, { label: 'Open Estimate', url: `${origin}${DOC_META.quote.path}/${d.id}` }).then(() => S.commit());
+  void notifyOrganization(`Estimate ${d.number} ${action} by ${S.contactName(db, d.contactId)}`, `${name}${who.email ? ` (${who.email})` : ''} ${action} estimate ${d.number} for ${moneyIn(d.total, d.currencyCode)}.${comment ? `\n\nComment: ${comment}` : ''}`, { label: 'Open Estimate', url: `${origin}${DOC_META.quote.path}/${d.id}` }).then(() => S.commit());
   return d.customerResponse;
 }
 
@@ -379,7 +380,7 @@ async function reportPayment(d: TxnDoc, body: Record<string, unknown>, who: { na
   if (d.kind !== 'invoice' || d.balance <= 0 || d.status === 'void') throw bad('This invoice has no balance due');
   const amount = round2(Number(body.amount));
   if (!(amount > 0)) throw bad('Enter the amount you paid');
-  if (amount > d.balance + 0.004) throw bad(`The amount is more than the balance due (${money(d.balance)})`);
+  if (amount > d.balance + 0.004) throw bad(`The amount is more than the balance due (${moneyIn(d.balance, d.currencyCode)})`);
   const date = str(body.date) || today();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) throw bad('Enter the date you paid (not a future date)');
   const mode = PAYMENT_MODES.includes(String(body.mode)) ? String(body.mode) : 'Bank Transfer';
@@ -388,9 +389,9 @@ async function reportPayment(d: TxnDoc, body: Record<string, unknown>, who: { na
   if (db.paymentNotices.filter((n) => n.invoiceId === d.id && n.status === 'pending').length >= 5) throw bad('We already have several payment notices for this invoice. We will review them shortly.');
   const n: PaymentNotice = { id: newId('pn'), contactId: d.contactId, invoiceId: d.id, amount, date, mode, reference, note: str(body.note)?.slice(0, 1000), submittedBy: (str(body.name) || who.name).slice(0, 120), submittedEmail: who.email, via, status: 'pending', createdAt: now() };
   db.paymentNotices.push(n);
-  logActivity(db, 'invoice', d.id, d.contactId, 'Client reported a payment', `${n.submittedBy} reported ${money(amount)} paid on ${fmtDate(date)} via ${mode} (ref ${reference})`, n.submittedBy);
+  logActivity(db, 'invoice', d.id, d.contactId, 'Client reported a payment', `${n.submittedBy} reported ${moneyIn(amount, d.currencyCode)} paid on ${fmtDate(date)} via ${mode} (ref ${reference})`, n.submittedBy);
   S.commit();
-  void notifyOrganization(`Payment reported for invoice ${d.number}`, `${n.submittedBy} from ${S.contactName(db, d.contactId)} reported a payment of ${money(amount)} on ${fmtDate(date)} via ${mode}.\nReference: ${reference}${n.note ? `\nNote: ${n.note}` : ''}\n\nReview it and record the payment from the invoice.`, { label: 'Review Payment', url: `${origin}${DOC_META.invoice.path}/${d.id}` }).then(() => S.commit());
+  void notifyOrganization(`Payment reported for invoice ${d.number}`, `${n.submittedBy} from ${S.contactName(db, d.contactId)} reported a payment of ${moneyIn(amount, d.currencyCode)} on ${fmtDate(date)} via ${mode}.\nReference: ${reference}${n.note ? `\nNote: ${n.note}` : ''}\n\nReview it and record the payment from the invoice.`, { label: 'Review Payment', url: `${origin}${DOC_META.invoice.path}/${d.id}` }).then(() => S.commit());
   return n;
 }
 
