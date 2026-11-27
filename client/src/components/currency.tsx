@@ -1,13 +1,54 @@
 // Currency helpers for the UI: the currency list, the exchange-rate input with its INR preview, and the
 // strip that shows a foreign-currency record's currency, rate and base (INR) amounts.
 import { useEffect, useState } from 'react';
-import { ArrowRightLeft } from 'lucide-react';
-import { BASE_CURRENCY, fxOf, moneyIn, rateLabel, toBase } from '@shared/currency';
+import { AlertTriangle, ArrowRightLeft } from 'lucide-react';
+import { BASE_CURRENCY, fxOf, moneyIn, rateLabel, toBase, type RateStatus } from '@shared/currency';
+import { fmtDate } from '@shared/format';
 import type { Currency } from '@shared/types';
 import { useApi } from '../api';
 import { clsx } from './ui';
 
-export type CurrencyRow = Currency & { base?: boolean; usage?: number };
+export type CurrencyRow = Currency & { base?: boolean; usage?: number; status?: RateStatus };
+
+/** The default rate on a date, where it comes from and whether it is out of date. */
+export interface DayRate {
+  rate: number;
+  source?: 'manual' | 'fetched' | 'unknown';
+  rateDate?: string;
+  provider?: string;
+  stale?: boolean;
+  staleReason?: string;
+}
+
+/** "Fetched" / "Manual" tag for a rate. */
+export function RateSourceTag({ source, provider }: { source?: string; provider?: string }) {
+  if (source === 'fetched')
+    return (
+      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200" title={provider ? `Fetched from ${provider}` : 'Fetched'}>
+        Fetched
+      </span>
+    );
+  if (source === 'manual') return <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">Manual</span>;
+  return <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200">Not dated</span>;
+}
+
+/** Note under a rate field: where the suggested rate came from, with a warning when it is old. */
+export function DayRateNote({ info }: { info?: DayRate }) {
+  if (!info) return null;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500" data-testid="rate-source">
+      <RateSourceTag source={info.source} provider={info.provider} />
+      <span>
+        {info.source === 'fetched' ? `Rate of ${fmtDate(info.rateDate!)} from ${info.provider ?? 'the rate provider'}` : info.rateDate ? `Rate entered for ${fmtDate(info.rateDate)}` : 'No dated rate for this currency'}
+      </span>
+      {info.stale && (
+        <span className="inline-flex items-center gap-1 font-medium text-amber-700" data-testid="rate-stale">
+          <AlertTriangle size={12} /> {info.staleReason}. Refresh rates in Settings &gt; Currencies or check the rate.
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function useCurrencies() {
   return useApi<CurrencyRow[]>('/currencies');
@@ -36,6 +77,7 @@ export function RateInput({
   amountLabel = 'Total',
   locked,
   defaultRate,
+  info,
   id = 'exchange-rate',
 }: {
   code: string;
@@ -45,6 +87,8 @@ export function RateInput({
   amountLabel?: string;
   locked?: boolean;
   defaultRate?: number;
+  /** where the suggested rate for the date comes from (new records only) */
+  info?: DayRate;
   id?: string;
 }) {
   if (!code || code === BASE_CURRENCY) return null;
@@ -69,6 +113,7 @@ export function RateInput({
           {defaultRate && Math.abs(defaultRate - rate) > 1e-9 && <span className="ml-2 text-amber-700">(rate on this date: {defaultRate})</span>}
         </div>
       )}
+      <DayRateNote info={info} />
     </div>
   );
 }
@@ -103,7 +148,7 @@ export function CurrencyFacts({ x, amounts }: { x: { currencyCode?: string; exch
 export function usePaymentRate(contactCurrency: string | undefined, date: string | undefined, existing?: { currencyCode?: string; exchangeRate?: number }) {
   const code = contactCurrency || existing?.currencyCode || BASE_CURRENCY;
   const foreign = code !== BASE_CURRENCY;
-  const { data: dayRate } = useApi<{ rate: number }>(foreign ? `/currencies/${code}/rate?date=${date || ''}` : null);
+  const { data: dayRate } = useApi<DayRate>(foreign ? `/currencies/${code}/rate?date=${date || ''}` : null);
   const [rateStr, setRateStr] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -126,6 +171,7 @@ export function usePaymentRate(contactCurrency: string | undefined, date: string
       setTouched(true);
     },
     dayRate: dayRate?.rate,
+    dayInfo: existing ? undefined : dayRate,
     original,
     changed,
     confirm,
@@ -147,7 +193,7 @@ export function PaymentRateField({ fx, amount, allocations, made }: { fx: Return
   const realized = (made ? -1 : 1) * (allocations?.length ? allocations.reduce((s, a) => s + toBase(a.amount, fx.rate) - toBase(a.amount, a.rate), 0) : 0);
   return (
     <div>
-      <RateInput code={fx.code} value={fx.rateStr} onChange={fx.setRate} amount={amount} amountLabel="Amount" defaultRate={fx.original === undefined ? fx.dayRate : undefined} id="payment-rate" />
+      <RateInput code={fx.code} value={fx.rateStr} onChange={fx.setRate} amount={amount} amountLabel="Amount" defaultRate={fx.original === undefined ? fx.dayRate : undefined} info={fx.dayInfo} id="payment-rate" />
       {fx.rate > 0 && Math.abs(realized) > 0.004 && (
         <div className={clsx('mt-1 text-xs', realized > 0 ? 'text-emerald-700' : 'text-red-600')} data-testid="fx-preview">
           Exchange {realized > 0 ? 'gain' : 'loss'} on the applied amount: {moneyIn(Math.abs(Math.round(realized * 100) / 100), BASE_CURRENCY)}

@@ -8,7 +8,9 @@ import type { Account, Attachment, Database, DocKind, Journal, JournalLine, Jour
 import { getDb, newId, now } from './db';
 import { logActivity, runRecurring } from './engine';
 import { accountBalance } from './reports';
-import { BASE_CURRENCY, isIsoCode, isoCodes, isoInfo, rateOn } from '../shared/currency';
+import { BASE_CURRENCY, isIsoCode, isoCodes, isoInfo, rateOn, rateStatus } from '../shared/currency';
+import { fxRateSettings, providerInfo, refreshRates, saveFxRateSettings, staleDays } from './fxRates';
+import { requireAdmin } from './auth';
 import { currencyRecord, parseRate, revaluationLines } from './fx';
 import { currentUser } from './projects';
 import * as S from './services';
@@ -661,15 +663,23 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     db.currencies
       .slice()
       .sort((a, b) => (a.code === BASE_CURRENCY ? -1 : b.code === BASE_CURRENCY ? 1 : a.code.localeCompare(b.code)))
-      .map((c) => ({ ...c, base: c.code === BASE_CURRENCY, usage: currencyUse(db, c.code), history: (c.history ?? []).slice().sort((x, y) => y.date.localeCompare(x.date)) }));
+      .map((c) => ({ ...c, base: c.code === BASE_CURRENCY, usage: currencyUse(db, c.code), status: rateStatus(c, today(), staleDays()), history: (c.history ?? []).slice().sort((x, y) => y.date.localeCompare(x.date)) }));
   api.get('/currencies', h(() => listCurrencies(getDb())));
+  // live rates: fetched on the server from the configured provider (see server/fxRates.ts)
+  api.get('/currency-rates/status', h(() => ({ provider: providerInfo(), staleDays: staleDays(), ...fxRateSettings(getDb()) })));
+  api.post('/currency-rates/refresh', h(() => refreshRates('manual')));
+  api.put('/currency-rates/settings', m((req) => {
+    requireAdmin();
+    return saveFxRateSettings(req.body || {});
+  }));
   api.get('/currencies/iso', h(() => [...isoCodes()].sort().map((code) => ({ code, ...isoInfo(code) }))));
   api.get('/currencies/:code/rate', h((req) => {
     const db = getDb();
     const c = db.currencies.find((x) => x.code === p(req, 'code').toUpperCase());
     if (!c) throw notFound('Currency');
     const date = q(req, 'date') || today();
-    return { code: c.code, date, rate: rateOn(c, date) };
+    const st = rateStatus(c, date, staleDays());
+    return { code: c.code, date, rate: rateOn(c, date), source: st.source, rateDate: st.date, provider: st.provider, stale: st.stale, staleReason: st.staleReason };
   }));
   api.post('/currencies', m((req) => {
     const db = getDb();
@@ -680,7 +690,7 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     const rate = parseRate(b.rate);
     if (!rate) throw bad('Exchange rate is required: how many INR one unit is worth');
     const c = currencyRecord(code, rate, str(b.name), str(b.symbol));
-    c.history = [{ date: str(b.date) || today(), rate }];
+    c.history = [{ date: str(b.date) || today(), rate, source: 'manual', recordedAt: now() }];
     db.currencies.push(c);
     return c;
   }));
@@ -696,7 +706,7 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     const rate = parseRate(b.rate)!;
     const date = str(b.date) || today();
     c.history = (c.history ?? []).filter((x) => x.date !== date);
-    c.history.push({ date, rate });
+    c.history.push({ date, rate, source: 'manual', recordedAt: now() });
     // the current rate is the latest one entered for today or earlier
     c.rate = rateOn({ ...c, rate }, today());
     return c;
@@ -747,7 +757,7 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     if (!notes) throw bad('Notes are required');
     const lines = revaluationLines(db, c.code, date, rate);
     c.history = (c.history ?? []).filter((x) => x.date !== date);
-    c.history.push({ date, rate });
+    c.history.push({ date, rate, source: 'manual', recordedAt: now() });
     c.rate = rateOn(c, today());
     const adj = { id: newId('cadj'), currencyCode: c.code, date, rate, notes, lines, gainOrLoss: round2(lines.reduce((s, l) => s + l.gainOrLoss, 0)), createdAt: now() };
     db.currencyAdjustments.push(adj);

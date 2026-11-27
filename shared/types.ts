@@ -641,8 +641,20 @@ export interface Currency {
   symbol: string;
   /** units of the base currency (INR) per 1 unit: the rate offered for new transactions */
   rate: number;
-  /** manually entered rates by date; a transaction defaults to the latest one on or before its date */
-  history?: { date: string; rate: number }[];
+  /** dated rates, entered by hand or fetched; a transaction defaults to the latest one on or before its date */
+  history?: RateEntry[];
+}
+
+/** One dated exchange rate in a currency's history. Entries saved before rate fetching are manual. */
+export interface RateEntry {
+  /** the date the rate applies from (for fetched rates, the provider's rate date) */
+  date: string;
+  rate: number;
+  source?: 'manual' | 'fetched';
+  /** rate provider name, for fetched rates */
+  provider?: string;
+  /** when the rate was fetched or entered (ISO timestamp) */
+  recordedAt?: string;
 }
 
 /** One open foreign-currency balance revalued by an FX revaluation. */

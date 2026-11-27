@@ -6,7 +6,7 @@ import { isUnposted } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
 import { dueDateFor, money, num, round2, today, addDays } from '@shared/format';
 import { BASE_CURRENCY, moneyIn, rateLabel, toBase } from '@shared/currency';
-import { CurrencyBadge, RateInput } from '../../components/currency';
+import { CurrencyBadge, RateInput, type DayRate } from '../../components/currency';
 import { PAYMENT_TERMS, TCS_RATES, TDS_RATES, type Contact, type DocKind, type Item, type LineItem, type TxnDoc } from '@shared/types';
 import { api, qs, useApi } from '../../api';
 import { useBoot } from '../../lib/app';
@@ -104,7 +104,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
 
   const currencyCode = contact?.currencyCode || d?.currencyCode || BASE_CURRENCY;
   const rateDate = (meta.recurring ? d?.startOn : d?.date) || today();
-  const { data: dayRate } = useApi<{ rate: number }>(currencyCode !== BASE_CURRENCY ? `/currencies/${currencyCode}/rate${qs({ date: rateDate })}` : null);
+  const { data: dayRate } = useApi<DayRate>(currencyCode !== BASE_CURRENCY ? `/currencies/${currencyCode}/rate${qs({ date: rateDate })}` : null);
   useEffect(() => {
     if (existing && rateStr === null) setRateStr(String(existing.exchangeRate ?? 1));
   }, [existing, rateStr]);
@@ -295,7 +295,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
           )}
           {foreign && (
             <Field label="Exchange Rate" required>
-              <RateInput code={currencyCode} value={rateStr ?? ''} onChange={(v) => { setRateStr(v); setRateTouched(true); }} amount={totals.total} defaultRate={!editing ? dayRate?.rate : undefined} />
+              <RateInput code={currencyCode} value={rateStr ?? ''} onChange={(v) => { setRateStr(v); setRateTouched(true); }} amount={totals.total} defaultRate={!editing ? dayRate?.rate : undefined} info={!editing ? dayRate : undefined} />
               {rateChanged && (
                 <div className="mt-2 max-w-md rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
                   This {meta.label.toLowerCase()} was recorded at {rateLabel(currencyCode, originalRate!)}. Changing the rate re-posts its journal in INR.
