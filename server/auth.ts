@@ -129,7 +129,7 @@ export const requireStaff: RequestHandler = (req, _res, next) => {
 };
 
 // Timesheet Staff log time on the projects they are on, and nothing else.
-const TIMESHEET_READ = /^\/(bootstrap|users|contacts|projects|projects\/[^/]+|projects\/[^/]+\/hours|time-entries(\/.*)?|timer)$/;
+const TIMESHEET_READ = /^\/(bootstrap|users|projects|projects\/[^/]+|projects\/[^/]+\/hours|time-entries(\/.*)?|timer)$/;
 const TIMESHEET_WRITE = /^\/(time-entries(\/.*)?|timer(\/.*)?)$/;
 function timesheetCanUse(req: Request) {
   if (req.baseUrl !== '/api') return false; // no attachments

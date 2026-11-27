@@ -12,6 +12,7 @@ import { Lifecycle } from '../../components/shared';
 import { ExportMenu } from '../../components/ExportMenu';
 import { CsvImportButton, type CsvImportRecord, type CsvImportResult } from '../../components/CsvImportButton';
 import { downloadRows } from '../../lib/export';
+import { useMe } from '../../auth';
 import { BillingStatusText, FilterPill, HoursInput, LogEntryModal, openTimer, PeriodPill, useProjects, useUsers, type EntryRow } from './common';
 import { EntryRowActions } from './ProjectTabs';
 
@@ -98,8 +99,11 @@ export default function Timesheet() {
   const filters = { status: view, customerId, projectId, userId, ...(layout === 'calendar' ? { period: 'custom', ...monthRange } : { period, ...(period === 'custom' ? custom : {}) }) };
   const { data = [], isLoading } = useApi<EntryRow[]>(`/time-entries${qs(filters)}`);
   const { data: summary } = useApi<Summary>(showSummary ? `/time-entries/summary${qs(filters)}` : null);
-  const { data: customers = [] } = useApi<Contact[]>('/contacts?kind=customer');
+  const timeOnly = useMe().user.role === 'Timesheet Staff';
+  // Timesheet Staff can't read the client list: their filter offers the clients of their own projects
+  const { data: allCustomers = [] } = useApi<Contact[]>(timeOnly ? null : '/contacts?kind=customer');
   const { data: projects = [] } = useProjects('all');
+  const customers = timeOnly ? [...new Map(projects.filter((x) => x.customerId).map((x) => [x.customerId, { id: x.customerId!, displayName: x.customerName ?? '' }])).values()] : allCustomers;
   const { data: users = [] } = useUsers();
   const confirm = useConfirm();
   const bulk = useAction((action: string) => api<{ done: number }>('/time-entries/bulk', { body: { action, ids: selected } }), (r) => `${r.done} entr${r.done === 1 ? 'y' : 'ies'} updated`);
