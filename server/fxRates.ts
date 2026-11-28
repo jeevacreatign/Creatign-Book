@@ -15,7 +15,7 @@
 // FX_RATES_URL overrides the ECB/Frankfurter or Open Exchange Rates address; FX_FALLBACK_URL the
 // ExchangeRate-API one (for a self-hosted mirror or a test stand-in).
 import { BASE_CURRENCY, DEFAULT_STALE_DAYS, rateOn, roundRate } from '../shared/currency';
-import { today } from '../shared/format';
+import { addDays, today } from '../shared/format';
 import type { Currency, Database } from '../shared/types';
 import { flushDb, getDb, now } from './db';
 import { commit } from './services';
@@ -111,7 +111,7 @@ const ECB: SourceInfo = {
   apiKeyRequired: false,
   apiKeyConfigured: false,
   updates: 'Once a working day, about 16:00 CET (20:30 IST); none on weekends and TARGET holidays',
-  rateType: 'ECB euro reference rates (indicative mid rates), through the Frankfurter API: EUR, and about 30 other currencies whose own central bank has no free API (USD, GBP, JPY, SGD, AUD ...)',
+  rateType: 'ECB euro reference rates (indicative mid rates), through the Frankfurter API: EUR, and about 30 other currencies whose own central bank has no free daily API (USD, JPY, SGD, CHF, HKD ...)',
 };
 const OWN: SourceInfo = {
   id: 'own',
@@ -120,7 +120,7 @@ const OWN: SourceInfo = {
   apiKeyRequired: false,
   apiKeyConfigured: false,
   updates: 'Each bank publishes once a working day',
-  rateType: 'The currency\'s own central bank, where it publishes its rate against INR through a free, documented feed: EUR from the European Central Bank, CAD from the Bank of Canada, NOK from Norges Bank, CZK from the Czech National Bank',
+  rateType: 'The currency\'s own central bank, where it publishes its rate against INR through a free, documented feed: EUR from the European Central Bank, GBP from the Bank of England, AUD from the Reserve Bank of Australia, CAD from the Bank of Canada, NOK from Norges Bank, CZK from the Czech National Bank. A rate more than 5% away from the ECB rate, or older than the stale limit, is not used',
 };
 const PEGS: SourceInfo = {
   id: 'pegs',
@@ -168,11 +168,13 @@ export function fxRateSettings(db: Database): FxRateSettings {
 }
 
 const TIMEOUT_MS = 15_000;
+/** A plain client name; some statistics sites refuse requests without one. */
+const UA = 'CreatignLedger/1.0 (exchange-rate refresh)';
 
 async function getJson(url: string, headers: Record<string, string> = {}): Promise<unknown> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { Accept: 'application/json', ...headers }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    res = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': UA, ...headers }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch (e) {
     const why = e instanceof Error && e.name === 'TimeoutError' ? 'it did not answer within 15 seconds' : e instanceof Error ? e.message : String(e);
     throw new Error(`Could not reach the rate provider: ${why}`);
@@ -188,7 +190,7 @@ async function getJson(url: string, headers: Record<string, string> = {}): Promi
 async function getText(url: string): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { Accept: 'text/csv, text/plain, */*' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    res = await fetch(url, { headers: { Accept: 'text/csv, text/plain, */*', 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch (e) {
     const why = e instanceof Error && e.name === 'TimeoutError' ? 'it did not answer within 15 seconds' : e instanceof Error ? e.message : String(e);
     throw new Error(`Could not reach the rate provider: ${why}`);
@@ -272,12 +274,63 @@ async function fetchCzechNationalBank(): Promise<Quote> {
   return { rate: roundRate(amount / value), date: `${head[3]}-${MONTHS[head[2]]}-${head[1].padStart(2, '0')}`, source: 'Czech National Bank' };
 }
 
+/** "27-Nov-2026" or "27 Nov 2026" to "2026-11-27". */
+function dmyDate(s: string | undefined): string | undefined {
+  const m = /^(\d{1,2})[- ]([A-Z][a-z]{2})[- ](\d{4})$/.exec((s ?? '').trim());
+  return m && MONTHS[m[2]] ? `${m[3]}-${MONTHS[m[2]]}-${m[1].padStart(2, '0')}` : undefined;
+}
+const csvCells = (line: string) => line.split(',').map((c) => c.replace(/^"|"$/g, '').trim());
+
+/** Reserve Bank of Australia, statistical table F11.1 (CSV): series FXRINR is INR per 1 AUD. */
+async function fetchReserveBankOfAustralia(): Promise<Quote> {
+  const url = env('FX_URL_RBA') || 'https://www.rba.gov.au/statistics/tables/csv/f11.1-data.csv';
+  const lines = (await getText(url)).split(/\r?\n/);
+  const ids = lines.find((l) => /^"?Series ID/.test(l));
+  const col = ids ? csvCells(ids).indexOf('FXRINR') : -1;
+  if (col < 0) throw new Error('The rate provider sent an unexpected response (no FXRINR series)');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const cells = csvCells(lines[i]);
+    const date = dmyDate(cells[0]);
+    const v = Number(cells[col]);
+    if (date && cells[col] && goodNum(v)) return { rate: roundRate(v), date, source: 'Reserve Bank of Australia' };
+  }
+  throw new Error('The rate provider sent an unexpected response');
+}
+
+/** Bank of England database (CSV): spot rate of the Indian rupee into sterling, INR per 1 GBP. */
+async function fetchBankOfEngland(): Promise<Quote> {
+  const series = env('FX_BOE_SERIES') || 'XUDLBK64';
+  const from = new Date(Date.now() - 21 * 86400000);
+  const mon = Object.keys(MONTHS)[from.getUTCMonth()];
+  const url =
+    env('FX_URL_BOE') ||
+    `https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp?csv.x=yes&Datefrom=${String(from.getUTCDate()).padStart(2, '0')}/${mon}/${from.getUTCFullYear()}&Dateto=now&SeriesCodes=${series}&CSVF=TN&UsingCodes=Y&VPD=Y&VFD=N`;
+  const lines = (await getText(url)).split(/\r?\n/).filter((l) => l.trim());
+  const head = csvCells(lines[0] ?? '');
+  const col = head.indexOf(series);
+  if (head[0]?.toUpperCase() !== 'DATE' || col < 0) throw new Error('The rate provider sent an unexpected response');
+  let best: Quote | undefined;
+  for (const l of lines.slice(1)) {
+    const cells = csvCells(l);
+    const date = dmyDate(cells[0]);
+    const v = Number(cells[col]);
+    if (date && goodNum(v) && (!best || date > best.date)) best = { rate: roundRate(v), date, source: 'Bank of England' };
+  }
+  if (!best) throw new Error('The rate provider sent an unexpected response');
+  return best;
+}
+
 /** Currencies fetched from their own central bank (EUR comes from the ECB, the pegs from their issuers). */
 export const OWN_CENTRAL_BANKS: Record<string, { bank: string; website: string; load: () => Promise<Quote> }> = {
   CAD: { bank: 'Bank of Canada', website: 'https://www.bankofcanada.ca/valet/docs', load: fetchBankOfCanada },
   NOK: { bank: 'Norges Bank', website: 'https://www.norges-bank.no/en/topics/Statistics/open-data/', load: fetchNorgesBank },
   CZK: { bank: 'Czech National Bank', website: 'https://www.cnb.cz/en/financial-markets/foreign-exchange-market/central-bank-exchange-rate-fixing/', load: fetchCzechNationalBank },
+  AUD: { bank: 'Reserve Bank of Australia', website: 'https://www.rba.gov.au/statistics/tables/#exchange-rates', load: fetchReserveBankOfAustralia },
+  GBP: { bank: 'Bank of England', website: 'https://www.bankofengland.co.uk/boeapps/database/', load: fetchBankOfEngland },
 };
+
+/** An own-bank rate this far from the ECB's cross rate is treated as bad data (wrong series, unit or day). */
+const MAX_GAP_FROM_ECB = 0.05;
 
 /** Pegged currencies from the ECB's anchor rates. */
 function pegQuotes(ecb: Quotes): Quotes {
@@ -351,27 +404,49 @@ export async function fetchQuotes(wanted: string[]): Promise<{ quotes: Quotes; r
     return { quotes, runs };
   }
   if (info.mode !== 'exchangerate-api') {
-    // 1. each currency's own central bank, where it has a free documented feed
-    await Promise.all(
-      wanted
-        .filter((c) => OWN_CENTRAL_BANKS[c])
-        .map((c) => ({ c, bank: OWN_CENTRAL_BANKS[c] }))
-        .map(async ({ c, bank }) => {
-          const run: SourceRun = { source: bank.bank, ok: false, count: 0 };
-          runs.push(run);
+    // 1. each currency's own central bank, where it has a free documented feed (fetched alongside the ECB)
+    const own = wanted.filter((c) => OWN_CENTRAL_BANKS[c]);
+    const ownRuns = own.map((c) => ({ c, run: { source: OWN_CENTRAL_BANKS[c].bank, ok: false, count: 0 } as SourceRun }));
+    const ecbRun: SourceRun = { source: ECB.name, ok: false, count: 0 };
+    runs.push(...ownRuns.map((x) => x.run), ecbRun);
+    const [ownQuotes, ecb] = await Promise.all([
+      Promise.all(
+        ownRuns.map(async ({ c, run }) => {
           try {
-            const q = await bank.load();
-            run.ok = true;
-            run.rateDate = q.date;
-            quotes.set(c, q);
-            run.count = 1;
+            return { c, run, q: await OWN_CENTRAL_BANKS[c].load() };
           } catch (e) {
             run.error = `${e instanceof Error ? e.message : String(e)}; the ECB rate is used for ${c}`;
+            return { c, run, q: undefined };
           }
         }),
-    );
-    // 2. the ECB (EUR is its own currency), and the pegs of currencies fixed to the USD or EUR
-    const ecb = await attempt(ECB.name, fetchEcb);
+      ),
+      fetchEcb().then(
+        (q) => {
+          ecbRun.ok = true;
+          return q;
+        },
+        (e) => {
+          ecbRun.error = e instanceof Error ? e.message : String(e);
+          return undefined;
+        },
+      ),
+    ]);
+    const oldest = addDays(today(), -staleDays());
+    for (const { c, run, q } of ownQuotes) {
+      if (!q) continue;
+      const check = ecb?.get(c);
+      const gap = check ? Math.abs(q.rate / check.rate - 1) : 0;
+      if (q.date < oldest) run.error = `its latest rate is of ${q.date}, too old; the ECB rate is used for ${c}`;
+      else if (gap > MAX_GAP_FROM_ECB) run.error = `its rate ${q.rate} is ${(gap * 100).toFixed(1)}% away from the ECB's ${check!.rate}, so it was not used; the ECB rate is used for ${c}`;
+      else {
+        run.ok = true;
+        run.rateDate = q.date;
+        run.count = 1;
+        quotes.set(c, q);
+      }
+    }
+    // 2. the ECB (EUR is its own currency) for the rest, and the pegs of currencies fixed to the USD or EUR
+    if (ecb) take(ecb, ecbRun);
     if (ecb && missing().length) {
       const run: SourceRun = { source: PEGS.name, ok: true, count: 0 };
       runs.push(run);
@@ -433,7 +508,9 @@ export function applyFetchedRate(c: Currency, quote: Quote, recordedAt: string, 
   // a source a time zone ahead can date its rates tomorrow: they apply from today
   const q = quote.date > day ? { ...quote, date: day } : quote;
   const previousRate = rateOn(c, day);
-  c.history = (c.history ?? []).filter((h) => h.date !== q.date);
+  const ownBank = OWN_CENTRAL_BANKS[c.code]?.bank === q.source;
+  // a currency's own central bank replaces later rates that only stood in for it (fetched from another source)
+  c.history = (c.history ?? []).filter((h) => h.date !== q.date && !(ownBank && h.date > q.date && h.source === 'fetched' && h.provider !== q.source));
   c.history.push({ date: q.date, rate: q.rate, source: 'fetched', provider: q.source, recordedAt });
   // the default for new transactions is the latest dated rate on or before today
   c.rate = rateOn(c, day);

@@ -29,7 +29,15 @@ const stubFetch = (impl: (url: string) => Promise<Response> | Response) => {
   vi.stubGlobal('fetch', fn);
   return fn;
 };
-const both = (ecbBody: unknown = ecb(), erBody: unknown = erapi()) => (url: string) => (url === ECB_URL ? json(ecbBody) : url === ER_URL ? json(erBody) : json({}, 404));
+const BOE_PREFIX = 'https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp?csv.x=yes&Datefrom=';
+const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
+const dmy = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m) - 1]} ${y}`; };
+/** Bank of England CSV: INR per GBP (the ECB cross rate here, so the sanity check passes) */
+const boeCsv = (rate = r6(101.92 / 0.8341), date = DAY) => new Response(`DATE,XUDLBK64\n${dmy(addDays(date, -1))},${r6(rate * 0.999)}\n${dmy(date)},${rate}\n`, { status: 200 });
+const both =
+  (ecbBody: unknown = ecb(), erBody: unknown = erapi(), boe = true) =>
+  (url: string) =>
+    url === ECB_URL ? json(ecbBody) : url === ER_URL ? json(erBody) : boe && url.startsWith(BOE_PREFIX) ? boeCsv() : json({}, 404);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 beforeAll(async () => {
@@ -73,7 +81,12 @@ describe('successful refresh', () => {
     const f = stubFetch(both());
     const r = await api().post('/api/currency-rates/refresh');
     expect(r.status).toBe(200);
-    expect(f.mock.calls.map((c) => String(c[0]))).toEqual([ECB_URL, ER_URL]);
+    const urls = f.mock.calls.map((c) => String(c[0]));
+    expect(urls).toHaveLength(3);
+    expect(urls).toEqual(expect.arrayContaining([ECB_URL, ER_URL]));
+    expect(urls.some((u) => u.startsWith(BOE_PREFIX) && u.includes('SeriesCodes=XUDLBK64'))).toBe(true);
+    // GBP from the Bank of England; USD stays on the ECB without a FRED key
+    expect(r.body.updated.find((u: { code: string }) => u.code === 'GBP')).toMatchObject({ rate: r6(101.92 / 0.8341), source: 'Bank of England', date: DAY });
     expect(r.body).toMatchObject({ ok: true, rateDate: DAY });
     expect(r.body.error).toBeUndefined();
     const by = (code: string) => r.body.updated.find((u: { code: string }) => u.code === code);
@@ -88,6 +101,7 @@ describe('successful refresh', () => {
     expect(by('KWD')).toMatchObject({ rate: Math.round((96.95 / 0.3071) * 1e6) / 1e6, source: 'ExchangeRate-API' });
     expect(r.body.unsupported).toEqual(['KPW']);
     expect(r.body.sources).toEqual([
+      expect.objectContaining({ source: 'Bank of England', ok: true, count: 1, rateDate: DAY }),
       expect.objectContaining({ source: 'European Central Bank', ok: true, rateDate: DAY }),
       expect.objectContaining({ source: 'Central bank peg', ok: true, count: 1 }),
       expect.objectContaining({ source: 'ExchangeRate-API', ok: true, count: 1 }),
@@ -113,7 +127,7 @@ describe('successful refresh', () => {
     const f = stubFetch(both());
     const r = await api().post('/api/currency-rates/refresh');
     expect(r.body.ok).toBe(true);
-    expect(f).toHaveBeenCalledTimes(1);
+    expect(f).toHaveBeenCalledTimes(2); // ECB and the Bank of England, no fallback
     expect(r.body.unsupported).toEqual([]);
   });
 
@@ -135,7 +149,7 @@ describe('successful refresh', () => {
 
   it('keeps a later manual rate as the default and says so', async () => {
     const yesterday = addDays(DAY, -1);
-    stubFetch(both(ecb(yesterday, 100.5)));
+    stubFetch(both(ecb(yesterday, 100.5), erapi(), false));
     // a manual rate for today, then a refresh that returns yesterday's rate
     await api().put('/api/currencies/GBP').send({ rate: 120, date: DAY });
     const r = await api().post('/api/currency-rates/refresh');
@@ -175,6 +189,7 @@ describe("each currency's own central bank", () => {
   const banks = (fail: string[] = []) => (url: string) => {
     if (fail.includes(url)) return json({ message: 'down' }, 503);
     if (url === ECB_URL) return json(ecbWithOwn);
+    if (url.startsWith(BOE_PREFIX)) return boeCsv();
     if (url === ER_URL) return json(erapi());
     if (url === BOC) return json({ terms: {}, seriesDetail: { FXINRCAD: { label: 'INR/CAD' } }, observations: [{ d: DAY, FXINRCAD: { v: '0.01443' } }] });
     if (url === NORGES)
@@ -216,6 +231,68 @@ describe("each currency's own central bank", () => {
   });
 });
 
+describe('Australia, England and the US', () => {
+  const RBA = 'https://www.rba.gov.au/statistics/tables/csv/f11.1-data.csv';
+  const d = (iso: string) => dmy(iso).replace(/ /g, '-');
+  const rbaCsv = (inrPerAud: number, date = DAY) =>
+    new Response(
+      `F11.1  EXCHANGE RATES,,,\nTitle,A$1=USD,Trade-weighted Index May 1970 = 100,A$1=INR\nDescription,AUD/USD Exchange Rate; see notes,Australian Dollar Trade-weighted Index,AUD/INR Exchange Rate\nFrequency,Daily,Daily,Daily\nSource,WM/Reuters,RBA,WM/Reuters\nPublication date,${d(date)},${d(date)},${d(date)}\nSeries ID,FXRUSD,FXRTWI,FXRINR\n${d(addDays(date, -1))},0.6511,61.2,60.9\n${d(date)},0.6512,61.3,${inrPerAud}\n`,
+      { status: 200 },
+    );
+  const ecbAud = { amount: 1, base: 'EUR', date: DAY, rates: { INR: 101.92, USD: 1.0512, GBP: 0.8341, JPY: 161.2, SGD: 1.4021, AUD: 1.6125 } };
+  const world = (rba: () => Response, boe: () => Response = () => boeCsv()) => (url: string) =>
+    url === ECB_URL ? json(ecbAud) : url === RBA ? rba() : url.startsWith(BOE_PREFIX) ? boe() : url.startsWith('https://api.stlouisfed.org/') ? json({ observations: [{ date: DAY, value: '.' }, { date: addDays(DAY, -1), value: '96.91' }] }) : json(erapi());
+
+  it('takes AUD from the Reserve Bank of Australia and GBP from the Bank of England', async () => {
+    expect((await api().post('/api/currencies').send({ code: 'AUD', rate: 1, date: OLD_DATE })).status).toBe(200);
+    const f = stubFetch(world(() => rbaCsv(63.2015)));
+    const r = await api().post('/api/currency-rates/refresh');
+    expect(r.body.ok).toBe(true);
+    expect(r.body.error).toBeUndefined();
+    const by = (code: string) => r.body.updated.find((u: { code: string }) => u.code === code);
+    expect(by('AUD')).toMatchObject({ rate: 63.2015, source: 'Reserve Bank of Australia', date: DAY });
+    expect(by('GBP')).toMatchObject({ source: 'Bank of England' });
+    expect(by('USD').source).toBe('European Central Bank');
+    expect(f.mock.calls.some((c) => String(c[0]).includes('stlouisfed'))).toBe(false);
+    expect((await currency('AUD')).status).toMatchObject({ source: 'fetched', provider: 'Reserve Bank of Australia', stale: false });
+  });
+
+  it("replaces a later stand-in rate once the currency's own bank answers", async () => {
+    // the ECB stands in for today while the bank is down; the bank then answers with yesterday's rate
+    stubFetch(world(() => new Response('down', { status: 503 })));
+    await api().post('/api/currency-rates/refresh');
+    expect((await currency('AUD')).status).toMatchObject({ provider: 'European Central Bank', date: DAY });
+    const yesterday = addDays(DAY, -1);
+    stubFetch(world(() => rbaCsv(63.1002, yesterday)));
+    const r = await api().post('/api/currency-rates/refresh');
+    expect(r.body.updated.find((u: { code: string }) => u.code === 'AUD')).toMatchObject({ source: 'Reserve Bank of Australia', date: yesterday, rate: 63.1002 });
+    const aud = await currency('AUD');
+    expect(aud.status).toMatchObject({ provider: 'Reserve Bank of Australia', date: yesterday });
+    expect(aud.history.some((h) => h.date === DAY)).toBe(false);
+    stubFetch(world(() => rbaCsv(63.2015)));
+    await api().post('/api/currency-rates/refresh');
+  });
+
+  it('rejects an own-bank rate far from the ECB rate, and one that is too old', async () => {
+    // AUD at 6.32 (a unit mistake) is 90% off the ECB cross rate 101.92/1.6125 = 63.21
+    stubFetch(world(() => rbaCsv(6.32)));
+    const r = await api().post('/api/currency-rates/refresh');
+    expect(r.body.ok).toBe(true);
+    expect(r.body.error).toMatch(/Reserve Bank of Australia: its rate 6.32 is 90.0% away from the ECB's 63.206202, so it was not used; the ECB rate is used for AUD/);
+    expect(r.body.updated.find((u: { code: string }) => u.code === 'AUD')).toMatchObject({ source: 'European Central Bank', rate: r6(101.92 / 1.6125) });
+    // a Bank of England rate from three weeks ago
+    stubFetch(world(() => rbaCsv(63.2015), () => boeCsv(r6(101.92 / 0.8341), addDays(DAY, -21))));
+    const r2 = await api().post('/api/currency-rates/refresh');
+    expect(r2.body.error).toMatch(/Bank of England: its latest rate is of .*, too old; the ECB rate is used for GBP/);
+    expect(r2.body.updated.find((u: { code: string }) => u.code === 'GBP').source).toBe('European Central Bank');
+    // an unexpected file
+    stubFetch(world(() => new Response('<html>maintenance</html>', { status: 200 })));
+    const r3 = await api().post('/api/currency-rates/refresh');
+    expect(r3.body.error).toMatch(/Reserve Bank of Australia: The rate provider sent an unexpected response \(no FXRINR series\)/);
+    await api().delete('/api/currencies/AUD');
+  });
+});
+
 describe('provider failures', () => {
   it('reports an outage of every source and changes nothing', async () => {
     const before = await currency('EUR');
@@ -250,12 +327,12 @@ describe('provider failures', () => {
     const r = await api().post('/api/currency-rates/refresh');
     expect(r.body).toMatchObject({ ok: false });
     expect(r.body.error).toMatch(/Could not reach the rate provider: fetch failed/);
-    stubFetch(both({ base: 'EUR', date: DAY, rates: { USD: 1.05 } }, { result: 'error', 'error-type': 'unsupported-code' }));
+    stubFetch(both({ base: 'EUR', date: DAY, rates: { USD: 1.05 } }, { result: 'error', 'error-type': 'unsupported-code' }, false));
     const r2 = await api().post('/api/currency-rates/refresh');
     expect(r2.body.ok).toBe(false);
     expect(r2.body.error).toMatch(/European Central Bank: The rate provider response has no INR rate/);
     expect(r2.body.error).toMatch(/ExchangeRate-API: The rate provider reported an error: unsupported-code/);
-    stubFetch(both({ base: 'EUR', date: DAY, rates: { INR: -4 } }, { result: 'success', rates: { INR: 'x' } }));
+    stubFetch(both({ base: 'EUR', date: DAY, rates: { INR: -4 } }, { result: 'success', rates: { INR: 'x' } }, false));
     expect((await api().post('/api/currency-rates/refresh')).body.ok).toBe(false);
   });
 
