@@ -9,7 +9,7 @@ import { getDb, newId, now } from './db';
 import { logActivity, runRecurring } from './engine';
 import { accountBalance } from './reports';
 import { BASE_CURRENCY, isIsoCode, isoCodes, isoInfo, rateOn, rateStatus } from '../shared/currency';
-import { applyFetchedRate, fxRateSettings, providerInfo, providerStaleDays, quoteFor, refreshRates, saveFxRateSettings, staleDays } from './fxRates';
+import { applyFetchedRate, fxRateSettings, midMarketStaleHours, providerInfo, quoteFor, refreshRates, saveFxRateSettings, staleDays, staleRules } from './fxRates';
 import { requireAdmin } from './auth';
 import { currencyRecord, parseRate, revaluationLines } from './fx';
 import { currentUser } from './projects';
@@ -663,14 +663,18 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     db.currencies
       .slice()
       .sort((a, b) => (a.code === BASE_CURRENCY ? -1 : b.code === BASE_CURRENCY ? 1 : a.code.localeCompare(b.code)))
-      .map((c) => ({ ...c, base: c.code === BASE_CURRENCY, usage: currencyUse(db, c.code), status: rateStatus(c, today(), staleDays(), providerStaleDays()), history: (c.history ?? []).slice().sort((x, y) => y.date.localeCompare(x.date)) }));
+      .map((c) => ({ ...c, base: c.code === BASE_CURRENCY, usage: currencyUse(db, c.code), status: rateStatus(c, today(), staleDays(), staleRules()), history: (c.history ?? []).slice().sort((x, y) => y.date.localeCompare(x.date)) }));
   api.get('/currencies', h(() => listCurrencies(getDb())));
   // live rates: fetched on the server from the configured provider (see server/fxRates.ts)
-  api.get('/currency-rates/status', h(() => ({ provider: providerInfo(), staleDays: staleDays(), ...fxRateSettings(getDb()) })));
+  api.get('/currency-rates/status', h(() => ({ provider: providerInfo(), staleDays: staleDays(), midMarketStaleHours: midMarketStaleHours(), ...fxRateSettings(getDb()) })));
   api.post('/currency-rates/refresh', h(() => refreshRates('manual')));
   api.put('/currency-rates/settings', m((req) => {
     requireAdmin();
-    return saveFxRateSettings(req.body || {});
+    try {
+      return saveFxRateSettings(req.body || {});
+    } catch (e) {
+      throw bad(e instanceof Error ? e.message : String(e));
+    }
   }));
   api.get('/currencies/iso', h(() => [...isoCodes()].sort().map((code) => ({ code, ...isoInfo(code) }))));
   api.get('/currencies/:code/rate', h((req) => {
@@ -678,8 +682,11 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     const c = db.currencies.find((x) => x.code === p(req, 'code').toUpperCase());
     if (!c) throw notFound('Currency');
     const date = q(req, 'date') || today();
-    const st = rateStatus(c, date, staleDays(), providerStaleDays());
-    return { code: c.code, date, rate: rateOn(c, date), source: st.source, rateDate: st.date, provider: st.provider, stale: st.stale, staleReason: st.staleReason };
+    const st = rateStatus(c, date, staleDays(), staleRules());
+    // a fetched default after a failed refresh is the last saved rate, not a current one: say so
+    const last = fxRateSettings(db).lastRun;
+    const refreshFailed = st.source === 'fetched' && date >= today() && last && !last.ok ? { refreshError: last.error, refreshFailedAt: last.fetchedAt } : {};
+    return { code: c.code, date, rate: rateOn(c, date), source: st.source, rateDate: st.date, asOf: st.asOf, provider: st.provider, stale: st.stale, staleReason: st.staleReason, ...refreshFailed };
   }));
   api.post('/currencies', h(async (req) => {
     const b = req.body || {};

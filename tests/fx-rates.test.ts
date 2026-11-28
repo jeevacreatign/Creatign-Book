@@ -160,6 +160,8 @@ describe('successful refresh', () => {
     expect(gbp.history.find((h) => h.date === yesterday)).toMatchObject({ source: 'fetched', rate: Math.round((100.5 / 0.8341) * 1e6) / 1e6 });
     // EUR: today's fetched rate stays the default; yesterday's is added to the history
     expect((await currency('EUR')).rate).toBe(101.92);
+    // remove the manual rate again (a same-day manual rate is never overwritten by a refresh)
+    expect((await api().delete(`/api/currencies/GBP/history/${DAY}`)).status).toBe(200);
   });
 
   it('fetches the rate of a currency added without one', async () => {
@@ -394,7 +396,7 @@ describe('provider failures', () => {
       expect(r.body).toMatchObject({ ok: false, error: 'OPENEXCHANGERATES_APP_ID is not set in the server environment' });
       expect(f).not.toHaveBeenCalled();
       process.env.OPENEXCHANGERATES_APP_ID = 'test-app-id-not-real';
-      const g = stubFetch(() => json({ timestamp: Math.floor(Date.parse(`${DAY}T12:00:00Z`) / 1000), base: 'USD', rates: { INR: 96.95, EUR: 0.9513, USD: 1 } }));
+      const g = stubFetch(() => json({ timestamp: Math.floor((Date.now() - 30 * 60_000) / 1000), base: 'USD', rates: { INR: 96.95, EUR: 0.9513, USD: 1 } }));
       const ok = await api().post('/api/currency-rates/refresh');
       expect(ok.body.ok).toBe(true);
       const [url, init] = g.mock.calls[0] as unknown as [string, RequestInit];

@@ -99,19 +99,60 @@ export interface RateStatus {
   source: 'manual' | 'fetched' | 'unknown';
   provider?: string;
   recordedAt?: string;
+  /** provider timestamp of an intraday rate */
+  asOf?: string;
   ageDays?: number;
+  /** market hours since asOf (weekend closure not counted), for intraday rates */
+  ageHours?: number;
   stale: boolean;
   staleReason?: string;
 }
 
+/** Options for rateStatus beyond the day-based stale limit. */
+export interface StaleRules {
+  /** stale limit in days for providers that publish less often than daily */
+  staleDaysByProvider?: Record<string, number>;
+  /** stale limit in market hours for intraday providers (checked against the rate's asOf time) */
+  staleHoursByProvider?: Record<string, number>;
+  /** now, in ms (tests) */
+  now?: number;
+}
+
+const HOUR = 3600_000;
+/**
+ * Hours between two instants during which the currency market is open: the weekly closure from Friday
+ * 22:00 UTC to Sunday 22:00 UTC is not counted, so Friday's closing rate stays fresh over the weekend.
+ */
+export function marketHoursBetween(fromIso: string, toMs: number): number {
+  const from = Date.parse(fromIso);
+  if (!Number.isFinite(from) || toMs <= from) return 0;
+  let closed = 0;
+  // each weekly closure that overlaps the interval
+  const d = new Date(from);
+  const fri = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 2) % 7), 22);
+  for (let start = fri - 7 * 24 * HOUR; start < toMs; start += 7 * 24 * HOUR) {
+    const end = start + 48 * HOUR;
+    closed += Math.max(0, Math.min(end, toMs) - Math.max(start, from));
+  }
+  return Math.max(0, Math.round(((toMs - from - closed) / HOUR) * 10) / 10);
+}
+
 /** Where today's default rate of a currency comes from, and whether it is out of date. */
-export function rateStatus(c: Currency, day: string, staleDays = DEFAULT_STALE_DAYS, staleDaysByProvider: Record<string, number> = {}): RateStatus {
+export function rateStatus(c: Currency, day: string, staleDays = DEFAULT_STALE_DAYS, rules: StaleRules | Record<string, number> = {}): RateStatus {
+  const r: StaleRules = 'staleDaysByProvider' in rules || 'staleHoursByProvider' in rules || 'now' in rules ? (rules as StaleRules) : { staleDaysByProvider: rules as Record<string, number> };
   if (c.code === BASE_CURRENCY) return { rate: 1, source: 'manual', stale: false };
   const e = rateEntryOn(c, day);
   if (!e) return { rate: c.rate, source: 'unknown', stale: true, staleReason: 'No dated rate: enter one or refresh rates' };
   const ageDays = Math.max(0, Math.round((Date.parse(day) - Date.parse(e.date)) / 86400000));
-  const stale = ageDays > (e.source === 'fetched' && e.provider ? (staleDaysByProvider[e.provider] ?? staleDays) : staleDays);
-  return { rate: e.rate, date: e.date, source: e.source ?? 'manual', provider: e.provider, recordedAt: e.recordedAt, ageDays, stale, staleReason: stale ? `Rate is ${ageDays} days old` : undefined };
+  const base = { rate: e.rate, date: e.date, source: e.source ?? 'manual', provider: e.provider, recordedAt: e.recordedAt, asOf: e.asOf, ageDays } as const;
+  const hourLimit = e.source === 'fetched' && e.provider && e.asOf ? r.staleHoursByProvider?.[e.provider] : undefined;
+  if (hourLimit !== undefined) {
+    const ageHours = marketHoursBetween(e.asOf!, r.now ?? Date.now());
+    const stale = ageHours > hourLimit;
+    return { ...base, ageHours, stale, staleReason: stale ? `Rate is ${Math.floor(ageHours)} market hours old` : undefined };
+  }
+  const stale = ageDays > (e.source === 'fetched' && e.provider ? (r.staleDaysByProvider?.[e.provider] ?? staleDays) : staleDays);
+  return { ...base, stale, staleReason: stale ? `Rate is ${ageDays} days old` : undefined };
 }
 
 const rateFmt = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: RATE_DECIMALS });
