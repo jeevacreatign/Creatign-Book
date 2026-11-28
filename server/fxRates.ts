@@ -22,7 +22,7 @@ import { commit } from './services';
 
 /** One rate source, as shown in Settings > Currencies. */
 export interface SourceInfo {
-  id: 'ecb' | 'pegs' | 'exchangerate-api' | 'openexchangerates';
+  id: 'own' | 'ecb' | 'pegs' | 'exchangerate-api' | 'openexchangerates';
   name: string;
   website: string;
   apiKeyRequired: boolean;
@@ -111,7 +111,16 @@ const ECB: SourceInfo = {
   apiKeyRequired: false,
   apiKeyConfigured: false,
   updates: 'Once a working day, about 16:00 CET (20:30 IST); none on weekends and TARGET holidays',
-  rateType: 'ECB euro foreign exchange reference rates (indicative mid rates) for about 30 currencies, through the Frankfurter API',
+  rateType: 'ECB euro reference rates (indicative mid rates), through the Frankfurter API: EUR, and about 30 other currencies whose own central bank has no free API (USD, GBP, JPY, SGD, AUD ...)',
+};
+const OWN: SourceInfo = {
+  id: 'own',
+  name: 'Own central bank',
+  website: 'https://www.bankofcanada.ca/valet/docs',
+  apiKeyRequired: false,
+  apiKeyConfigured: false,
+  updates: 'Each bank publishes once a working day',
+  rateType: 'The currency\'s own central bank, where it publishes its rate against INR through a free, documented feed: EUR from the European Central Bank, CAD from the Bank of Canada, NOK from Norges Bank, CZK from the Czech National Bank',
 };
 const PEGS: SourceInfo = {
   id: 'pegs',
@@ -120,7 +129,7 @@ const PEGS: SourceInfo = {
   apiKeyRequired: false,
   apiKeyConfigured: false,
   updates: 'With every ECB update',
-  rateType: `Official fixed parities (${Object.keys(CENTRAL_BANK_PEGS).join(', ')}) applied to the ECB's USD and EUR rates`,
+  rateType: `The issuing central bank's official fixed rate (${Object.keys(CENTRAL_BANK_PEGS).join(', ')}) applied to the ECB's USD or EUR rate`,
 };
 const ERAPI: SourceInfo = {
   id: 'exchangerate-api',
@@ -148,9 +157,9 @@ export function providerInfo(): ProviderInfo {
     const set = !!env('OPENEXCHANGERATES_APP_ID');
     return { mode, name: OXR.name, sources: [{ ...OXR, apiKeyConfigured: set }], apiKeyRequired: true, apiKeyConfigured: set };
   }
-  if (mode === 'frankfurter') return { mode, name: 'European Central Bank and central bank pegs', sources: [ECB, PEGS], apiKeyRequired: false, apiKeyConfigured: false };
+  if (mode === 'frankfurter') return { mode, name: 'Central banks', sources: [OWN, PEGS, ECB], apiKeyRequired: false, apiKeyConfigured: false };
   if (mode === 'exchangerate-api') return { mode, name: ERAPI.name, sources: [ERAPI], apiKeyRequired: false, apiKeyConfigured: false };
-  return { mode: 'auto', name: 'European Central Bank, central bank pegs and ExchangeRate-API', sources: [ECB, PEGS, ERAPI], apiKeyRequired: false, apiKeyConfigured: false };
+  return { mode: 'auto', name: 'Central banks, then ExchangeRate-API', sources: [OWN, PEGS, ECB, ERAPI], apiKeyRequired: false, apiKeyConfigured: false };
 }
 
 export function fxRateSettings(db: Database): FxRateSettings {
@@ -174,6 +183,18 @@ async function getJson(url: string, headers: Record<string, string> = {}): Promi
   } catch {
     throw new Error('The rate provider sent a response that is not valid JSON');
   }
+}
+
+async function getText(url: string): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Accept: 'text/csv, text/plain, */*' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (e) {
+    const why = e instanceof Error && e.name === 'TimeoutError' ? 'it did not answer within 15 seconds' : e instanceof Error ? e.message : String(e);
+    throw new Error(`Could not reach the rate provider: ${why}`);
+  }
+  if (!res.ok) throw new Error(`The rate provider answered ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`);
+  return res.text();
 }
 
 const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -205,6 +226,58 @@ async function fetchEcb(): Promise<Quotes> {
   cross(r, body.date, ECB.name, out);
   return out;
 }
+
+// ---------------------------------------------------------------- each currency's own central bank
+// Central banks that publish their own currency's rate against INR through a free, documented feed.
+// Each is asked only for its own currency; if it fails, the ECB rate is used and the failure is shown.
+
+/** Bank of Canada Valet API: FXINRCAD is CAD per 1 INR. https://www.bankofcanada.ca/valet/docs */
+async function fetchBankOfCanada(): Promise<Quote> {
+  const url = env('FX_URL_BOC') || 'https://www.bankofcanada.ca/valet/observations/FXINRCAD/json?recent=1';
+  const body = (await getJson(url)) as { observations?: { d?: unknown; FXINRCAD?: { v?: unknown } }[] };
+  const o = body?.observations?.[body.observations.length - 1];
+  const v = Number(o?.FXINRCAD?.v);
+  if (!o || !isDate(o.d) || !goodNum(v)) throw new Error('The rate provider sent an unexpected response');
+  return { rate: roundRate(1 / v), date: o.d, source: 'Bank of Canada' };
+}
+
+/** Norges Bank SDMX API (CSV): NOK per 100 INR. https://www.norges-bank.no/en/topics/Statistics/open-data/ */
+async function fetchNorgesBank(): Promise<Quote> {
+  const url = env('FX_URL_NORGES') || 'https://data.norges-bank.no/api/data/EXR/B.INR.NOK.SP?format=csv&lastNObservations=1&locale=en&bom=exclude';
+  const text = (await getText(url)).trim();
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) throw new Error('The rate provider sent an unexpected response');
+  const sep = lines[0].includes(';') ? ';' : ',';
+  const cols = lines[0].split(sep).map((c) => c.replace(/"/g, '').trim());
+  const row = lines[lines.length - 1].split(sep).map((c) => c.replace(/"/g, '').trim());
+  const at = (k: string) => row[cols.indexOf(k)];
+  const date = at('TIME_PERIOD');
+  const value = Number(at('OBS_VALUE'));
+  const mult = Number(at('UNIT_MULT') ?? 0) || 0;
+  if (!isDate(date) || !goodNum(value)) throw new Error('The rate provider sent an unexpected response');
+  // value NOK = 10^mult INR
+  return { rate: roundRate(10 ** mult / value), date, source: 'Norges Bank' };
+}
+
+const MONTHS: Record<string, string> = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+/** Czech National Bank daily fixing (text): "India|rupee|100|INR|23.456" is CZK per 100 INR. */
+async function fetchCzechNationalBank(): Promise<Quote> {
+  const url = env('FX_URL_CNB') || 'https://www.cnb.cz/en/financial-markets/foreign-exchange-market/central-bank-exchange-rate-fixing/central-bank-exchange-rate-fixing/daily.txt';
+  const lines = (await getText(url)).trim().split(/\r?\n/);
+  const head = /^(\d{1,2}) ([A-Z][a-z]{2}) (\d{4})/.exec(lines[0] ?? '');
+  const row = lines.find((l) => l.split('|')[3] === 'INR')?.split('|');
+  const amount = Number(row?.[2]);
+  const value = Number(row?.[4]?.replace(',', '.'));
+  if (!head || !MONTHS[head[2]] || !goodNum(amount) || !goodNum(value)) throw new Error('The rate provider sent an unexpected response');
+  return { rate: roundRate(amount / value), date: `${head[3]}-${MONTHS[head[2]]}-${head[1].padStart(2, '0')}`, source: 'Czech National Bank' };
+}
+
+/** Currencies fetched from their own central bank (EUR comes from the ECB, the pegs from their issuers). */
+export const OWN_CENTRAL_BANKS: Record<string, { bank: string; website: string; load: () => Promise<Quote> }> = {
+  CAD: { bank: 'Bank of Canada', website: 'https://www.bankofcanada.ca/valet/docs', load: fetchBankOfCanada },
+  NOK: { bank: 'Norges Bank', website: 'https://www.norges-bank.no/en/topics/Statistics/open-data/', load: fetchNorgesBank },
+  CZK: { bank: 'Czech National Bank', website: 'https://www.cnb.cz/en/financial-markets/foreign-exchange-market/central-bank-exchange-rate-fixing/', load: fetchCzechNationalBank },
+};
 
 /** Pegged currencies from the ECB's anchor rates. */
 function pegQuotes(ecb: Quotes): Quotes {
@@ -278,6 +351,26 @@ export async function fetchQuotes(wanted: string[]): Promise<{ quotes: Quotes; r
     return { quotes, runs };
   }
   if (info.mode !== 'exchangerate-api') {
+    // 1. each currency's own central bank, where it has a free documented feed
+    await Promise.all(
+      wanted
+        .filter((c) => OWN_CENTRAL_BANKS[c])
+        .map((c) => ({ c, bank: OWN_CENTRAL_BANKS[c] }))
+        .map(async ({ c, bank }) => {
+          const run: SourceRun = { source: bank.bank, ok: false, count: 0 };
+          runs.push(run);
+          try {
+            const q = await bank.load();
+            run.ok = true;
+            run.rateDate = q.date;
+            quotes.set(c, q);
+            run.count = 1;
+          } catch (e) {
+            run.error = `${e instanceof Error ? e.message : String(e)}; the ECB rate is used for ${c}`;
+          }
+        }),
+    );
+    // 2. the ECB (EUR is its own currency), and the pegs of currencies fixed to the USD or EUR
     const ecb = await attempt(ECB.name, fetchEcb);
     if (ecb && missing().length) {
       const run: SourceRun = { source: PEGS.name, ok: true, count: 0 };

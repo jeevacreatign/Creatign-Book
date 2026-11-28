@@ -104,7 +104,7 @@ describe('successful refresh', () => {
     const st = await api().get('/api/currency-rates/status');
     expect(st.body.lastRun).toMatchObject({ ok: true, rateDate: DAY });
     expect(st.body.provider).toMatchObject({ mode: 'auto', apiKeyRequired: false });
-    expect(st.body.provider.sources.map((x: { id: string }) => x.id)).toEqual(['ecb', 'pegs', 'exchangerate-api']);
+    expect(st.body.provider.sources.map((x: { id: string }) => x.id)).toEqual(['own', 'pegs', 'ecb', 'exchangerate-api']);
   });
 
   it('skips the fallback when the ECB and pegs cover every currency', async () => {
@@ -162,6 +162,57 @@ describe('successful refresh', () => {
     expect((await currency('KPW'))).toBeUndefined();
     await api().delete('/api/currencies/KWD');
     await api().delete('/api/currencies/SAR');
+  });
+});
+
+describe("each currency's own central bank", () => {
+  const BOC = 'https://www.bankofcanada.ca/valet/observations/FXINRCAD/json?recent=1';
+  const NORGES = 'https://data.norges-bank.no/api/data/EXR/B.INR.NOK.SP?format=csv&lastNObservations=1&locale=en&bom=exclude';
+  const CNB = 'https://www.cnb.cz/en/financial-markets/foreign-exchange-market/central-bank-exchange-rate-fixing/central-bank-exchange-rate-fixing/daily.txt';
+  const ymd = DAY.split('-');
+  const cnbDate = `${Number(ymd[2])} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(ymd[1]) - 1]} ${ymd[0]}`;
+  const ecbWithOwn = { amount: 1, base: 'EUR', date: DAY, rates: { INR: 101.92, USD: 1.0512, GBP: 0.8341, JPY: 161.2, SGD: 1.4021, CAD: 1.4703, NOK: 11.71, CZK: 24.28 } };
+  const banks = (fail: string[] = []) => (url: string) => {
+    if (fail.includes(url)) return json({ message: 'down' }, 503);
+    if (url === ECB_URL) return json(ecbWithOwn);
+    if (url === ER_URL) return json(erapi());
+    if (url === BOC) return json({ terms: {}, seriesDetail: { FXINRCAD: { label: 'INR/CAD' } }, observations: [{ d: DAY, FXINRCAD: { v: '0.01443' } }] });
+    if (url === NORGES)
+      return new Response(`FREQ;Frequency;BASE_CUR;Base Currency;QUOTE_CUR;Quote Currency;TENOR;Tenor;DECIMALS;CALCULATED;UNIT_MULT;Unit Multiplier;COLLECTION;Collection Indicator;TIME_PERIOD;OBS_VALUE\nB;Business;INR;Indian rupee;NOK;Norwegian krone;SP;Spot;4;false;2;Hundreds;C;ECB concertation time 14:15 CET;${DAY};11.4892\n`, { status: 200 });
+    if (url === CNB) return new Response(`${cnbDate} #231\nCountry|Currency|Amount|Code|Rate\nAustralia|dollar|1|AUD|15.021\nIndia|rupee|100|INR|23.822\nUSA|dollar|1|USD|23.084\n`, { status: 200 });
+    return json({}, 404);
+  };
+
+  it('takes CAD, NOK and CZK from their own central banks and EUR from the ECB', async () => {
+    for (const code of ['CAD', 'NOK', 'CZK']) expect((await api().post('/api/currencies').send({ code, rate: 1, date: OLD_DATE })).status).toBe(200);
+    const f = stubFetch(banks());
+    const r = await api().post('/api/currency-rates/refresh');
+    expect(r.body.ok).toBe(true);
+    expect(r.body.error).toBeUndefined();
+    const urls = f.mock.calls.map((c) => String(c[0]));
+    expect(urls).toEqual(expect.arrayContaining([BOC, NORGES, CNB, ECB_URL]));
+    expect(urls).not.toContain(ER_URL);
+    const by = (code: string) => r.body.updated.find((u: { code: string }) => u.code === code);
+    expect(by('CAD')).toMatchObject({ rate: Math.round((1 / 0.01443) * 1e6) / 1e6, source: 'Bank of Canada', date: DAY });
+    expect(by('NOK')).toMatchObject({ rate: Math.round((100 / 11.4892) * 1e6) / 1e6, source: 'Norges Bank', date: DAY });
+    expect(by('CZK')).toMatchObject({ rate: Math.round((100 / 23.822) * 1e6) / 1e6, source: 'Czech National Bank', date: DAY });
+    expect(by('EUR')).toMatchObject({ rate: 101.92, source: 'European Central Bank' });
+    expect(by('AED').source).toMatch(/^Central bank peg: Central Bank of the UAE/);
+    expect((await currency('CAD')).status.provider).toBe('Bank of Canada');
+  });
+
+  it("falls back to the ECB rate when a currency's own central bank is down, and says so", async () => {
+    stubFetch(banks([BOC]));
+    const r = await api().post('/api/currency-rates/refresh');
+    expect(r.body.ok).toBe(true);
+    expect(r.body.error).toMatch(/Bank of Canada: The rate provider answered 503; the ECB rate is used for CAD/);
+    expect(r.body.updated.find((u: { code: string }) => u.code === 'CAD')).toMatchObject({ source: 'European Central Bank', rate: Math.round((101.92 / 1.4703) * 1e6) / 1e6 });
+    // a malformed answer is an error too
+    stubFetch((url) => (url === CNB ? new Response('nothing useful', { status: 200 }) : banks()(url)));
+    const r2 = await api().post('/api/currency-rates/refresh');
+    expect(r2.body.error).toMatch(/Czech National Bank: The rate provider sent an unexpected response/);
+    expect(r2.body.updated.find((u: { code: string }) => u.code === 'CZK').source).toBe('European Central Bank');
+    for (const code of ['CAD', 'NOK', 'CZK']) await api().delete(`/api/currencies/${code}`);
   });
 });
 
