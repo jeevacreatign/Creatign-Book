@@ -12,10 +12,17 @@
 //      shown in Settings > Currencies.
 // Other values: frankfurter (ECB and pegs only), exchangerate-api (that source only),
 // openexchangerates (needs OPENEXCHANGERATES_APP_ID; hourly, about 170 currencies).
+//
+// Mid-market rates: with OPENEXCHANGERATES_APP_ID set and no FX_RATES_PROVIDER, an admin chooses in
+// Settings > Currencies between "Live mid-market" (Open Exchange Rates, refreshed hourly, the closest to
+// the indicative rate search engines show) and "Central banks" (official once-a-day reference rates).
+// Mid-market rates are indicative: they will not always match another website's figure, which can come
+// from other data and another minute. A mid-market rate is stale after FX_MIDMARKET_STALE_HOURS (24)
+// market hours; when its refresh fails nothing is replaced by another source.
 // FX_RATES_URL overrides the ECB/Frankfurter or Open Exchange Rates address; FX_FALLBACK_URL the
 // ExchangeRate-API one (for a self-hosted mirror or a test stand-in).
-import { BASE_CURRENCY, DEFAULT_STALE_DAYS, rateOn, roundRate } from '../shared/currency';
-import { addDays, today } from '../shared/format';
+import { BASE_CURRENCY, DEFAULT_STALE_DAYS, rateOn, roundRate, type StaleRules } from '../shared/currency';
+import { addDays, toISO, today } from '../shared/format';
 import type { Currency, Database } from '../shared/types';
 import { flushDb, getDb, now } from './db';
 import { commit } from './services';
@@ -33,8 +40,20 @@ export interface SourceInfo {
   attribution?: { text: string; url: string };
 }
 
+export type RateBasis = 'mid-market' | 'central-bank';
+
 export interface ProviderInfo {
   mode: 'auto' | 'frankfurter' | 'exchangerate-api' | 'openexchangerates';
+  /** live mid-market (hourly) or official central-bank reference rates */
+  basis: RateBasis;
+  /** FX_RATES_PROVIDER fixes the provider on the server, so the choice in Settings is not offered */
+  basisFromEnv: boolean;
+  /** whether the mid-market provider's key is set on the server (never the key itself) */
+  midMarketAvailable: boolean;
+  /** how often the rates are refreshed automatically */
+  refreshEvery: string;
+  /** what the rates are, and that they are indicative */
+  note: string;
   name: string;
   /** sources in the order they are tried; a currency takes its rate from the first that quotes it */
   sources: SourceInfo[];
@@ -46,6 +65,8 @@ export interface SourceRun {
   source: string;
   ok: boolean;
   rateDate?: string;
+  /** provider timestamp of intraday rates */
+  asOf?: string;
   /** currencies this source set */
   count: number;
   error?: string;
@@ -56,8 +77,10 @@ export interface RefreshResult {
   provider: string;
   /** the date of the main source's rates */
   rateDate?: string;
+  /** provider timestamp of intraday (mid-market) rates */
+  rateAsOf?: string;
   fetchedAt: string;
-  updated: { code: string; previousRate: number; rate: number; date: string; source?: string }[];
+  updated: { code: string; previousRate: number; rate: number; date: string; source?: string; asOf?: string }[];
   /** currencies no source quotes */
   unsupported: string[];
   /** currencies whose default rate stays a later manual entry */
@@ -70,12 +93,16 @@ export interface RefreshResult {
 
 export interface FxRateSettings {
   autoRefresh: boolean;
+  /** chosen in Settings > Currencies; unset means mid-market when its key is set */
+  rateBasis?: RateBasis;
   lastRun?: RefreshResult;
   lastSuccessAt?: string;
 }
 
 const env = (k: string) => process.env[k]?.trim() || undefined;
 export const staleDays = () => Number(env('FX_RATES_STALE_DAYS')) || DEFAULT_STALE_DAYS;
+export const DEFAULT_MIDMARKET_STALE_HOURS = 24;
+export const midMarketStaleHours = () => Number(env('FX_MIDMARKET_STALE_HOURS')) || DEFAULT_MIDMARKET_STALE_HOURS;
 
 /**
  * Fixed parities set by the issuing central bank: units of the currency per 1 USD or 1 EUR. Applied to
@@ -147,31 +174,39 @@ const OXR: SourceInfo = {
   website: 'https://openexchangerates.org',
   apiKeyRequired: true,
   apiKeyConfigured: false,
-  updates: 'Hourly (depends on your plan)',
-  rateType: 'Market mid rates blended from several sources, about 170 currencies',
+  updates: 'Hourly on the free plan (more often on paid plans); refreshed here every hour',
+  rateType: 'Live mid-market rates (midpoint of buy and sell) blended from several market data sources, about 170 currencies. Indicative only: they will not always match the rate another website shows, which can come from other data or another minute',
 };
 
-export function providerInfo(): ProviderInfo {
-  const mode = env('FX_RATES_PROVIDER');
+const MIDMARKET_NOTE =
+  'Live mid-market rates from Open Exchange Rates, refreshed every hour. Indicative: the midpoint of market buy and sell prices, close to the rate search engines show, but not always the same figure, because providers use different data and update at different times. Banks and payment providers charge their own rates.';
+const CENTRAL_NOTE = 'Official central-bank reference rates, published once a working day (the Federal Reserve weekly). They can differ from the live market rate during the day.';
+
+export function providerInfo(db: Database = getDb()): ProviderInfo {
+  const envMode = env('FX_RATES_PROVIDER') as ProviderInfo['mode'] | undefined;
   const fred = !!env('FRED_API_KEY');
+  const oxrKey = !!env('OPENEXCHANGERATES_APP_ID');
   const OWN: SourceInfo = {
     ...OWN_BASE,
     apiKeyRequired: true,
     apiKeyConfigured: fred,
     rateType: `${OWN_BASE.rateType}. USD from the Federal Reserve (weekly, through FRED): ${fred ? 'FRED API key set on the server' : 'needs a free FRED API key in FRED_API_KEY on the server; until then USD uses the ECB rate'}`,
   };
-  if (mode === 'openexchangerates') {
-    const set = !!env('OPENEXCHANGERATES_APP_ID');
-    return { mode, name: OXR.name, sources: [{ ...OXR, apiKeyConfigured: set }], apiKeyRequired: true, apiKeyConfigured: set };
-  }
-  if (mode === 'frankfurter') return { mode, name: 'Central banks', sources: [OWN, PEGS, ECB], apiKeyRequired: false, apiKeyConfigured: false };
-  if (mode === 'exchangerate-api') return { mode, name: ERAPI.name, sources: [ERAPI], apiKeyRequired: false, apiKeyConfigured: false };
-  return { mode: 'auto', name: 'Central banks, then ExchangeRate-API', sources: [OWN, PEGS, ECB, ERAPI], apiKeyRequired: false, apiKeyConfigured: false };
+  const basis: RateBasis = envMode ? (envMode === 'openexchangerates' ? 'mid-market' : 'central-bank') : (fxRateSettings(db).rateBasis ?? (oxrKey ? 'mid-market' : 'central-bank'));
+  const mode: ProviderInfo['mode'] = envMode ?? (basis === 'mid-market' ? 'openexchangerates' : 'auto');
+  const common = { basis, basisFromEnv: !!envMode, midMarketAvailable: oxrKey, refreshEvery: basis === 'mid-market' ? 'every hour' : 'every 6 hours', note: basis === 'mid-market' ? MIDMARKET_NOTE : CENTRAL_NOTE };
+  if (mode === 'openexchangerates') return { mode, ...common, name: OXR.name, sources: [{ ...OXR, apiKeyConfigured: oxrKey }], apiKeyRequired: true, apiKeyConfigured: oxrKey };
+  if (mode === 'frankfurter') return { mode, ...common, name: 'Central banks', sources: [OWN, PEGS, ECB], apiKeyRequired: false, apiKeyConfigured: false };
+  if (mode === 'exchangerate-api') return { mode, ...common, name: ERAPI.name, sources: [ERAPI], apiKeyRequired: false, apiKeyConfigured: false };
+  return { mode: 'auto', ...common, name: 'Central banks, then ExchangeRate-API', sources: [OWN, PEGS, ECB, ERAPI], apiKeyRequired: false, apiKeyConfigured: false };
 }
+
+/** Stale limits beyond the default days: weekly banks in days, intraday providers in market hours. */
+export const staleRules = (): StaleRules => ({ staleDaysByProvider: providerStaleDays(), staleHoursByProvider: { [OXR.name]: midMarketStaleHours() } });
 
 export function fxRateSettings(db: Database): FxRateSettings {
   const s = (db.preferences.fxRates ?? {}) as Partial<FxRateSettings>;
-  return { autoRefresh: s.autoRefresh !== false, lastRun: s.lastRun, lastSuccessAt: s.lastSuccessAt };
+  return { autoRefresh: s.autoRefresh !== false, rateBasis: s.rateBasis === 'mid-market' || s.rateBasis === 'central-bank' ? s.rateBasis : undefined, lastRun: s.lastRun, lastSuccessAt: s.lastSuccessAt };
 }
 
 const TIMEOUT_MS = 15_000;
@@ -215,13 +250,15 @@ export interface Quote {
   rate: number;
   date: string;
   source: string;
+  /** provider timestamp, for intraday rates */
+  asOf?: string;
 }
 type Quotes = Map<string, Quote>;
 
 /** INR per unit from rates quoted as units per 1 unit of a base (base's INR rate / currency's rate). */
-function cross(rates: Record<string, unknown>, date: string, source: string, out: Quotes) {
+function cross(rates: Record<string, unknown>, date: string, source: string, out: Quotes, asOf?: string) {
   const inrPerBase = rates.INR as number;
-  for (const [code, v] of Object.entries(rates)) if (code !== 'INR' && goodNum(v) && !out.has(code)) out.set(code, { rate: roundRate(inrPerBase / v), date, source });
+  for (const [code, v] of Object.entries(rates)) if (code !== 'INR' && goodNum(v) && !out.has(code)) out.set(code, { rate: roundRate(inrPerBase / v), date, source, ...(asOf ? { asOf } : {}) });
 }
 
 async function fetchEcb(): Promise<Quotes> {
@@ -394,11 +431,15 @@ async function fetchOxr(): Promise<Quotes> {
   if (!appId) throw new Error('OPENEXCHANGERATES_APP_ID is not set in the server environment');
   const base = (env('FX_RATES_URL') || 'https://openexchangerates.org/api').replace(/\/+$/, '');
   // the App ID travels in a header, never in the logged URL
-  const body = (await getJson(`${base}/latest.json`, { Authorization: `Token ${appId}` })) as { timestamp?: number; rates?: Record<string, unknown> };
+  const body = (await getJson(`${base}/latest.json`, { Authorization: `Token ${appId}` })) as { timestamp?: number; rates?: Record<string, unknown>; error?: boolean; message?: string };
+  if (body?.error) throw new Error(`The rate provider reported an error${body.message ? `: ${String(body.message).replace(appId, '***')}` : ''}`);
   const r = body?.rates;
   if (!r || !goodNum(r.INR) || !goodNum(body.timestamp)) throw new Error('The rate provider response has no INR rate');
+  const at = new Date(body.timestamp * 1000);
+  if (at.getTime() > Date.now() + 10 * 60_000) throw new Error('The rate provider sent a rate time in the future');
   const out: Quotes = new Map();
-  cross(r, unixDate(body.timestamp), OXR.name, out);
+  // the rate applies from its local date; its exact time is kept for the stale check and display
+  cross(r, toISO(at), OXR.name, out, at.toISOString());
   return out;
 }
 
@@ -419,7 +460,9 @@ export async function fetchQuotes(wanted: string[]): Promise<{ quotes: Quotes; r
         run.count++;
       }
     }
-    run.rateDate = [...from.values()][0]?.date;
+    const first = [...from.values()][0];
+    run.rateDate = first?.date;
+    if (first?.asOf) run.asOf = first.asOf;
   };
   const attempt = async (name: string, load: () => Promise<Quotes>) => {
     const run: SourceRun = { source: name, ok: false, count: 0 };
@@ -515,6 +558,8 @@ export async function refreshRates(trigger: RefreshResult['trigger'] = 'manual')
   result.sources = runs;
   result.ok = runs.some((r) => r.ok);
   result.rateDate = runs.find((r) => r.ok)?.rateDate;
+  const asOf = runs.find((r) => r.ok)?.asOf;
+  if (asOf) result.rateAsOf = asOf;
   const errors = runs.filter((r) => r.error).map((r) => (runs.length > 1 ? `${r.source}: ${r.error}` : r.error!));
   if (errors.length) result.error = errors.join('; ');
   // the database may have been replaced while waiting for the provider
@@ -543,20 +588,33 @@ export function applyFetchedRate(c: Currency, quote: Quote, recordedAt: string, 
   const q = quote.date > day ? { ...quote, date: day } : quote;
   const previousRate = rateOn(c, day);
   const ownBank = OWN_CENTRAL_BANKS[c.code]?.bank === q.source;
+  // a rate entered by hand for that date is the user's choice: it is kept (hourly refreshes would
+  // otherwise overwrite it within the hour)
+  const manualSameDay = (c.history ?? []).find((h) => h.date === q.date && (h.source ?? 'manual') === 'manual');
+  if (manualSameDay) {
+    result?.keptManual.push({ code: c.code, date: manualSameDay.date, rate: manualSameDay.rate });
+    return;
+  }
   // a currency's own central bank replaces later rates that only stood in for it (fetched from another source)
   c.history = (c.history ?? []).filter((h) => h.date !== q.date && !(ownBank && h.date > q.date && h.source === 'fetched' && h.provider !== q.source));
-  c.history.push({ date: q.date, rate: q.rate, source: 'fetched', provider: q.source, recordedAt });
+  c.history.push({ date: q.date, rate: q.rate, source: 'fetched', provider: q.source, recordedAt, ...(q.asOf ? { asOf: q.asOf } : {}) });
   // the default for new transactions is the latest dated rate on or before today
   c.rate = rateOn(c, day);
   const later = c.history.filter((h) => h.date > q.date && h.date <= day).sort((a, b) => b.date.localeCompare(a.date))[0];
   if (later) result?.keptManual.push({ code: c.code, date: later.date, rate: later.rate });
-  else result?.updated.push({ code: c.code, previousRate, rate: q.rate, date: q.date, source: q.source });
+  else result?.updated.push({ code: c.code, previousRate, rate: q.rate, date: q.date, source: q.source, ...(q.asOf ? { asOf: q.asOf } : {}) });
 }
 
-export function saveFxRateSettings(body: { autoRefresh?: unknown }): FxRateSettings {
+export function saveFxRateSettings(body: { autoRefresh?: unknown; rateBasis?: unknown }): FxRateSettings {
   const db = getDb();
   const cur = fxRateSettings(db);
   const next: FxRateSettings = { ...cur, autoRefresh: body.autoRefresh === undefined ? cur.autoRefresh : body.autoRefresh === true };
+  if (body.rateBasis !== undefined) {
+    if (body.rateBasis !== 'mid-market' && body.rateBasis !== 'central-bank') throw new Error('Rate type must be mid-market or central-bank');
+    if (env('FX_RATES_PROVIDER')) throw new Error('The rate provider is fixed on the server by FX_RATES_PROVIDER');
+    if (body.rateBasis === 'mid-market' && !env('OPENEXCHANGERATES_APP_ID')) throw new Error('Live mid-market rates need OPENEXCHANGERATES_APP_ID set in the server environment (a free App ID from openexchangerates.org)');
+    next.rateBasis = body.rateBasis;
+  }
   db.preferences.fxRates = next;
   return next;
 }
@@ -564,14 +622,18 @@ export function saveFxRateSettings(body: { autoRefresh?: unknown }): FxRateSetti
 let timer: ReturnType<typeof setInterval> | undefined;
 
 /**
- * Refresh rates soon after start and then every 6 hours, when automatic refresh is on in
- * Settings > Currencies and there are foreign currencies. Turn off for the server with FX_AUTO_REFRESH=0.
+ * Refresh rates soon after start and then every hour for mid-market rates, or every 6 hours for
+ * central-bank rates, when automatic refresh is on in Settings > Currencies and there are foreign
+ * currencies. Turn off for the server with FX_AUTO_REFRESH=0.
  */
-export function startRateSchedule(everyMs = 6 * 60 * 60 * 1000) {
+export function startRateSchedule(everyMs = 60 * 60 * 1000) {
   if (timer) return;
   const tick = () => {
     const db = getDb();
     if (!fxRateSettings(db).autoRefresh || !db.currencies.some((c) => c.code !== BASE_CURRENCY)) return;
+    const last = fxRateSettings(db).lastRun;
+    // central banks publish once a day: after a successful refresh, ask again only after 6 hours
+    if (providerInfo(db).basis === 'central-bank' && last?.ok && Date.now() - Date.parse(last.fetchedAt) < 6 * 60 * 60 * 1000 - 60_000) return;
     refreshRates('automatic')
       .then((r) => !r.ok && console.error('[fx-rates]', r.error))
       .catch((e) => console.error('[fx-rates]', e));

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowRightLeft } from 'lucide-react';
 import { BASE_CURRENCY, fxOf, moneyIn, rateLabel, toBase, type RateStatus } from '@shared/currency';
-import { fmtDate } from '@shared/format';
+import { fmtDate, fmtDateTime } from '@shared/format';
 import type { Currency } from '@shared/types';
 import { useApi } from '../api';
 import { clsx } from './ui';
@@ -15,10 +15,27 @@ export interface DayRate {
   rate: number;
   source?: 'manual' | 'fetched' | 'unknown';
   rateDate?: string;
+  /** provider time of an intraday (mid-market) rate */
+  asOf?: string;
   provider?: string;
   stale?: boolean;
   staleReason?: string;
+  /** the latest refresh failed: this is the last saved rate */
+  refreshError?: string;
+  refreshFailedAt?: string;
 }
+
+/** "Fresh" / "Stale" tag for a fetched rate. */
+export function FreshTag({ stale }: { stale?: boolean }) {
+  return stale ? (
+    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">Stale</span>
+  ) : (
+    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200">Fresh</span>
+  );
+}
+
+/** "28/11/2026 12:10 PM" for a mid-market rate, "28/11/2026" for a daily one. */
+export const rateWhen = (date?: string, asOf?: string) => (asOf ? fmtDateTime(asOf) : date ? fmtDate(date) : '');
 
 /** "Fetched" / "Manual" tag for a rate. */
 export function RateSourceTag({ source, provider }: { source?: string; provider?: string }) {
@@ -39,8 +56,14 @@ export function DayRateNote({ info }: { info?: DayRate }) {
     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500" data-testid="rate-source">
       <RateSourceTag source={info.source} provider={info.provider} />
       <span>
-        {info.source === 'fetched' ? `Rate of ${fmtDate(info.rateDate!)} from ${info.provider ?? 'the rate provider'}` : info.rateDate ? `Rate entered for ${fmtDate(info.rateDate)}` : 'No dated rate for this currency'}
+        {info.source === 'fetched' ? `Rate of ${rateWhen(info.rateDate, info.asOf)} from ${info.provider ?? 'the rate provider'}${info.asOf ? ' (indicative mid-market)' : ''}` : info.rateDate ? `Rate entered for ${fmtDate(info.rateDate)}` : 'No dated rate for this currency'}
       </span>
+      {info.source === 'fetched' && !info.refreshError && <FreshTag stale={info.stale} />}
+      {info.refreshError && (
+        <span className="inline-flex items-center gap-1 font-medium text-red-700" data-testid="rate-refresh-failed">
+          <AlertTriangle size={12} /> The latest refresh failed{info.refreshFailedAt ? ` at ${fmtDateTime(info.refreshFailedAt)}` : ''} ({info.refreshError}); this is the last saved rate, not a current one.
+        </span>
+      )}
       {info.stale && (
         <span className="inline-flex items-center gap-1 font-medium text-amber-700" data-testid="rate-stale">
           <AlertTriangle size={12} /> {info.staleReason}. Refresh rates in Settings &gt; Currencies or check the rate.

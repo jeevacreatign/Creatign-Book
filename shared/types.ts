@@ -655,6 +655,8 @@ export interface RateEntry {
   provider?: string;
   /** when the rate was fetched or entered (ISO timestamp) */
   recordedAt?: string;
+  /** for intraday (mid-market) rates: the provider's own timestamp of the rate (ISO) */
+  asOf?: string;
 }
 
 /** One open foreign-currency balance revalued by an FX revaluation. */

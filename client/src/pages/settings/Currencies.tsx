@@ -10,7 +10,7 @@ import { api, useAction, useApi } from '../../api';
 import { useMe } from '../../auth';
 import { toast } from '../../lib/toast';
 import { DateInput, Field, Modal, Spinner, clsx, useConfirm } from '../../components/ui';
-import { CurrencyBadge, RateSourceTag, useCurrencies, type CurrencyRow } from '../../components/currency';
+import { CurrencyBadge, FreshTag, RateSourceTag, rateWhen, useCurrencies, type CurrencyRow } from '../../components/currency';
 
 export default function Currencies() {
   const admin = useMe().user.role !== 'Timesheet Staff';
@@ -70,7 +70,8 @@ export default function Currencies() {
                   <div className="flex flex-col gap-0.5">
                     <span className="flex items-center gap-1.5">
                       <RateSourceTag source={c.status?.source} provider={c.status?.provider} />
-                      {c.status?.date && <span className="text-xs">{fmtDate(c.status.date)}</span>}
+                      {c.status?.source === 'fetched' && <FreshTag stale={c.status.stale} />}
+                      {c.status?.date && <span className="text-xs">{rateWhen(c.status.date, c.status.asOf)}</span>}
                     </span>
                     {c.status?.source === 'fetched' && <span className="text-[11px] text-slate-400">{c.status.provider}</span>}
                     {c.status?.stale && (
@@ -215,10 +216,11 @@ interface RefreshResult {
   ok: boolean;
   provider: string;
   rateDate?: string;
+  rateAsOf?: string;
   fetchedAt: string;
   updated: { code: string; previousRate: number; rate: number; date: string; source?: string }[];
   unsupported: string[];
-  sources?: { source: string; ok: boolean; rateDate?: string; count: number; error?: string }[];
+  sources?: { source: string; ok: boolean; rateDate?: string; asOf?: string; count: number; error?: string }[];
   keptManual: { code: string; date: string; rate: number }[];
   error?: string;
   trigger: 'manual' | 'automatic';
@@ -226,12 +228,18 @@ interface RefreshResult {
 interface RateStatusInfo {
   provider: {
     mode: string;
+    basis: 'mid-market' | 'central-bank';
+    basisFromEnv: boolean;
+    midMarketAvailable: boolean;
+    refreshEvery: string;
+    note: string;
     name: string;
     apiKeyRequired: boolean;
     apiKeyConfigured: boolean;
     sources: { id: string; name: string; website: string; apiKeyRequired: boolean; apiKeyConfigured: boolean; updates: string; rateType: string; attribution?: { text: string; url: string } }[];
   };
   staleDays: number;
+  midMarketStaleHours: number;
   autoRefresh: boolean;
   lastRun?: RefreshResult;
   lastSuccessAt?: string;
@@ -246,6 +254,7 @@ function LiveRates({ admin }: { admin: boolean }) {
     return undefined;
   });
   const auto = useAction((on: boolean) => api('/currency-rates/settings', { method: 'PUT', body: { autoRefresh: on } }), 'Saved');
+  const basis = useAction((b: 'mid-market' | 'central-bank') => api('/currency-rates/settings', { method: 'PUT', body: { rateBasis: b } }), 'Rate type saved. Refresh Rates to fetch them now.');
   if (!data) return null;
   const run = data.lastRun ?? refresh.data;
   const p = data.provider;
@@ -254,7 +263,25 @@ function LiveRates({ admin }: { admin: boolean }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-0.5">
           <div className="font-semibold text-slate-800">Live exchange rates against INR</div>
-          <div className="text-xs text-slate-500">Each currency takes its INR rate from the first source below that quotes it. No API key is needed{p.apiKeyRequired ? (p.apiKeyConfigured ? ' (API key set on the server)' : ' (API key missing on the server)') : ''}. Rates older than {data.staleDays} days are flagged as stale.</div>
+          <div className="max-w-3xl text-xs text-slate-600" data-testid="rate-note">{p.note}</div>
+          {admin && !p.basisFromEnv && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 py-1 text-xs" role="radiogroup" aria-label="Rate type" data-testid="rate-basis">
+              <label className={clsx('flex items-center gap-1.5', !p.midMarketAvailable && 'text-slate-400')}>
+                <input type="radio" name="rate-basis" className="accent-brand-600" checked={p.basis === 'mid-market'} disabled={!p.midMarketAvailable || basis.isPending} onChange={() => basis.mutate('mid-market')} />
+                Live mid-market (Open Exchange Rates, hourly)
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" name="rate-basis" className="accent-brand-600" checked={p.basis === 'central-bank'} disabled={basis.isPending} onChange={() => basis.mutate('central-bank')} />
+                Central banks (official, once a day)
+              </label>
+              {!p.midMarketAvailable && <span className="text-slate-400">Live mid-market rates need a free App ID from openexchangerates.org in OPENEXCHANGERATES_APP_ID on the server.</span>}
+            </div>
+          )}
+          <div className="text-xs text-slate-500">
+            {p.sources.length > 1 ? 'Each currency takes its INR rate from the first source below that quotes it. ' : ''}
+            {p.apiKeyRequired ? (p.apiKeyConfigured ? 'API key set on the server. ' : 'API key missing on the server. ') : 'No API key is needed. '}
+            {p.basis === 'mid-market' ? `Rates older than ${data.midMarketStaleHours} market hours (weekend closure not counted) are flagged as stale.` : `Rates older than ${data.staleDays} days are flagged as stale.`}
+          </div>
           <ol className="mt-1.5 space-y-1" data-testid="rate-sources">
             {p.sources.map((src, i) => (
               <li key={src.id} className="flex gap-2">
@@ -290,14 +317,14 @@ function LiveRates({ admin }: { admin: boolean }) {
       {admin && (
         <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
           <input type="checkbox" className="accent-brand-600" checked={data.autoRefresh} onChange={(e) => auto.mutate(e.target.checked)} />
-          Refresh automatically every 6 hours
+          Refresh automatically {p.refreshEvery}
         </label>
       )}
       {run && (
         <div className={clsx('mt-3 rounded-md border px-3 py-2', !run.ok ? 'border-red-200 bg-red-50 text-red-900' : run.error ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900')} data-testid="refresh-status">
           <div className="flex items-center gap-1.5 font-medium">
             {run.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-            {run.ok ? `Rates of ${fmtDate(run.rateDate!)} fetched` : 'Refresh failed'} {run.trigger === 'automatic' ? '(automatic)' : ''} at {fmtDateTime(run.fetchedAt)}
+            {run.ok ? `Rates of ${rateWhen(run.rateDate, run.rateAsOf)} fetched` : 'Refresh failed'} {run.trigger === 'automatic' ? '(automatic)' : ''} at {fmtDateTime(run.fetchedAt)}
             {run.ok && run.error ? '. One source failed; the next one was used.' : ''}
           </div>
           {!run.ok && <div className="mt-0.5">{run.error}. No rate was changed; the rates below are the last ones saved.</div>}
@@ -305,7 +332,7 @@ function LiveRates({ admin }: { admin: boolean }) {
             <ul className="mt-1 space-y-0.5 text-xs">
               {(run.sources ?? []).map((r) => (
                 <li key={r.source} className={clsx(!r.ok && 'text-red-700')} data-testid="source-run">
-                  {r.ok ? '✓' : '✗'} {r.source}: {r.ok ? `${r.count} currenc${r.count === 1 ? 'y' : 'ies'}${r.rateDate ? `, rates of ${fmtDate(r.rateDate)}` : ''}` : r.error}
+                  {r.ok ? '✓' : '✗'} {r.source}: {r.ok ? `${r.count} currenc${r.count === 1 ? 'y' : 'ies'}${r.rateDate ? `, rates of ${rateWhen(r.rateDate, r.asOf)}` : ''}` : r.error}
                 </li>
               ))}
               <li>Updated: {run.updated.length ? run.updated.map((u) => `${u.code} ${u.previousRate} → ${u.rate}`).join(', ') : 'none'}</li>
