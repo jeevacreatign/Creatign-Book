@@ -33,7 +33,7 @@ function ItemList() {
   return (
     <div>
       <ItemsNav />
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <Dropdown button={() => <button className="flex items-center gap-1 text-[15px] font-semibold">{views.find((v) => v.value === status)?.label} <ChevronDown size={15} className="text-brand-600" /></button>}>
           {views.map((v) => (
             <MenuItem key={v.value} onClick={() => { setStatus(v.value); setSelected([]); }}>
@@ -41,7 +41,7 @@ function ItemList() {
             </MenuItem>
           ))}
         </Dropdown>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ExportMenu
             rows={exportRows}
             filename="products-and-services"
@@ -62,7 +62,7 @@ function ItemList() {
         </div>
       </div>
       <div className="px-5 py-3">
-        <div className="w-72">
+        <div className="w-full sm:w-72">
           <SearchBox value={q} onChange={(v) => { setQ(v); setSelected([]); }} placeholder="Search items" />
         </div>
       </div>
@@ -250,7 +250,7 @@ function ItemDetailView() {
   const acct = (aid: string) => accounts.find((a) => a.id === aid)?.name;
   return (
     <div className="flex h-full">
-      <div className="w-[280px] shrink-0 overflow-y-auto border-r border-slate-200">
+      <div className="hidden w-[280px] shrink-0 overflow-y-auto border-r lg:block border-slate-200">
         <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
           <span className="font-semibold">All Items</span>
           <button className="btn-primary w-8 px-0" onClick={() => navigate('/items/new')} aria-label="New item">
@@ -271,7 +271,7 @@ function ItemDetailView() {
         <Spinner />
       ) : (
         <div className="flex-1 overflow-y-auto">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
             <h1 className="text-lg">{i.name}</h1>
             <div className="flex gap-2">
               <button className="btn-secondary" onClick={() => navigate(`/items/${i.id}/edit`)}>
@@ -303,7 +303,7 @@ function ItemDetailView() {
                   <KV k="Created" v={fmtDate(i.createdAt.slice(0, 10))} />
                 </div>
                 {i.trackInventory && (
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div className="card p-4">
                       <div className="text-xs uppercase tracking-wide text-slate-500">Stock on Hand</div>
                       <div className={clsx('mt-1 text-2xl font-semibold tabular-nums', (i.stockOnHand ?? 0) <= (i.reorderLevel ?? -Infinity) ? 'text-red-600' : 'text-ink-900')}>{i.stockOnHand ?? 0} <span className="text-sm font-normal text-slate-500">{i.unit}</span></div>

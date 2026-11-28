@@ -70,7 +70,7 @@ export default function AccountDetail() {
     <div className="flex min-h-full flex-col">
       <DetailHeader
         kicker={
-          <span className="flex items-center gap-1.5">
+          <span className="flex flex-wrap items-center gap-1.5">
             <AccountIcon subType={acc.subType} size={13} />
             {subTypeLabel(acc.subType)}
             {acc.accountNumber && <span>· xx{acc.accountNumber.slice(-4)}</span>}
@@ -251,7 +251,7 @@ function LinesTab({ accountId, status, onOpen }: { accountId: string; status: Ex
               </td>
               <td>
                 {status === 'categorized' ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Status status={l.status} />
                     <button
                       className="link text-xs"
@@ -306,7 +306,7 @@ function BooksTab({ accountId }: { accountId: string }) {
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <div className="w-64">
+        <div className="w-full sm:w-64">
           <SearchBox value={search} onChange={(v) => { setSearch(v); setSelected([]); }} placeholder="Search transactions" />
         </div>
         <select className="input w-auto" value={period} onChange={(e) => { setPeriod(e.target.value); setSelected([]); }} aria-label="Period">
@@ -419,7 +419,7 @@ function CategorizeDrawer({ lineId, accountId, onClose }: { lineId: string; acco
 
       {l.status !== 'uncategorized' ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Status status={l.status} />
             {l.matched && (
               <span className="text-[13px] text-slate-600">

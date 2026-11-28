@@ -1,6 +1,6 @@
 // Time tracking, documents, settings, app placeholders, print pages and the public share page.
-import { useEffect, useState } from 'react';
-import { Link, NavLink, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Wallet, CreditCard, Download, FileText, Upload } from 'lucide-react';
 import { APPROVAL_KINDS } from '@shared/approval';
 import { parseDelimited } from '@shared/bankImport';
@@ -410,17 +410,35 @@ export function Settings() {
     { to: '/settings/import', label: 'Import Data' },
     ...(me.user.role === 'Admin' ? [{ to: '/settings/data', label: 'Data & Backup' }] : []),
   ].filter((t) => me.user.role !== 'Timesheet Staff' || t.to === '/settings/account');
+  return <SettingsShell tabs={tabs} />;
+}
+
+function SettingsShell({ tabs }: { tabs: { to: string; label: string; end?: boolean }[] }) {
+  const nav = useRef<HTMLDivElement>(null);
+  const { pathname } = useLocation();
+  // phones: keep the current settings page's pill in view in the scrolling strip
+  useEffect(() => {
+    const box = nav.current;
+    const el = box?.querySelector<HTMLElement>('a[aria-current="page"]');
+    if (box && el && box.scrollWidth > box.clientWidth) box.scrollLeft = el.offsetLeft - (box.clientWidth - el.offsetWidth) / 2;
+  }, [pathname]);
   return (
-    <div className="flex h-full">
-      <div className="w-56 shrink-0 border-r border-slate-200 p-3">
-        <div className="mb-2 px-2 text-xs font-semibold uppercase text-slate-400">Settings</div>
+    <div className="flex h-full flex-col md:flex-row">
+      {/* phones: the settings pages are a scrolling strip of pills above the page */}
+      <div ref={nav} className="no-print relative flex shrink-0 gap-1 overflow-x-auto whitespace-nowrap border-b border-slate-200 px-2 py-2 md:block md:w-56 md:overflow-visible md:border-b-0 md:border-r md:p-3">
+        <div className="mb-2 hidden px-2 text-xs font-semibold uppercase text-slate-400 md:block">Settings</div>
         {tabs.map((t) => (
-          <NavLink key={t.to} to={t.to} end={t.end} className={({ isActive }) => clsx('block rounded-md px-3 py-1.5 text-[13px]', isActive ? 'bg-brand-50 font-medium text-brand-700' : 'hover:bg-slate-50')}>
+          <NavLink
+            key={t.to}
+            to={t.to}
+            end={t.end}
+            className={({ isActive }) => clsx('shrink-0 rounded-full px-3 py-1.5 text-[13px] md:block md:rounded-md', isActive ? 'bg-brand-50 font-medium text-brand-700 max-md:ring-1 max-md:ring-brand-200' : 'text-slate-600 hover:bg-slate-50 md:text-inherit')}
+          >
             {t.label}
           </NavLink>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-6">
         <Routes>
           <Route index element={<OrgProfile />} />
           <Route path="account" element={<MyAccount />} />

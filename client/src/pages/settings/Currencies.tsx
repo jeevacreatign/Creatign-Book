@@ -55,7 +55,7 @@ export default function Currencies() {
           {data.map((c) => (
             <tr key={c.code} className="group">
               <td className="pl-4">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <CurrencyBadge code={c.code} />
                   <span className="font-medium">{c.name}</span>
                   {c.base && <span className="rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-300">Base currency</span>}
@@ -68,7 +68,7 @@ export default function Currencies() {
                   '-'
                 ) : (
                   <div className="flex flex-col gap-0.5">
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex flex-wrap items-center gap-1.5">
                       <RateSourceTag source={c.status?.source} provider={c.status?.provider} />
                       {c.status?.source === 'fetched' && <FreshTag stale={c.status.stale} />}
                       {c.status?.date && <span className="text-xs">{rateWhen(c.status.date, c.status.asOf)}</span>}
@@ -270,7 +270,7 @@ function LiveRates({ admin }: { admin: boolean }) {
                 <input type="radio" name="rate-basis" className="accent-brand-600" checked={p.basis === 'mid-market'} disabled={!p.midMarketAvailable || basis.isPending} onChange={() => basis.mutate('mid-market')} />
                 Live mid-market (Open Exchange Rates, hourly)
               </label>
-              <label className="flex items-center gap-1.5">
+              <label className="flex flex-wrap items-center gap-1.5">
                 <input type="radio" name="rate-basis" className="accent-brand-600" checked={p.basis === 'central-bank'} disabled={basis.isPending} onChange={() => basis.mutate('central-bank')} />
                 Central banks (official, once a day)
               </label>

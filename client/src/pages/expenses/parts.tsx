@@ -109,7 +109,7 @@ export function ReportingTags({ value, onChange }: { value: Record<string, strin
   return (
     <div className="space-y-2">
       {rows.map(([k, v], i) => (
-        <div key={i} className="flex items-center gap-2">
+        <div key={i} className="flex flex-wrap items-center gap-2">
           <input
             className="input w-36"
             placeholder="Tag (e.g. Region)"

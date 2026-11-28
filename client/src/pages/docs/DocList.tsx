@@ -139,7 +139,7 @@ function ListHeader({ kind, status, setStatus, compact, rows }: { kind: DocKind;
   const runRecurring = useAction(() => api<{ created: number }>('/recurring/run', { body: {} }), (r) => `${r.created} document(s) generated from recurring profiles`);
   const label = ui.filters.find((f) => f.value === status)?.label ?? 'All';
   return (
-    <div className={clsx('flex items-center justify-between gap-2 border-b border-slate-200 bg-white', compact ? 'px-3 py-2.5' : 'px-5 py-3')}>
+    <div className={clsx('flex items-center justify-between gap-2 border-b border-slate-200 bg-white', compact ? 'px-3 py-2.5' : 'px-3 py-3 sm:px-5')}>
       <Dropdown
         button={() => (
           <button className="flex items-center gap-1 text-[15px] font-semibold text-slate-900 hover:text-brand-700">
@@ -156,7 +156,7 @@ function ListHeader({ kind, status, setStatus, compact, rows }: { kind: DocKind;
           </MenuItem>
         ))}
       </Dropdown>
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <button className={compact ? 'btn-primary w-8 px-0' : 'btn-primary'} onClick={() => navigate(`${meta.path}/new`)} aria-label={`New ${meta.label}`}>
           <Plus size={15} />
           {!compact && 'New'}
@@ -221,8 +221,8 @@ export function DocListPage({ kind }: { kind: DocKind }) {
   return (
     <div className="flex h-full flex-col">
       {selected.length ? (
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
             {kind === 'bill' && (
               <button className="btn-primary btn-sm" disabled={!payable.length} title={payable.length ? undefined : 'Select open bills with a balance due'} onClick={() => navigate(`/purchases/payments-made/bulk?bills=${payable.map((b) => b.id).join(',')}`)}>
                 Record Payment{payable.length ? ` (${payable.length})` : ''}
@@ -255,12 +255,48 @@ export function DocListPage({ kind }: { kind: DocKind }) {
         )
       ) : (
         <div className="flex-1 overflow-auto">
-          <div className="px-5 py-3">
-            <div className="w-72">
+          <div className="px-3 py-3 sm:px-5">
+            <div className="w-full sm:w-72">
               <SearchBox value={q} onChange={setQ} placeholder={`Search ${meta.plural.toLowerCase()}`} />
             </div>
           </div>
-          <table className="table">
+          {/* phones: one card per document */}
+          <div className="border-t border-slate-100 md:hidden">
+            {data!.map((d) => (
+              <div key={d.id} className={clsx('flex items-start gap-3 border-b border-slate-100 px-3 py-3 active:bg-brand-50/60', selected.includes(d.id) && 'bg-brand-50/50')} onClick={() => navigate(`${meta.path}/${d.id}`)}>
+                <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-brand-600" aria-label={`Select ${d.number}`} checked={selected.includes(d.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(d.id)} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="truncate font-medium text-slate-900">{d.contactName}</span>
+                    <span className="shrink-0 text-right font-medium">
+                      <Amount d={d} v={d.total} base={d.baseTotal} />
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
+                    <span className="text-brand-700">{meta.recurring ? d.profileName : d.number}</span>
+                    <span>·</span>
+                    <span>{meta.recurring ? frequencyLabel(d.repeatEvery) : fmtDate(d.date)}</span>
+                    {d.dueDate && !meta.recurring && d.balance > 0 && cols.includes('dueDate') && (
+                      <>
+                        <span>·</span>
+                        <span>Due {fmtDate(d.dueDate)}</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <Status status={d.status} dueDate={d.dueDate} />
+                    {cols.includes('balance') && d.balance > 0 && d.balance !== d.total && (
+                      <span className="text-xs text-slate-500">
+                        Balance <Amount d={d} v={d.balance} />
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!data!.length && <div className="py-10 text-center text-slate-400">No {meta.plural.toLowerCase()} match this view.</div>}
+          </div>
+          <table className="table max-md:!hidden">
             <thead>
               <tr>
                 <th className="w-8">
@@ -309,7 +345,7 @@ export function DocListPane({ kind }: { kind: DocKind }) {
   const [status, setStatus] = useState('all');
   const { data = [] } = useDocList(kind, status, '');
   return (
-    <div className="no-print flex w-[300px] shrink-0 flex-col border-r border-slate-200">
+    <div className="no-print hidden w-[300px] shrink-0 flex-col border-r border-slate-200 lg:flex">
       <ListHeader kind={kind} status={status} setStatus={setStatus} compact />
       <div className="flex-1 overflow-y-auto">
         {data.map((d) => (

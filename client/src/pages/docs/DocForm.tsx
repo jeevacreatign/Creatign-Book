@@ -396,8 +396,8 @@ export function DocForm({ kind }: { kind: DocKind }) {
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto border border-slate-200">
-            <table className="w-full text-[13px]">
+          <div className="border border-slate-200 md:overflow-x-auto">
+            <table className="line-table w-full text-[13px]">
               <thead className="bg-white text-[11px] uppercase tracking-wide text-slate-500">
                 <tr className="border-b border-slate-200">
                   <th className="min-w-[260px] px-3 py-2 text-left font-semibold">Item Details</th>
@@ -414,7 +414,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
               <tbody>
                 {d.lineItems.map((l, i) => (
                   <tr key={l.id} className="border-b border-slate-100 align-top">
-                    <td className="px-3 py-2">
+                    <td className="lt-full lt-item px-3 py-2">
                       <Combo
                         allowFree
                         freeValue={l.name}
@@ -427,19 +427,19 @@ export function DocForm({ kind }: { kind: DocKind }) {
                       <textarea className="input mt-1 text-xs" rows={1} placeholder="Add a description" value={l.description || ''} onChange={(e) => setLine(i, { description: e.target.value })} />
                     </td>
                     {ui.lineAccount && (
-                      <td className="px-2 py-2">
+                      <td className="lt-full px-2 py-2" data-label="Account">
                         <AccountSelect accounts={boot.accounts} value={l.accountId} onChange={(v) => setLine(i, { accountId: v })} filter={(a) => (sales ? a.type === 'income' : a.type === 'expense' || a.subType === 'fixed_asset' || a.subType === 'other_current_asset')} />
                       </td>
                     )}
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-2" data-label="Quantity">
                       <input type="number" min={0} step="any" className="input text-right" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value as unknown as number })} />
                       {l.unit && <div className="mt-0.5 text-right text-xxs text-slate-500">{l.unit}</div>}
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-2" data-label="Rate">
                       <input type="number" min={0} step="0.01" className="input text-right" value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value as unknown as number })} />
                     </td>
                     {ui.lineDiscount && (
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-2" data-label="Discount">
                         <div className="flex">
                           <input type="number" min={0} max={100} className="input rounded-r-none text-right" value={l.discountPercent ?? 0} onChange={(e) => setLine(i, { discountPercent: e.target.value as unknown as number })} />
                           <span className="inline-flex items-center rounded-r-md border border-l-0 border-slate-300 bg-slate-50 px-1.5 text-xs">%</span>
@@ -447,18 +447,18 @@ export function DocForm({ kind }: { kind: DocKind }) {
                       </td>
                     )}
                     {!sales && (
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-2" data-label="Tax">
                         <TaxSelect value={l.taxId} intra={totals.intraState} onChange={(v) => setLine(i, { taxId: v })} />
                         {l.hsnSac && <div className="mt-0.5 text-xxs text-slate-500">HSN/SAC: {l.hsnSac}</div>}
                       </td>
                     )}
                     {ui.lineCustomer && (
-                      <td className="px-2 py-2">
+                      <td className="lt-full px-2 py-2" data-label="Client Details">
                         <Select value={l.customerId || ''} onChange={(e) => setLine(i, { customerId: e.target.value || undefined })} placeholder="Select Client" options={customers.map((c) => ({ value: c.id, label: c.displayName }))} />
                       </td>
                     )}
-                    <td className="px-3 py-3 text-right font-medium tabular-nums">{num(lineAmount(l))}</td>
-                    <td className="py-2 pr-2">
+                    <td className="lt-amount px-3 py-3 text-right font-medium tabular-nums" data-label="Amount">{num(lineAmount(l))}</td>
+                    <td className="lt-remove py-2 pr-2">
                       <button type="button" aria-label="Remove row" className="mt-1.5 text-slate-400 hover:text-red-500" onClick={() => set({ lineItems: d.lineItems.length > 1 ? d.lineItems.filter((_, j) => j !== i) : [blankLine()] })}>
                         <Trash2 size={14} />
                       </button>
@@ -469,7 +469,7 @@ export function DocForm({ kind }: { kind: DocKind }) {
             </table>
           </div>
           <div className="mt-3 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button type="button" className="btn-secondary btn-sm text-brand-700" onClick={() => set({ lineItems: [...d.lineItems, blankLine()] })}>
                 <Plus size={13} /> Add New Row
               </button>
@@ -485,28 +485,28 @@ export function DocForm({ kind }: { kind: DocKind }) {
                   <input type="number" min={0} max={100} className="input rounded-r-none text-right" value={d.discountPercent ?? 0} onChange={(e) => set({ discountPercent: e.target.value as unknown as number })} />
                   <span className="inline-flex items-center rounded-r-md border border-l-0 border-slate-300 bg-white px-2 text-xs">%</span>
                 </div>
-                <span className="w-28 text-right tabular-nums">-{num(totals.discountAmount)}</span>
+                <span className="w-24 shrink-0 text-right tabular-nums sm:w-28">-{num(totals.discountAmount)}</span>
               </div>
               <TaxRows rows={totals.taxBreakdown} reverseCharge={d.reverseCharge} inclusive={!!d.taxInclusive && !d.reverseCharge} />
               <div className="flex items-center justify-between gap-3 py-1.5">
                 <span className="text-slate-600">TDS</span>
-                <Select className="w-44" value={d.tdsRate ?? 0} onChange={(e) => set({ tdsRate: Number(e.target.value), tcsRate: Number(e.target.value) ? 0 : d.tcsRate })} options={TDS_RATES.map((t) => ({ value: t.value, label: t.label }))} />
-                <span className="w-28 text-right tabular-nums">-{num(totals.tdsAmount)}</span>
+                <Select className="w-32 sm:w-44" value={d.tdsRate ?? 0} onChange={(e) => set({ tdsRate: Number(e.target.value), tcsRate: Number(e.target.value) ? 0 : d.tcsRate })} options={TDS_RATES.map((t) => ({ value: t.value, label: t.label }))} />
+                <span className="w-24 shrink-0 text-right tabular-nums sm:w-28">-{num(totals.tdsAmount)}</span>
               </div>
               <div className="flex items-center justify-between gap-3 py-1.5">
                 <span className="text-slate-600">TCS</span>
-                <Select className="w-44" value={d.tcsRate ?? 0} onChange={(e) => set({ tcsRate: Number(e.target.value), tdsRate: Number(e.target.value) ? 0 : d.tdsRate })} options={TCS_RATES.map((t) => ({ value: t.value, label: t.label }))} />
-                <span className="w-28 text-right tabular-nums">{num(totals.tcsAmount)}</span>
+                <Select className="w-32 sm:w-44" value={d.tcsRate ?? 0} onChange={(e) => set({ tcsRate: Number(e.target.value), tdsRate: Number(e.target.value) ? 0 : d.tdsRate })} options={TCS_RATES.map((t) => ({ value: t.value, label: t.label }))} />
+                <span className="w-24 shrink-0 text-right tabular-nums sm:w-28">{num(totals.tcsAmount)}</span>
               </div>
               <div className="flex items-center justify-between gap-3 py-1.5">
                 <input className="input w-28 border-dashed" value={d.adjustmentLabel ?? 'Adjustment'} onChange={(e) => set({ adjustmentLabel: e.target.value })} aria-label="Adjustment label" />
                 <input type="number" step="0.01" className="input w-24 text-right" value={d.adjustment ?? 0} onChange={(e) => set({ adjustment: e.target.value as unknown as number })} />
-                <span className="w-28 text-right tabular-nums">{num(totals.adjustment)}</span>
+                <span className="w-24 shrink-0 text-right tabular-nums sm:w-28">{num(totals.adjustment)}</span>
               </div>
               {ui.roundOff && (
                 <div className="flex items-center justify-between gap-3 py-1.5">
                   <Checkbox checked={!!d.roundOff} onChange={(v) => set({ roundOff: v })} label="Round Off" />
-                  <span className="w-28 text-right tabular-nums">{num(adjustedForRound)}</span>
+                  <span className="w-24 shrink-0 text-right tabular-nums sm:w-28">{num(adjustedForRound)}</span>
                 </div>
               )}
               <div className="mt-2 flex items-center justify-between border-t border-slate-300 pt-3 text-base font-semibold">

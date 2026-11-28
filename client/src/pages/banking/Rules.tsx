@@ -162,7 +162,7 @@ export function RuleForm() {
   const setCrit = (i: number, c: Partial<RuleCriterion>) => setF({ ...f, criteria: f.criteria.map((x, k) => (k === i ? { ...x, ...c } : x)) });
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <h1 className="text-[19px]">{ruleId ? 'Edit Rule' : 'New Rule'}</h1>
         <button className="btn-ghost w-8 px-0" onClick={() => navigate(-1)} aria-label="Close">
           <X size={18} />
@@ -222,7 +222,7 @@ export function RuleForm() {
           </div>
           <div className="space-y-2 p-4">
             {f.criteria.map((c, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex flex-wrap items-center gap-2">
                 <select className="input w-44" value={c.field} onChange={(e) => setCrit(i, { field: e.target.value as RuleCriterion['field'], op: e.target.value === 'amount' ? 'eq' : 'contains' })}>
                   {FIELD_OPTS.map((o) => (
                     <option key={o.value} value={o.value}>

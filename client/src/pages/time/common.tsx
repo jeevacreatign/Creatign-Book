@@ -86,7 +86,7 @@ export function FilterPill({ label, value, options, onChange, icon, placeholder 
 
 export function PeriodPill({ value, onChange, custom, setCustom }: { value: string; onChange: (v: string) => void; custom: { from?: string; to?: string }; setCustom: (c: { from?: string; to?: string }) => void }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <FilterPill label="Period" value={value} onChange={onChange} options={TIME_PERIODS.map((p) => ({ value: p.value, label: p.label }))} />
       {value === 'custom' && (
         <div className="flex items-center gap-1">
@@ -263,7 +263,7 @@ export function LogEntryModal({ open, onClose, entry, defaults }: { open: boolea
               ]}
             />
             {f.useRange ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input type="time" className="input w-32" value={f.startTime} onChange={(e) => setF({ ...f, startTime: e.target.value })} disabled={locked} aria-label="Start time" />
                 <span className="text-slate-400">to</span>
                 <input type="time" className="input w-32" value={f.endTime} onChange={(e) => setF({ ...f, endTime: e.target.value })} disabled={locked} aria-label="End time" />
@@ -358,7 +358,7 @@ export function TimerChip() {
         </button>
       )}
       {open && (
-        <div className="menu right-0 w-[360px] p-0 text-slate-800">
+        <div className="menu right-0 w-[360px] p-0 max-sm:fixed max-sm:inset-x-2 max-sm:top-14 max-sm:w-auto text-slate-800">
           {t ? <RunningTimerPanel t={t} ms={ms} onDone={() => setOpen(false)} /> : <StartTimerPanel preset={preset} onDone={() => { setOpen(false); qc.invalidateQueries(); }} />}
         </div>
       )}
@@ -519,7 +519,7 @@ export function InvoiceProjectModal({ project, open, onClose }: { project: Proje
       <div className="space-y-4">
         {fixed ? (
           <>
-            <div className="grid grid-cols-3 gap-3 rounded-md bg-slate-50 p-3 text-[13px]">
+            <div className="grid grid-cols-1 gap-3 rounded-md bg-slate-50 p-3 sm:grid-cols-3 text-[13px]">
               <div>
                 <div className="text-slate-500">Total Project Cost</div>
                 <div className="font-semibold">{money(project.rate)}</div>
@@ -540,7 +540,7 @@ export function InvoiceProjectModal({ project, open, onClose }: { project: Proje
         ) : (
           <>
             <Field label="Unbilled time from">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <DateInput className="w-36" value={range.from} onChange={(from) => setRange({ ...range, from })} placeholder="Start" />
                 <span className="text-slate-400">to</span>
                 <DateInput className="w-36" value={range.to} onChange={(to) => setRange({ ...range, to })} placeholder="End" />

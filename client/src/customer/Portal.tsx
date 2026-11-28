@@ -450,7 +450,7 @@ function RowList({ rows, showKind }: { rows: Row[]; showKind?: boolean }) {
         <li key={r.id}>
           <Link to={`/portal/docs/${r.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="truncate text-[13px] font-medium text-slate-800">
                   {showKind && `${DOC_META[r.kind].label} `}
                   {r.number}

@@ -268,7 +268,7 @@ function Overview({ p, onInvoice, onWatch }: { p: ProjectDetail; onInvoice: () =
           </div>
         </div>
         <div className="rounded-lg border border-slate-200">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-3 sm:px-5">
             <div className="text-[14px] font-semibold">Logged Hours</div>
             <FilterPill value={period} onChange={setPeriod} options={CHART_PERIODS.map((x) => ({ value: x.value, label: x.label }))} />
           </div>
@@ -285,10 +285,10 @@ function Overview({ p, onInvoice, onWatch }: { p: ProjectDetail; onInvoice: () =
             </ResponsiveContainer>
           </div>
           <div className="flex justify-center gap-5 pb-3 text-xs text-slate-600">
-            <span className="flex items-center gap-1.5">
+            <span className="flex flex-wrap items-center gap-1.5">
               <span className="h-2.5 w-4 rounded-sm" style={{ background: SERIES_BILLABLE }} /> Billable
             </span>
-            <span className="flex items-center gap-1.5">
+            <span className="flex flex-wrap items-center gap-1.5">
               <span className="h-2.5 w-4 rounded-sm" style={{ background: SERIES_NON }} /> Non-billable
             </span>
           </div>
@@ -772,7 +772,7 @@ function TxnCard<T extends { id: string; status: string }>({ title, rows, cols, 
           {list.length > 0 && (
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-[13px] text-slate-600">
               <span>Total Count: {list.length}</span>
-              <span className="flex items-center gap-2">
+              <span className="flex flex-wrap items-center gap-2">
                 <button className="btn-ghost btn-sm" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Previous page">
                   ‹
                 </button>
@@ -888,7 +888,7 @@ function Sales({ p, onInvoice }: { p: ProjectDetail; onInvoice: () => void }) {
   if (!data) return <Spinner />;
   return (
     <div className="space-y-5 p-5">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button className="btn-primary" onClick={onInvoice}>
           <Plus size={14} /> Invoice unbilled {p.billingMethod === 'fixed' ? 'project fee' : 'time'}
         </button>
@@ -1005,10 +1005,10 @@ function ActivityLogs({ id }: { id: string }) {
   const { data = [] } = useApi<Activity[]>(`/activities${qs({ entityId: id })}`);
   if (!data.length) return <div className="py-16 text-center text-slate-500">No activity yet.</div>;
   return (
-    <ol className="max-w-3xl divide-y divide-slate-100 px-8 py-4">
+    <ol className="max-w-3xl divide-y divide-slate-100 px-4 py-4 sm:px-8">
       {data.map((a) => (
-        <li key={a.id} className="grid grid-cols-[170px_28px_minmax(0,1fr)] items-start gap-4 py-4">
-          <div className="text-[13px] text-slate-500">{fmtDateTime(a.createdAt)}</div>
+        <li key={a.id} className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-3 py-4 sm:grid-cols-[170px_28px_minmax(0,1fr)] sm:gap-4">
+          <div className="col-span-2 text-[13px] text-slate-500 sm:col-span-1">{fmtDateTime(a.createdAt)}</div>
           <span className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-orange-500">
             <span className="h-2 w-2 rounded-full border-2 border-orange-500" />
           </span>
@@ -1127,7 +1127,7 @@ function BudgetForm({ p, budget, onDone }: { p: ProjectDetail; budget?: BudgetVi
   const fill = (aid: string) => setLines(lines.map((l) => (l.accountId === aid ? { ...l, amounts: buckets.map(() => l.amounts[0] ?? '') } : l)));
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <h2 className="text-[18px] font-semibold">{budget ? 'Edit Budget' : 'New Budget'}</h2>
         <button className="btn-ghost w-8 px-0" onClick={() => onDone(budget?.id)} aria-label="Close">
           <X size={17} />
@@ -1238,7 +1238,7 @@ function BudgetReport({ b, onBack, onEdit }: { b: BudgetView; onBack: () => void
   const variance = (budget: number, actual: number, type?: string) => (type === 'expense' ? budget - actual : actual - budget);
   return (
     <div>
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <div className="flex items-center gap-3">
           <button className="btn-icon" onClick={onBack} aria-label="Back to budgets">
             <ArrowLeft size={15} />

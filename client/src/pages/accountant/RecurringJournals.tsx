@@ -207,7 +207,7 @@ function Form() {
   const save = useAction(() => (id ? api<RecurringJournal>(`/recurring-journals/${id}`, { method: 'PUT', body: { ...f, lines } }) : api<RecurringJournal>('/recurring-journals', { body: { ...f, lines } })), 'Recurring journal saved');
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <h1 className="text-[19px]">{id ? 'Edit Voucher Schedule' : 'New Voucher Schedule'}</h1>
         <button className="btn-ghost w-8 px-0" onClick={() => navigate(-1)} aria-label="Close">
           <X size={18} />

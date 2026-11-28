@@ -27,18 +27,18 @@ export function Field({ label, required, children, hint, className, inline = tru
 
 export function PageHeader({ title, children, sub }: { title: ReactNode; children?: ReactNode; sub?: ReactNode }) {
   return (
-    <div className="no-print flex min-h-[56px] items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-2">
-      <div className="min-w-0">
+    <div className="no-print flex min-h-[56px] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-200 bg-white px-3 py-2 sm:flex-nowrap sm:px-5">
+      <div className="min-w-0 max-sm:flex-1">
         <h1 className="truncate text-lg font-semibold">{title}</h1>
         {sub && <div className="text-xs text-slate-500">{sub}</div>}
       </div>
-      <div className="flex items-center gap-2">{children}</div>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );
 }
 
 export function FormFooter({ children }: { children: ReactNode }) {
-  return <div className="no-print sticky bottom-0 z-10 flex items-center gap-2 border-t border-slate-200 bg-white px-5 py-3 shadow-[0_-2px_6px_rgba(0,0,0,0.03)]">{children}</div>;
+  return <div className="no-print sticky bottom-0 z-10 flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-3 py-3 shadow-[0_-2px_6px_rgba(0,0,0,0.03)] sm:px-5">{children}</div>;
 }
 
 export function Spinner({ label = 'Loading…' }: { label?: string }) {
@@ -330,7 +330,7 @@ export function Dropdown({ button, children, align = 'left', className }: { butt
     <div ref={ref} className={clsx('relative inline-block', className)}>
       <div onClick={() => setOpen((o) => !o)}>{button(open)}</div>
       {open && (
-        <div className={clsx('menu', align === 'right' ? 'right-0' : 'left-0')} onClick={(e) => (e.target as HTMLElement).closest('[data-close]') && setOpen(false)}>
+        <div className={clsx('menu max-w-[calc(100vw-16px)]', align === 'right' ? 'right-0' : 'left-0')} onClick={(e) => (e.target as HTMLElement).closest('[data-close]') && setOpen(false)}>
           {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>
       )}
@@ -356,16 +356,16 @@ export function Modal({ open, onClose, title, children, footer, width = 'max-w-l
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 pt-16" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-2 pt-6 sm:p-4 sm:pt-16" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal className={clsx('w-full rounded-lg bg-white shadow-xl', width)}>
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
           <div className="text-[15px] font-semibold">{title}</div>
           <button onClick={onClose} aria-label="Close" className="text-slate-400 hover:text-red-500">
             <X size={18} />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-3">{footer}</div>}
+        <div className="max-h-[75vh] overflow-y-auto px-4 py-4 sm:max-h-[70vh] sm:px-5">{children}</div>
+        {footer && <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 sm:px-5">{footer}</div>}
       </div>
     </div>
   );
@@ -376,14 +376,14 @@ export function Drawer({ open, onClose, title, children, footer, width = 'max-w-
   return (
     <div className="no-print fixed inset-0 z-50 flex justify-end bg-slate-900/30" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={clsx('flex h-full w-full flex-col bg-white shadow-2xl', width)}>
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
           <div className="text-[15px] font-semibold">{title}</div>
           <button onClick={onClose} aria-label="Close" className="text-slate-400 hover:text-red-500">
             <X size={18} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-3">{footer}</div>}
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5">{children}</div>
+        {footer && <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 sm:px-5">{footer}</div>}
       </div>
     </div>
   );
@@ -427,7 +427,7 @@ export function useConfirm() {
 
 export function Tabs<T extends string>({ tabs, value, onChange, className }: { tabs: { value: T; label: ReactNode }[]; value: T; onChange: (v: T) => void; className?: string }) {
   return (
-    <div className={clsx('flex gap-6 border-b border-slate-200', className)}>
+    <div className={clsx('flex gap-6 overflow-x-auto whitespace-nowrap border-b border-slate-200', className)}>
       {tabs.map((t) => (
         <button key={t.value} type="button" className={clsx('tab', value === t.value && 'tab-active')} onClick={() => onChange(t.value)}>
           {t.label}
@@ -439,7 +439,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, className }: { t
 
 export function KV({ k, v }: { k: ReactNode; v: ReactNode }) {
   return (
-    <div className="grid grid-cols-[150px_minmax(0,1fr)] gap-3 py-1 text-[13px]">
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-1 text-[13px] sm:grid-cols-[150px_minmax(0,1fr)]">
       <div className="text-slate-500">{k}</div>
       <div className="break-words text-slate-800">{v || '-'}</div>
     </div>

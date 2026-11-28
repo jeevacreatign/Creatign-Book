@@ -238,7 +238,7 @@ export function Comments({ entityType, entityId }: { entityType: string; entityI
             <li key={c.id} className="group rounded-md border border-slate-200 p-3">
               <div className="mb-1 flex items-center justify-between text-xxs text-slate-500">
                 <span className="font-semibold text-slate-700">{c.author}</span>
-                <span className="flex items-center gap-2">
+                <span className="flex flex-wrap items-center gap-2">
                   {fmtDateTime(c.createdAt)}
                   <button className="invisible text-slate-400 hover:text-red-500 group-hover:visible" onClick={() => del.mutate(c.id)} aria-label="Delete comment">
                     <Trash2 size={12} />
@@ -285,7 +285,7 @@ export function Lifecycle({ title, subtitle, steps, actions }: { title: string; 
       <div className="mt-10 text-xs font-semibold uppercase tracking-wider text-slate-400">Life cycle</div>
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         {steps.map((s, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={i} className="flex flex-wrap items-center gap-2">
             {Array.isArray(s) ? (
               <div className="flex flex-col gap-2">
                 {s.map((x) => (

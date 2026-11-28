@@ -167,7 +167,7 @@ export default function Timesheet() {
   return (
     <div className="flex h-full flex-col">
       {selected.length ? (
-        <div className="flex min-h-[60px] items-center gap-2 border-b border-slate-200 bg-slate-50 px-6">
+        <div className="flex min-h-[60px] flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 sm:px-6">
           <button className="btn-secondary btn-sm" onClick={() => bulk.mutate('billable', { onSuccess: () => setSelected([]) })}>
             Mark as Billable
           </button>
@@ -194,10 +194,10 @@ export default function Timesheet() {
           </button>
         </div>
       ) : (
-        <div className="flex min-h-[60px] items-center justify-between gap-3 border-b border-slate-200 px-6">
+        <div className="flex min-h-[60px] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2 sm:px-6">
           <Dropdown
             button={() => (
-              <button className="flex items-center gap-1 text-[19px] font-semibold text-slate-900">
+              <button className="flex items-center gap-1 whitespace-nowrap text-[17px] font-semibold text-slate-900 sm:text-[19px]">
                 {VIEWS.find((v) => v.value === view)?.label} <ChevronDown size={15} className="text-brand-600" />
               </button>
             )}
@@ -208,7 +208,7 @@ export default function Timesheet() {
               </MenuItem>
             ))}
           </Dropdown>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button className={clsx('flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px]', showSummary ? 'bg-brand-50 text-brand-700' : 'text-brand-600 hover:bg-slate-50')} onClick={toggleSummary}>
               <BarChart3 size={14} /> Summary
             </button>
@@ -399,7 +399,7 @@ function SummaryPanel({ s }: { s?: Summary }) {
   const max = Math.max(1, ...s.byProject.map((x) => x.hours));
   const maxU = Math.max(1, ...s.byUser.map((x) => x.hours));
   return (
-    <div className="grid gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid gap-4 border-b border-slate-200 bg-slate-50 px-3 py-4 sm:px-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-3">
         {tiles.map(([label, v, sub]) => (
           <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
@@ -459,7 +459,7 @@ function MonthCalendar({ month, setMonth, entries, onDay, onEntry }: { month: st
   return (
     <div className="p-5">
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button className="btn-icon" onClick={() => shift(-1)} aria-label="Previous month">
             <ChevronLeft size={15} />
           </button>
@@ -587,7 +587,7 @@ function WeeklyLogModal({ open, onClose }: { open: boolean; onClose: () => void 
             <ChevronRight size={15} />
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] text-slate-600">User</span>
           <Select className="w-48" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="Me" options={users.map((u) => ({ value: u.id, label: u.name }))} />
         </div>
