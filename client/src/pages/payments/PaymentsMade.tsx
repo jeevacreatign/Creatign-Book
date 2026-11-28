@@ -28,7 +28,7 @@ function List() {
   const exportRows = selected.length ? data.filter((p) => selected.includes(p.id)) : data;
   return (
     <div>
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <div className="text-[15px] font-semibold">All Payments</div>
         <div className="flex gap-2">
           <ExportMenu rows={exportRows} filename="payments-made" label={selected.length ? 'Export Selected' : 'Export'} columns={[
@@ -68,8 +68,8 @@ function List() {
         />
       ) : (
         <>
-          <div className="px-5 py-3">
-            <div className="w-72">
+          <div className="px-3 py-3 sm:px-5">
+            <div className="w-full sm:w-72">
               <SearchBox value={q} onChange={(v) => { setQ(v); setSelected([]); }} placeholder="Search payments" />
             </div>
           </div>
@@ -367,7 +367,7 @@ function DetailView() {
   const delRefund = useAction((rid: string) => api(`/payments-made/${id}/refunds/${rid}`, { method: 'DELETE' }), 'Refund deleted');
   return (
     <div className="flex h-full">
-      <div className="no-print w-[300px] shrink-0 overflow-y-auto border-r border-slate-200">
+      <div className="no-print hidden w-[300px] shrink-0 overflow-y-auto border-r lg:block border-slate-200">
         <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
           <span className="font-semibold">All Payments</span>
           <button className="btn-primary w-8 px-0" onClick={() => navigate('/purchases/payments-made/new')} aria-label="New">
@@ -584,7 +584,7 @@ function BulkPayment() {
   if (isLoading) return <Spinner />;
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <h1 className="text-lg">Bulk Payments</h1>
         <button className="btn-ghost w-8 px-0" onClick={() => navigate(-1)} aria-label="Close">
           <X size={18} />

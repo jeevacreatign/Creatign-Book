@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ChevronDown, ChevronRight, MoreHorizontal, Pencil, Plus, X, Mail, Phone, Smartphone, Paperclip, Printer, FileText, Send, Link2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Plus, X, Mail, Phone, Smartphone, Paperclip, Printer, FileText, Send, Link2 } from 'lucide-react';
 import { DOC_META } from '@shared/docmeta';
 import { PERIODS, fmtDate, fmtDateTime, money, type PeriodKey } from '@shared/format';
 import { PAYMENT_TERMS, type Contact, type ContactKind, type Expense, type Journal, type Mail as MailT, type PaymentMade, type PaymentReceived, type Project, type RecurringExpense, type TxnDoc } from '@shared/types';
@@ -49,7 +49,7 @@ function ContactList({ kind }: { kind: ContactKind }) {
   const exportRows = selected.length ? data.filter((c) => selected.includes(c.id)) : data;
   return (
     <div>
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <Dropdown button={() => <button className="flex items-center gap-1 text-[15px] font-semibold">{views.find((v) => v.value === status)?.label} <ChevronDown size={15} className="text-brand-600" /></button>}>
           {views.map((v) => (
             <MenuItem key={v.value} onClick={() => { setStatus(v.value); setSelected([]); }}>
@@ -96,8 +96,8 @@ function ContactList({ kind }: { kind: ContactKind }) {
         </div>
       ) : (
         <>
-          <div className="px-5 py-3">
-            <div className="w-72">
+          <div className="px-3 py-3 sm:px-5">
+            <div className="w-full sm:w-72">
               <SearchBox value={q} onChange={(v) => { setQ(v); setSelected([]); }} placeholder={`Search ${label.toLowerCase()}`} />
             </div>
           </div>
@@ -149,7 +149,7 @@ function ContactListPane({ kind }: { kind: ContactKind }) {
   const navigate = useNavigate();
   const { data = [] } = useApi<Row[]>(`/contacts${qs({ kind, status: 'all' })}`);
   return (
-    <div className="no-print flex w-[280px] shrink-0 flex-col border-r border-slate-200">
+    <div className="no-print hidden w-[280px] shrink-0 flex-col lg:flex border-r border-slate-200">
       <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
         <span className="font-semibold">All {kind === 'customer' ? 'Clients' : 'Suppliers'}</span>
         <button className="btn-primary w-8 px-0" onClick={() => navigate(`${basePath(kind)}/new`)} aria-label="New">
@@ -189,16 +189,21 @@ function ContactDetail({ kind }: { kind: ContactKind }) {
   const vendor = kind === 'vendor';
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-        <h1 className="truncate text-lg">{c.displayName}</h1>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
+        <div className="min-w-0">
+          <Link to={basePath(kind)} className="mb-0.5 inline-flex items-center gap-1 text-xs font-medium text-brand-700 lg:hidden">
+            <ChevronLeft size={13} /> {kind === 'customer' ? 'Clients' : 'Suppliers'}
+          </Link>
+          <h1 className="truncate text-lg">{c.displayName}</h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <button className="btn-secondary w-9 px-0" onClick={() => setAttachOpen((o) => !o)} aria-label="Attachments">
               <Paperclip size={14} />
               {c.documents.length > 0 && <span className="text-xxs">{c.documents.length}</span>}
             </button>
             {attachOpen && (
-              <div className="menu right-0 w-96 p-3">
+              <div className="menu right-0 w-96 p-3 max-sm:fixed max-sm:inset-x-2 max-sm:top-28 max-sm:w-auto">
                 <div className="mb-2 font-semibold">Attachments</div>
                 <Attachments compact value={c.documents} onChange={(v) => saveDocs.mutate(v)} max={10} maxMB={10} />
               </div>

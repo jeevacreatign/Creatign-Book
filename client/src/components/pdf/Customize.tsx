@@ -283,7 +283,7 @@ function Row({ label, children, hint }: { label: ReactNode; children: ReactNode;
 
 function ColorInput({ value, onChange, allowAuto, autoLabel = 'Theme colour' }: { value: string; onChange: (v: string) => void; allowAuto?: boolean; autoLabel?: string }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <input type="color" className="h-8 w-10 cursor-pointer rounded border border-slate-300 bg-white p-0.5" value={value || '#ffffff'} onChange={(e) => onChange(e.target.value)} />
       <input className="input w-28 font-mono uppercase" value={value} placeholder={allowAuto ? 'Auto' : '#000000'} onChange={(e) => onChange(e.target.value)} />
       {allowAuto && value && (
@@ -382,17 +382,17 @@ export function TemplateEditor({ template, doc, onClose }: { template: PdfTempla
 
   return (
     <div className="no-print fixed inset-0 z-50 flex flex-col bg-white">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-        <div className="flex items-baseline gap-3">
-          <div className="text-xl font-medium text-slate-900">Edit Template</div>
-          <div className="text-[13px] text-slate-400">{t.name}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <div className="text-lg font-medium text-slate-900 sm:text-xl">Edit Template</div>
+          <div className="truncate text-[13px] text-slate-400">{t.name}</div>
         </div>
         <div className="flex items-center gap-2.5">
           <ThemePicker value={t.theme} onPick={(key) => { setT((cur) => applyTheme(cur, key)); setDirty(true); }} />
           <label className="ml-1 hidden items-center gap-1.5 text-xs text-slate-500 lg:flex">
             <input type="checkbox" className="accent-brand-600" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Live preview
           </label>
-          <button className="btn-secondary h-9" onClick={() => setShown({ ...t })}>
+          <button className="btn-secondary hidden h-9 md:inline-flex" onClick={() => setShown({ ...t })}>
             <RefreshCw size={14} /> Refresh Preview
           </button>
           <button
@@ -423,7 +423,7 @@ export function TemplateEditor({ template, doc, onClose }: { template: PdfTempla
             </button>
           ))}
         </nav>
-        <div className="w-[400px] shrink-0 overflow-y-auto border-r border-slate-200">
+        <div className="min-w-0 flex-1 overflow-y-auto border-r border-slate-200 md:w-[400px] md:flex-none md:shrink-0">
           {tab === 'general' && (
             <>
               <Collapse title="Template Properties" defaultOpen>
@@ -435,7 +435,7 @@ export function TemplateEditor({ template, doc, onClose }: { template: PdfTempla
                   <RadioRow name="orientation" value={t.orientation} onChange={(v) => set({ orientation: v })} options={[{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }]} />
                 </Row>
                 <Row label={<>Margins <span className="text-slate-400">(in inches)</span></>}>
-                  <div className="grid grid-cols-4 gap-2.5">
+                  <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
                     {(['top', 'bottom', 'left', 'right'] as const).map((k) => (
                       <label key={k} className="text-[12px] capitalize text-slate-600">
                         {k}
@@ -597,7 +597,7 @@ export function TemplateEditor({ template, doc, onClose }: { template: PdfTempla
             </>
           )}
         </div>
-        <div className="min-w-0 flex-1 overflow-y-auto bg-slate-100 px-10 py-8">
+        <div className="hidden min-w-0 flex-1 overflow-y-auto bg-slate-100 px-10 py-8 md:block">
           <div className="mx-auto" style={{ maxWidth: 900 }}>
             <DocumentPreview doc={preview} org={organization} contact={previewContact} template={shown} preferences={preferences} ribbon={false} />
           </div>
@@ -764,7 +764,7 @@ export function CustomFieldsDrawer({ kind, onClose, initialTab = 'fields' }: { k
   return (
     <div className="no-print fixed inset-0 z-50 flex justify-end bg-slate-900/30" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="flex h-full w-full max-w-[820px] flex-col bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-8 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 pt-4 sm:px-8">
           <div className="flex gap-8">
             {(['preferences', 'fields'] as const).map((x) => (
               <button key={x} type="button" onClick={() => setTab(x)} className={clsx('-mb-px border-b-2 pb-3 text-[17px] capitalize', tab === x ? 'border-brand-600 font-semibold text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800')}>

@@ -101,7 +101,7 @@ export default function ReportView() {
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button className="btn-secondary" onClick={() => setCustomizing(true)} disabled={!rep}>
             <Columns3 size={14} /> Customize Columns
           </button>

@@ -43,7 +43,7 @@ function ExpenseList() {
   return (
     <div>
       {selected.length ? (
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3 sm:px-5">
           <div className="flex items-center gap-3">
             <button
               className="btn-secondary btn-sm text-red-600"
@@ -59,7 +59,7 @@ function ExpenseList() {
           </button>
         </div>
       ) : (
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
           <div className="flex items-center gap-6">
             <button className={clsx('tab pb-0', tab === 'inbox' && 'tab-active')} onClick={() => setTab('inbox')}>
               <Inbox size={14} className="mr-1 inline" /> Receipts Inbox
@@ -68,8 +68,8 @@ function ExpenseList() {
               <ViewPicker view={view} setView={(v) => { setView(v); setTab('all'); setSelected([]); }} />
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-60">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-full sm:w-60">
               <SearchBox value={q} onChange={setQ} placeholder="Search expenses" />
             </div>
             <button className="btn-primary" onClick={() => navigate('/purchases/expenses/new')}>

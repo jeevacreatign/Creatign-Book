@@ -59,7 +59,7 @@ export function ShareModal({ open, onClose, entityType, entityId, title }: { ope
           <div className="space-y-2">
             {active.map((l) => (
               <div key={l.id} className="rounded-md border border-slate-200 p-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <input readOnly aria-label="Share link" className="input flex-1 bg-slate-50 font-mono text-xs" value={url(l.token)} onFocus={(e) => e.target.select()} />
                   <button className={clsx('btn-secondary btn-sm', copied === l.id && 'text-emerald-700')} onClick={() => copy(l)}>
                     {copied === l.id ? <Check size={13} /> : <Copy size={13} />} Copy

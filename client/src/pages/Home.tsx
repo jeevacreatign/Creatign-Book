@@ -336,7 +336,7 @@ function GettingStarted() {
         <ul className="divide-y divide-slate-100">
           {steps.map((s) => (
             <li key={s.label} className="flex items-center justify-between py-3">
-              <span className="flex items-center gap-2">
+              <span className="flex flex-wrap items-center gap-2">
                 {s.done ? <CheckCircle2 size={18} className="text-emerald-600" /> : <Circle size={18} className="text-slate-300" />}
                 <span className={clsx(s.done && 'text-slate-500 line-through')}>{s.label}</span>
               </span>

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Pencil, Mail, Share2, FileText, Printer, ChevronDown, MoreHorizontal, X, Lock, Unlock, Copy, Trash2, Ban, BookOpen, Repeat, Bell, CreditCard, Truck, ArrowRightLeft, CheckCircle2, RotateCcw, Paperclip, MessageSquare, Send, ThumbsUp, ThumbsDown, Sparkles } from 'lucide-react';
+import { Pencil, Mail, Share2, FileText, Printer, ChevronDown, ChevronLeft, MoreHorizontal, X, Lock, Unlock, Copy, Trash2, Ban, BookOpen, Repeat, Bell, CreditCard, Truck, ArrowRightLeft, CheckCircle2, RotateCcw, Paperclip, MessageSquare, Send, ThumbsUp, ThumbsDown, Sparkles } from 'lucide-react';
 import { isUnposted, needsApproval } from '@shared/approval';
 import { DOC_META } from '@shared/docmeta';
 import { fmtDate, fmtDateTime, frequencyLabel, today } from '@shared/format';
@@ -44,7 +44,7 @@ function DocSummary({ d }: { d: DocDetailData }) {
   const meta = DOC_META[d.kind];
   return (
     <div className="rounded-md border border-slate-200 bg-white">
-      <div className="grid grid-cols-2 gap-x-10 gap-y-1 p-5">
+      <div className="grid grid-cols-1 gap-x-10 gap-y-1 p-3 sm:grid-cols-2 sm:p-5">
         <KV k={meta.numberLabel} v={d.number || d.profileName} />
         <KV k={meta.dateLabel} v={fmtDate(d.date)} />
         <KV k={meta.side === 'sales' ? 'Client' : 'Supplier'} v={d.contactName} />
@@ -57,7 +57,23 @@ function DocSummary({ d }: { d: DocDetailData }) {
         {d.destinationOfSupply && <KV k="Destination of Supply" v={d.destinationOfSupply} />}
         {d.reverseCharge && <KV k="Reverse Charge" v="Yes" />}
       </div>
-      <table className="table border-t border-slate-200">
+      {/* phones: one row per line, quantity × rate under the name */}
+      <div className="divide-y divide-slate-100 border-t border-slate-200 md:hidden">
+        {d.lineItems.map((l) => (
+          <div key={l.id} className="flex justify-between gap-3 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="font-medium">{l.name}</div>
+              {l.description && <div className="text-xs text-slate-500">{l.description}</div>}
+              <div className="mt-0.5 text-xs text-slate-500">
+                {l.quantity} {l.unit} × {moneyIn(l.rate, d.currencyCode)}
+                {l.taxId ? ` · ${taxLabel(l.taxId, isIntraState(d.sourceOfSupply, d.destinationOfSupply, d.gstTreatment))}` : ''}
+              </div>
+            </div>
+            <div className="shrink-0 text-right tabular-nums">{moneyIn(l.amount, d.currencyCode)}</div>
+          </div>
+        ))}
+      </div>
+      <table className="table border-t border-slate-200 max-md:!hidden">
         <thead>
           <tr>
             <th>Item & Description</th>
@@ -82,7 +98,7 @@ function DocSummary({ d }: { d: DocDetailData }) {
           ))}
         </tbody>
       </table>
-      <div className="ml-auto w-80 p-5">
+      <div className="ml-auto w-full p-3 sm:w-80 sm:p-5">
         <div className="flex justify-between py-1 text-[13px]"><span>Sub Total</span><span>{moneyIn(d.subTotal, d.currencyCode)}</span></div>
         <TaxRows rows={d.taxBreakdown} reverseCharge={d.reverseCharge} inclusive={d.taxInclusive} />
         <div className="mt-1 flex justify-between border-t border-slate-200 pt-2 text-[14px] font-semibold"><span>Total</span><span>{moneyIn(d.total, d.currencyCode)}</span></div>
@@ -99,7 +115,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
   const meta = DOC_META[kind];
   const { data: d, isLoading, error } = useApi<DocDetailData>(`/docs/${id}`);
   const [tab, setTab] = useState<string>('document');
-  const [pdfView, setPdfView] = useState(true);
+  const [pdfView, setPdfView] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
   const [emailOpen, setEmailOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [modal, setModal] = useState<null | 'refund' | 'apply' | 'writeoff' | 'expected' | 'cancelItems' | 'reject'>(null);
@@ -347,10 +363,13 @@ export function DocDetail({ kind }: { kind: DocKind }) {
   const contactEmail = d.contact?.email;
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <div className="no-print flex items-center justify-between border-b border-slate-200 px-5 py-2.5">
+      <div className="no-print flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-5">
         <div className="min-w-0">
-          <div className="text-xs text-slate-500">{d.contactName}</div>
-          <div className="flex items-center gap-2">
+          <Link to={meta.path} className="mb-0.5 inline-flex items-center gap-1 text-xs font-medium text-brand-700 lg:hidden">
+            <ChevronLeft size={13} /> {meta.plural}
+          </Link>
+          <div className="truncate text-xs text-slate-500">{d.contactName}</div>
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-lg">{meta.recurring ? d.profileName : d.number}</h1>
             {d.locked && <Lock size={14} className="text-amber-600" aria-label="Locked" />}
           </div>
@@ -368,7 +387,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
           </button>
         </div>
       </div>
-      <div className="no-print flex flex-wrap items-center border-b border-slate-200 bg-slate-50/60 px-3 text-[13px]">
+      <div className="no-print flex flex-wrap items-center border-b border-slate-200 bg-slate-50/60 px-1 text-[13px] sm:px-3">
         {!d.locked && d.status !== 'void' && (
           <ToolbarBtn icon={<Pencil size={14} />} onClick={() => navigate(`${meta.path}/${d.id}/edit`)}>
             Edit
@@ -401,7 +420,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         </Dropdown>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
         {d.related.salesOrder && kind === 'invoice' && (
           <details className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
             <summary className="cursor-pointer text-[13px] font-medium">Associated sales orders (1)</summary>
@@ -436,7 +455,7 @@ export function DocDetail({ kind }: { kind: DocKind }) {
         {kind === 'bill' && unpaid && d.balance > 0 && <BillCredits d={d} />}
         {approvals && <WhatsNext d={d} kind={kind} run={run} onReject={() => setModal('reject')} onSend={() => setEmailOpen(true)} onEdit={() => navigate(`${meta.path}/${d.id}/edit`)} />}
         {kind === 'invoice' && unpaid && (
-          <div className="mb-3 flex items-center justify-between rounded-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px]">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px]">
             <span>
               <span className="font-semibold">What's next?</span> {d.sentAt ? 'Record the payment once you receive it.' : 'Send this invoice to your client or record a payment for it.'}
             </span>
@@ -459,8 +478,8 @@ export function DocDetail({ kind }: { kind: DocKind }) {
 
         {tab === 'document' && (
           <div className="space-y-4">
-            <div className="no-print flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="no-print flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Pill status={d.status} />
                 {d.sentAt && <span className="text-xs text-slate-500">Sent {fmtDateTime(d.sentAt)}</span>}
               </div>

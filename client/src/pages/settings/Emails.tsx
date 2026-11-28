@@ -89,7 +89,7 @@ function Delivery() {
               : 'Nothing is delivered yet. Emails are kept in the outbox (Email Log) so you can preview them, and can be retried once sending is set up.'}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input className="input h-8 w-56" aria-label="Send test email to" value={testTo} onChange={(e) => setTestTo(e.target.value)} />
           <button className="btn-secondary" disabled={test.isPending} onClick={() => test.mutate()}>
             <Send size={13} /> {test.isPending ? 'Sending…' : 'Send Test'}
@@ -328,7 +328,7 @@ function Log() {
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <Select className="w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All emails' }, { value: 'sent', label: 'Sent' }, { value: 'outbox', label: 'Outbox' }, { value: 'failed', label: 'Failed' }]} />
-        <div className="w-72">
+        <div className="w-full sm:w-72">
           <SearchBox value={search} onChange={setSearch} placeholder="Search subject or recipient" />
         </div>
         {counts && !status && (counts.failed > 0 || counts.outbox > 0) && (

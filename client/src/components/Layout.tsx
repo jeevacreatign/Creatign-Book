@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Home, Package, ShoppingCart, ShoppingBag, Clock, Landmark, UserCog, BarChart3, FolderOpen, Wallet, CreditCard, ChevronRight, ChevronDown, Search, Plus, Settings, Bell, RefreshCw, PanelLeftClose, PanelLeftOpen, Building2, Check, Sparkles, LogOut, UserRound, Users,
+  Home, Package, ShoppingCart, ShoppingBag, Clock, Landmark, UserCog, BarChart3, FolderOpen, Wallet, CreditCard, ChevronRight, ChevronDown, Search, Plus, Settings, Bell, RefreshCw, PanelLeftClose, PanelLeftOpen, Building2, Check, Sparkles, LogOut, UserRound, Users, Menu, X,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useOrg } from '../lib/app';
@@ -86,7 +86,7 @@ function Group({ icon, label, items, base, collapsed }: { icon: ReactNode; label
             <NavLink
               key={i.to}
               to={i.to}
-              className={({ isActive }) => clsx('group relative flex items-center justify-between rounded-md px-2.5 py-[5px] text-[12.5px] transition-colors', isActive ? 'bg-white/[0.08] font-medium text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-100')}
+              className={({ isActive }) => clsx('group relative flex items-center justify-between rounded-md px-2.5 py-[9px] text-[13.5px] transition-colors lg:py-[5px] lg:text-[12.5px]', isActive ? 'bg-white/[0.08] font-medium text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-100')}
             >
               {({ isActive }) => (
                 <>
@@ -101,7 +101,7 @@ function Group({ icon, label, items, base, collapsed }: { icon: ReactNode; label
                         e.preventDefault();
                         navigate(`${i.to}/new`);
                       }}
-                      className={clsx('flex h-4 w-4 items-center justify-center rounded text-brand-300 hover:bg-brand-400 hover:text-ink-900', isActive ? 'visible' : 'invisible group-hover:visible')}
+                      className={clsx('flex h-6 w-6 items-center justify-center rounded text-brand-300 hover:bg-brand-400 hover:text-ink-900 lg:h-4 lg:w-4', isActive ? 'visible' : 'invisible group-hover:visible')}
                     >
                       <Plus size={12} />
                     </span>
@@ -151,20 +151,36 @@ function SideBrand({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+function Sidebar({ collapsed: wantCollapsed, onToggle, mobileOpen, onClose }: { collapsed: boolean; onToggle: () => void; mobileOpen: boolean; onClose: () => void }) {
+  // on phones and tablets the sidebar is a full-width drawer, never the icon rail
+  const collapsed = wantCollapsed && !mobileOpen;
   const timeOnly = useMe().user.role === 'Timesheet Staff';
   const ic = 'shrink-0';
   const sz = 16;
   const toggle = (
-    <div className={clsx('flex border-t border-white/10 p-2', collapsed ? 'justify-center' : 'justify-end')}>
+    <div className={clsx('hidden border-t border-white/10 p-2 lg:flex', collapsed ? 'justify-center' : 'justify-end')}>
       <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white" onClick={onToggle} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
         {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
       </button>
     </div>
   );
   const shell = (children: ReactNode) => (
-    <aside className={clsx('no-print flex shrink-0 flex-col bg-ink-900 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(207,159,62,0.10),transparent_60%)] text-slate-300', collapsed ? 'w-[60px]' : 'w-[236px]')}>
-      <SideBrand collapsed={collapsed} />
+    <aside
+      className={clsx(
+        'no-print flex shrink-0 flex-col bg-ink-900 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(207,159,62,0.10),transparent_60%)] text-slate-300',
+        'fixed inset-y-0 left-0 z-50 w-[272px] max-w-[85vw] shadow-2xl shadow-ink-950/40 transition-transform duration-200 lg:static lg:z-auto lg:max-w-none lg:translate-x-0 lg:shadow-none lg:transition-none',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full',
+        collapsed ? 'lg:w-[60px]' : 'lg:w-[236px]',
+      )}
+    >
+      <div className="flex items-center">
+        <div className="min-w-0 flex-1">
+          <SideBrand collapsed={collapsed} />
+        </div>
+        <button className="mr-3 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white lg:hidden" onClick={onClose} aria-label="Close menu">
+          <X size={18} />
+        </button>
+      </div>
       <nav className={clsx('flex-1 overflow-y-auto pb-3 pt-1 [scrollbar-color:#2c3b56_transparent]', collapsed ? 'flex flex-col items-center gap-1 px-2' : 'space-y-0.5 px-3')}>{children}</nav>
       {toggle}
     </aside>
@@ -211,7 +227,7 @@ const QUICK_CREATE: { group: string; items: NavItem[] }[] = [
   { group: 'Payables', items: [{ to: '/purchases/vendors/new', label: 'Supplier' }, { to: '/purchases/expenses/new', label: 'Expense' }, { to: '/purchases/recurring-expenses/new', label: 'Expense Schedule' }, { to: '/purchases/purchase-orders/new', label: 'Purchase Order' }, { to: '/purchases/bills/new', label: 'Bill' }, { to: '/purchases/recurring-bills/new', label: 'Bill Schedule' }, { to: '/purchases/payments-made/new', label: 'Supplier Payment' }, { to: '/purchases/vendor-credits/new', label: 'Debit Note' }] },
 ];
 
-function GlobalSearch() {
+function GlobalSearch({ className, onDone }: { className?: string; onDone?: () => void }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -238,11 +254,12 @@ function GlobalSearch() {
   }, [q]);
   const label = moduleLabel(pathname);
   return (
-    <div ref={box} className="relative w-full max-w-md">
+    <div ref={box} className={clsx('relative w-full max-w-md', className)}>
       <Search size={15} className="absolute left-3 top-2.5 text-slate-400" />
-      <kbd className="pointer-events-none absolute right-2 top-2 rounded border border-slate-200 bg-white px-1.5 text-[11px] leading-[18px] text-slate-400">/</kbd>
+      <kbd className="pointer-events-none absolute right-2 top-2 hidden border border-slate-200 bg-white px-1.5 text-[11px] leading-[18px] text-slate-400 lg:block">/</kbd>
       <input
         ref={input}
+        autoFocus={!!onDone}
         value={q}
         onChange={(e) => {
           setQ(e.target.value);
@@ -254,11 +271,12 @@ function GlobalSearch() {
             navigate(results[0].path);
             setOpen(false);
             setQ('');
+            onDone?.();
           }
           if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
         }}
         placeholder={`Search in ${label}`}
-        className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-10 text-[13px] text-slate-800 placeholder:text-slate-400 transition-colors hover:border-slate-300 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-[3px] focus:ring-brand-100"
+        className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-base sm:text-[13px] lg:pr-10 text-slate-800 placeholder:text-slate-400 transition-colors hover:border-slate-300 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-[3px] focus:ring-brand-100"
       />
       {open && q && (
         <div className="menu left-0 right-0 max-h-96 overflow-auto">
@@ -271,6 +289,7 @@ function GlobalSearch() {
                 navigate(r.path);
                 setOpen(false);
                 setQ('');
+                onDone?.();
               }}
             >
               <span>
@@ -285,7 +304,7 @@ function GlobalSearch() {
   );
 }
 
-function Topbar() {
+function Topbar({ onMenu }: { onMenu: () => void }) {
   const org = useOrg();
   const navigate = useNavigate();
   const [plus, setPlus] = useState(false);
@@ -300,22 +319,39 @@ function Topbar() {
   const me = useMe();
   const signOut = useSignOut();
   const timeOnly = me.user.role === 'Timesheet Staff';
+  const [search, setSearch] = useState(false);
   return (
-    <header className="no-print flex h-14 shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur">
-      <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900" title="Refresh" aria-label="Refresh" onClick={() => window.location.reload()}>
+    <header className="no-print relative z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-slate-200/80 bg-white px-2 sm:gap-3 sm:px-4">
+      <button className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-900 hover:bg-slate-100 lg:hidden" aria-label="Open menu" title="Menu" onClick={onMenu}>
+        <Menu size={20} />
+      </button>
+      <Link to="/" className="flex shrink-0 items-center lg:hidden" aria-label="Dashboard">
+        <img src="/logo.png" alt="" className="h-7 w-7" />
+      </Link>
+      <button className="hidden h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900 lg:flex" title="Refresh" aria-label="Refresh" onClick={() => window.location.reload()}>
         <RefreshCw size={15} />
       </button>
-      {!timeOnly && <GlobalSearch />}
+      {!timeOnly && <GlobalSearch className="hidden md:block" />}
       <div className="flex-1" />
+      {!timeOnly && (
+        <button className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900 md:hidden" aria-label="Search" title="Search" onClick={() => setSearch((s) => !s)}>
+          {search ? <X size={18} /> : <Search size={18} />}
+        </button>
+      )}
+      {search && !timeOnly && (
+        <div className="absolute inset-x-0 top-full z-40 border-b border-slate-200 bg-white p-2 shadow-lg md:hidden">
+          <GlobalSearch className="max-w-none" onDone={() => setSearch(false)} />
+        </div>
+      )}
       <TimerChip />
       <div ref={orgRef} className="relative">
-        <button className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-2.5 text-[13px] font-medium text-ink-900 hover:border-slate-300 hover:bg-slate-50" onClick={() => setOrgOpen((o) => !o)}>
-          <Building2 size={14} className="text-brand-600" />
-          {org.name}
-          <ChevronDown size={13} className="text-slate-400" />
+        <button className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-2.5 text-[13px] font-medium text-ink-900 hover:border-slate-300 hover:bg-slate-50 max-sm:w-9 max-sm:justify-center max-sm:border-transparent max-sm:px-0" onClick={() => setOrgOpen((o) => !o)} aria-label={org.name} title={org.name}>
+          <Building2 size={14} className="text-brand-600 max-sm:h-[17px] max-sm:w-[17px]" />
+          <span className="hidden max-w-[180px] truncate sm:inline">{org.name}</span>
+          <ChevronDown size={13} className="hidden text-slate-400 sm:block" />
         </button>
         {orgOpen && (
-          <div className="menu right-0 w-72 text-slate-800">
+          <div className="menu right-0 w-72 text-slate-800 max-sm:fixed max-sm:inset-x-2 max-sm:top-14 max-sm:w-auto">
             <div className="px-3 py-2 text-xxs font-semibold uppercase text-slate-400">My Organizations</div>
             <div className="flex items-center gap-3 px-3 py-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink-900 font-semibold text-brand-300">{org.logoText || org.name[0]}</div>
@@ -340,11 +376,11 @@ function Topbar() {
         )}
       </div>
       {!timeOnly && <div ref={plusRef} className="relative">
-        <button className="flex h-9 items-center gap-1.5 rounded-lg bg-ink-900 pl-2.5 pr-3 text-[13px] font-medium text-white shadow-sm hover:bg-ink-700" aria-label="Quick create" title="Quick create" onClick={() => setPlus((p) => !p)}>
-          <Plus size={15} className="text-brand-300" /> Create
+        <button className="flex h-9 items-center gap-1.5 rounded-lg bg-ink-900 text-[13px] font-medium text-white shadow-sm hover:bg-ink-700 max-sm:w-9 max-sm:justify-center sm:pl-2.5 sm:pr-3" aria-label="Quick create" title="Quick create" onClick={() => setPlus((p) => !p)}>
+          <Plus size={15} className="text-brand-300" /> <span className="hidden sm:inline">Create</span>
         </button>
         {plus && (
-          <div className="menu right-0 grid w-[640px] grid-cols-3 gap-3 p-3 text-slate-800">
+          <div className="menu right-0 grid w-[640px] grid-cols-3 gap-3 p-3 text-slate-800 max-md:fixed max-md:inset-x-2 max-md:bottom-2 max-md:top-14 max-md:w-auto max-md:grid-cols-1 max-md:content-start max-md:overflow-y-auto">
             {QUICK_CREATE.map((g) => (
               <div key={g.group}>
                 <div className="mb-1 px-2 text-xxs font-semibold uppercase tracking-wide text-slate-400">{g.group}</div>
@@ -367,20 +403,20 @@ function Topbar() {
       </div>}
       {!timeOnly && (
         <>
-          <button className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900" title="Notifications" aria-label="Notifications" onClick={() => navigate('/?tab=updates')}>
+          <button className="hidden h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900 sm:flex" title="Notifications" aria-label="Notifications" onClick={() => navigate('/?tab=updates')}>
             <Bell size={17} />
           </button>
-          <button className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900" title="Settings" aria-label="Settings" onClick={() => navigate('/settings')}>
+          <button className="hidden h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900 sm:flex" title="Settings" aria-label="Settings" onClick={() => navigate('/settings')}>
             <Settings size={17} />
           </button>
         </>
       )}
       <div ref={profRef} className="relative">
-        <button className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-[12px] font-semibold text-brand-300 ring-2 ring-brand-200 ring-offset-1" onClick={() => setProfile((p) => !p)} aria-label="Profile" title={me.user.name}>
+        <button className="ml-1 flex h-8 w-8 items-center justify-center rounded-full bg-ink-900 text-[12px] font-semibold text-brand-300 ring-2 ring-brand-200 ring-offset-1 sm:ml-0 sm:h-9 sm:w-9" onClick={() => setProfile((p) => !p)} aria-label="Profile" title={me.user.name}>
           {initials(me.user.name)}
         </button>
         {profile && (
-          <div className="menu right-0 w-72 p-0 text-slate-800">
+          <div className="menu right-0 w-72 p-0 text-slate-800 max-sm:fixed max-sm:inset-x-2 max-sm:top-14 max-sm:w-auto">
             <div className="flex items-center gap-3 border-b border-slate-100 p-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-900 text-[15px] font-semibold text-brand-300">{initials(me.user.name)}</span>
               <div className="min-w-0">
@@ -403,6 +439,11 @@ function Topbar() {
               <button className="menu-item rounded" onClick={() => { setProfile(false); navigate('/settings'); }}>
                 <Settings size={14} /> Settings
               </button>
+              {!timeOnly && (
+                <button className="menu-item rounded sm:hidden" onClick={() => { setProfile(false); navigate('/?tab=updates'); }}>
+                  <Bell size={14} /> Notifications
+                </button>
+              )}
             </div>
             {!me.authDisabled && (
               <div className="border-t border-slate-100 p-1.5">
@@ -440,15 +481,25 @@ export default function Layout() {
       }
       return !c;
     });
+  const [mobileNav, setMobileNav] = useState(false);
+  // close the drawer whenever the page changes
+  useEffect(() => setMobileNav(false), [pathname]);
+  useEffect(() => {
+    if (!mobileNav) return;
+    const h = (e: KeyboardEvent) => e.key === 'Escape' && setMobileNav(false);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [mobileNav]);
   // Timesheet Staff only have the timesheet and their projects (the server refuses the rest)
   if (me.user.role === 'Timesheet Staff' && !pathname.startsWith('/time-tracking') && pathname !== '/settings/account') return <Navigate to="/time-tracking/timesheet" replace />;
   return (
     <div className="flex h-full bg-canvas">
-      <Sidebar collapsed={collapsed} onToggle={toggle} />
+      <Sidebar collapsed={collapsed} onToggle={toggle} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} />
+      {mobileNav && <div className="no-print fixed inset-0 z-40 bg-ink-950/50 backdrop-blur-[1px] lg:hidden" onClick={() => setMobileNav(false)} aria-hidden />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar />
-        <main className="min-h-0 flex-1 p-2 sm:p-3">
-          <div className="h-full overflow-auto rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.05)]">
+        <Topbar onMenu={() => setMobileNav(true)} />
+        <main className="min-h-0 flex-1 sm:p-3">
+          <div className="h-full overflow-auto bg-white sm:rounded-xl sm:border sm:border-slate-200/80 sm:shadow-[0_1px_3px_rgba(15,23,42,0.05)]">
             <Outlet />
           </div>
         </main>

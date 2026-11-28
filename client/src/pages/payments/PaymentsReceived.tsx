@@ -98,9 +98,9 @@ function List() {
   const exportRows = selected.length ? data.filter((p) => selected.includes(p.id)) : data;
   return (
     <div>
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <div className="text-[15px] font-semibold">All Received Payments</div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <CsvImportButton
             title="Client Payments"
             filename="client-payments"
@@ -134,8 +134,8 @@ function List() {
         </div>
       ) : (
         <>
-          <div className="px-5 py-3">
-            <div className="w-72">
+          <div className="px-3 py-3 sm:px-5">
+            <div className="w-full sm:w-72">
               <SearchBox value={q} onChange={(v) => { setQ(v); setSelected([]); }} placeholder="Search payments" />
             </div>
           </div>
@@ -472,7 +472,7 @@ function DetailView() {
   const del = useAction(() => api(`/payments-received/${id}`, { method: 'DELETE' }), 'Payment deleted');
   return (
     <div className="flex h-full">
-      <div className="no-print w-[300px] shrink-0 overflow-y-auto border-r border-slate-200">
+      <div className="no-print hidden w-[300px] shrink-0 overflow-y-auto border-r lg:block border-slate-200">
         <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
           <span className="font-semibold">All Received Payments</span>
           <button className="btn-primary w-8 px-0" onClick={() => navigate('/sales/payments-received/new')} aria-label="New">

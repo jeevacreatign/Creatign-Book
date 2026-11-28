@@ -78,7 +78,7 @@ export function BulkUpdate() {
         <>
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <span className="text-[13px] text-slate-600">{sel.selected.length} of {rows.length} selected. Move to</span>
-            <AccountSelect className="w-64" accounts={accounts} value={newAccount} onChange={setNewAccount} filter={(a) => a.id !== filter.accountId} placeholder="Select the new account" />
+            <AccountSelect className="w-full sm:w-64" accounts={accounts} value={newAccount} onChange={setNewAccount} filter={(a) => a.id !== filter.accountId} placeholder="Select the new account" />
             <button
               className="btn-primary"
               disabled={!sel.selected.length || !newAccount}

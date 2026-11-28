@@ -114,8 +114,8 @@ export function ContactForm({ kind }: { kind: ContactKind }) {
             </Field>
           )}
           <Field label="Primary Contact">
-            <div className="grid grid-cols-[110px_1fr_1fr] gap-2">
-              <Select value={f.salutation || ''} onChange={(e) => set({ salutation: e.target.value })} placeholder="Salutation" options={SALUTATIONS.map((s) => ({ value: s, label: s }))} />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-[110px_1fr_1fr]">
+              <Select className="col-span-2 sm:col-span-1" value={f.salutation || ''} onChange={(e) => set({ salutation: e.target.value })} placeholder="Salutation" options={SALUTATIONS.map((s) => ({ value: s, label: s }))} />
               <input className="input" placeholder="First Name" value={f.firstName || ''} onChange={(e) => set({ firstName: e.target.value })} />
               <input className="input" placeholder="Last Name" value={f.lastName || ''} onChange={(e) => set({ lastName: e.target.value })} />
             </div>
@@ -347,7 +347,7 @@ function KeyValueEditor({ value, onChange, hint }: { value: Record<string, strin
     <div className="max-w-2xl space-y-2">
       <div className="text-xs text-slate-500">{hint}</div>
       {entries.map(([key, val]) => (
-        <div key={key} className="flex items-center gap-2">
+        <div key={key} className="flex flex-wrap items-center gap-2">
           <input className="input w-48" value={key} readOnly />
           <input className="input flex-1" value={val} onChange={(e) => onChange({ ...value, [key]: e.target.value })} />
           <button className="text-slate-400 hover:text-red-500" aria-label="Remove" onClick={() => onChange(Object.fromEntries(entries.filter(([x]) => x !== key)))}>
@@ -355,7 +355,7 @@ function KeyValueEditor({ value, onChange, hint }: { value: Record<string, strin
           </button>
         </div>
       ))}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <input className="input w-48" placeholder="Field / Tag" value={k} onChange={(e) => setK(e.target.value)} />
         <input className="input flex-1" placeholder="Value" value={v} onChange={(e) => setV(e.target.value)} />
         <button

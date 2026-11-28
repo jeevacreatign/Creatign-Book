@@ -85,7 +85,7 @@ function ExpenseListPane() {
   const bulkDelete = useAction((ids: string[]) => api<{ deleted: number }>('/expenses/bulk-delete', { body: { ids } }), (r) => `${r.deleted} expense(s) deleted`);
   const toggle = (x: string) => setSelected((s) => (s.includes(x) ? s.filter((y) => y !== x) : [...s, x]));
   return (
-    <div className="no-print flex w-[340px] shrink-0 flex-col border-r border-slate-200">
+    <div className="no-print hidden w-[340px] shrink-0 flex-col lg:flex border-r border-slate-200">
       {selected.length ? (
         <div className="flex h-[57px] items-center justify-between border-b border-slate-200 bg-slate-50 px-3">
           <span className="text-[13px] font-medium">{selected.length} selected</span>

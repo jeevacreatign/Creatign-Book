@@ -60,7 +60,7 @@ function ViewTitle({ view, setView, compact }: { view: string; setView: (v: stri
   return (
     <Dropdown
       button={() => (
-        <button className={clsx('flex items-center gap-1 font-semibold text-slate-900', compact ? 'text-[15px]' : 'text-[19px]')}>
+        <button className={clsx('flex items-center gap-1 whitespace-nowrap font-semibold text-slate-900', compact ? 'text-[15px]' : 'text-[17px] sm:text-[19px]')}>
           {VIEWS.find((v) => v.value === view)?.label} <ChevronDown size={15} className="text-brand-600" />
         </button>
       )}
@@ -176,8 +176,8 @@ function ProjectList() {
   return (
     <div>
       {selected.length ? (
-        <div className="flex min-h-[64px] items-center justify-between border-b border-slate-200 bg-slate-50 px-6">
-          <div className="flex items-center gap-2">
+        <div className="flex min-h-[64px] flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
             <button className="btn-secondary btn-sm" onClick={() => bulk.mutate({ action: 'activate', ids: selected }, { onSuccess: () => setSelected([]) })}>
               Mark as Active
             </button>
@@ -195,9 +195,9 @@ function ProjectList() {
           </button>
         </div>
       ) : (
-        <div className="flex min-h-[64px] items-center justify-between gap-3 border-b border-slate-200 px-6">
+        <div className="flex min-h-[64px] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2 sm:px-6">
           <ViewTitle view={view} setView={(v) => { setView(v); setSelected([]); }} />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <LayoutToggle layout={layout} setLayout={setLayout} />
             <CsvImportButton
               title="Projects"
@@ -311,7 +311,7 @@ function ProjectListPane() {
   const { data = [] } = useApi<ProjectRow[]>(`/projects${qs({ view })}`);
   if (layout !== 'split') return null;
   return (
-    <div className="no-print flex w-[320px] shrink-0 flex-col border-r border-slate-200 bg-white">
+    <div className="no-print hidden w-[320px] shrink-0 flex-col lg:flex border-r border-slate-200 bg-white">
       <div className="flex min-h-[56px] items-center justify-between gap-2 border-b border-slate-200 px-4">
         <ViewTitle view={view} setView={setView} compact />
         <div className="flex items-center gap-1">

@@ -384,7 +384,7 @@ function BudgetForm() {
   ];
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <h1 className="text-[19px]">{id ? 'Edit Budget' : 'New Budget'}</h1>
         <button className="btn-ghost w-8 px-0" onClick={() => navigate(-1)} aria-label="Close">
           <X size={18} />
@@ -463,7 +463,7 @@ function BudgetDetail() {
             {b.projectName && ` · ${b.projectName}`}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button className="btn-icon" title="Edit" onClick={() => navigate(`${BASE}/${b.id}/edit`)}>
             <Pencil size={14} />
           </button>

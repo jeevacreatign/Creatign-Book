@@ -204,7 +204,7 @@ function JournalList() {
           <MenuItem onClick={() => downloadRows('manual-journals', journalExportRows(data, accounts), JOURNAL_EXPORT_COLUMNS, 'xlsx')}>Export Journals (Excel)</MenuItem>
         </MoreMenu>
       </ListHeader>
-      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-2.5 sm:px-5">
         <PeriodFilter value={period} onChange={(v) => { setPeriod(v); sel.clear(); }} />
         {sel.selected.length > 0 && (
           <div className="flex items-center gap-2 text-[13px]">
@@ -417,7 +417,7 @@ function JournalDoc({ j }: { j: JDetail }) {
 
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[150px_minmax(0,1fr)] py-1.5 text-[13px]">
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] py-1.5 sm:grid-cols-[150px_minmax(0,1fr)] text-[13px]">
       <span className="text-slate-500">{k}</span>
       <span className="font-medium text-slate-800">{v || '-'}</span>
     </div>
@@ -586,7 +586,7 @@ function JournalForm() {
   };
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <h1 className="text-[19px]">{id ? 'Edit Journal' : 'New Journal'}</h1>
         <div className="flex items-center gap-3">
           {!id && (

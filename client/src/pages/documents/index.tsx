@@ -191,7 +191,7 @@ export default function Documents() {
       >
         <ListHeader
           title={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-[19px]">{title}</h1>
               {view === 'folder' && folder && (
                 <Dropdown button={() => <button className="btn-ghost btn-sm" aria-label="Folder options"><MoreHorizontal size={15} /></button>}>
@@ -216,7 +216,7 @@ export default function Documents() {
             { header: 'Size (bytes)', value: (d) => d.size },
             { header: 'Imported To Account', value: (d) => d.importedToAccountName },
           ]} />
-          <div className="w-60">
+          <div className="w-full sm:w-60">
             <SearchBox value={search} onChange={(v) => { setSearch(v); sel.clear(); }} placeholder="Search file name or transaction" />
           </div>
           {view !== 'trash' && (
@@ -612,7 +612,7 @@ function RenameModal({ d, onClose }: { d: DocRow; onClose: () => void }) {
       }
     >
       <Field label="File Name" required inline={false}>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && name.trim() && save.mutate(undefined, { onSuccess: onClose })} />
           {ext && <span className="text-slate-500">{ext}</span>}
         </div>

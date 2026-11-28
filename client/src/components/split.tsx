@@ -25,7 +25,7 @@ export function ViewPicker<T extends string>({ value, onChange, options, compact
 
 export function ListHeader({ title, children }: { title: ReactNode; children?: ReactNode }) {
   return (
-    <div className="no-print flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-2.5">
+    <div className="no-print flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-2.5 sm:px-5">
       <div className="min-w-0">{title}</div>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
@@ -63,7 +63,7 @@ export function ToolbarMore({ children }: { children: ReactNode | ((close: () =>
 
 export function Detail({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
   return (
-    <div className={clsx('grid gap-3 py-1.5 text-[13px]', wide ? 'grid-cols-[180px_minmax(0,1fr)]' : 'grid-cols-[140px_minmax(0,1fr)]')}>
+    <div className={clsx('grid gap-3 py-1.5 text-[13px]', wide ? 'grid-cols-[120px_minmax(0,1fr)] sm:grid-cols-[180px_minmax(0,1fr)]' : 'grid-cols-[110px_minmax(0,1fr)] sm:grid-cols-[140px_minmax(0,1fr)]')}>
       <div className="text-slate-500">{label}</div>
       <div className="text-slate-800">{children || '-'}</div>
     </div>
@@ -73,7 +73,7 @@ export function Detail({ label, children, wide }: { label: string; children: Rea
 /** Left pane of a split view (fixed width list). */
 export function SplitList({ header, children }: { header: ReactNode; children: ReactNode }) {
   return (
-    <div className="no-print flex w-[330px] shrink-0 flex-col border-r border-slate-200 bg-white">
+    <div className="no-print hidden w-[330px] shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
       <div className="flex h-[57px] items-center justify-between gap-2 border-b border-slate-200 px-3">{header}</div>
       <div className="flex-1 overflow-y-auto">{children}</div>
     </div>
@@ -82,12 +82,12 @@ export function SplitList({ header, children }: { header: ReactNode; children: R
 
 export function DetailHeader({ kicker, title, children }: { kicker?: ReactNode; title: ReactNode; children?: ReactNode }) {
   return (
-    <div className="no-print flex min-h-[57px] items-center justify-between gap-3 border-b border-slate-200 px-5 py-2">
-      <div className="min-w-0">
+    <div className="no-print flex min-h-[57px] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2 sm:flex-nowrap sm:px-5">
+      <div className="min-w-0 max-sm:flex-1">
         {kicker && <div className="text-xs text-slate-500">{kicker}</div>}
         <h1 className="truncate text-[17px] font-semibold">{title}</h1>
       </div>
-      <div className="flex shrink-0 items-center gap-1">{children}</div>
+      <div className="flex shrink-0 flex-wrap items-center gap-1">{children}</div>
     </div>
   );
 }
@@ -95,7 +95,7 @@ export function DetailHeader({ kicker, title, children }: { kicker?: ReactNode; 
 /** Small "Tabs" strip with an underline. */
 export function TabStrip<T extends string>({ tabs, value, onChange, className }: { tabs: { value: T; label: ReactNode }[]; value: T; onChange: (v: T) => void; className?: string }) {
   return (
-    <div className={clsx('flex gap-6 border-b border-slate-200', className)}>
+    <div className={clsx('flex gap-6 overflow-x-auto whitespace-nowrap border-b border-slate-200', className)}>
       {tabs.map((t) => (
         <button key={t.value} className={clsx('tab', value === t.value && 'tab-active')} onClick={() => onChange(t.value)}>
           {t.label}

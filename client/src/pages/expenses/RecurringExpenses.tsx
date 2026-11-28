@@ -53,7 +53,7 @@ function RecurringList() {
   const exportRows = selected.length ? data.filter((r) => selected.includes(r.id)) : data;
   return (
     <div>
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
         <StatusPicker status={status} setStatus={(v) => { setStatus(v); setSelected([]); }} />
         <div className="flex gap-2">
           <ExportMenu rows={exportRows} filename="recurring-expenses" label={selected.length ? 'Export Selected' : 'Export'} columns={[
@@ -145,7 +145,7 @@ function RecurringListPane() {
   const [status, setStatus] = useState('all');
   const { data } = useProfiles(status);
   return (
-    <div className="no-print flex w-[320px] shrink-0 flex-col border-r border-slate-200">
+    <div className="no-print hidden w-[320px] shrink-0 flex-col lg:flex border-r border-slate-200">
       <div className="flex h-[57px] items-center justify-between border-b border-slate-200 px-3">
         <StatusPicker status={status} setStatus={setStatus} />
         <button className="btn-primary w-8 px-0" onClick={() => navigate('/purchases/recurring-expenses/new')} aria-label="New profile">
@@ -182,7 +182,7 @@ function ToolbarBtn({ children, icon, onClick }: { children: ReactNode; icon?: R
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-3 py-1.5 text-[13px]">
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-1.5 sm:grid-cols-[140px_minmax(0,1fr)] text-[13px]">
       <div className="text-slate-500">{label}</div>
       <div className="text-slate-800">{children || '-'}</div>
     </div>
