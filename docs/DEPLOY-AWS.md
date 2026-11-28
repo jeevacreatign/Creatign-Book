@@ -81,6 +81,13 @@ If your books are already in a local MySQL database instead, export them first. 
 
 * **Email:** set up SMTP in **Settings → Emails**. The SMTP password is encrypted with the `APP_SECRET` kept in Secrets Manager.
 * **Customer portal links** use the CloudFront address automatically (`APP_ORIGIN`).
+* **Exchange-rate keys:** live mid-market rates need a free App ID from [openexchangerates.org](https://openexchangerates.org), and USD from the Federal Reserve needs a free key from [fred.stlouisfed.org](https://fred.stlouisfed.org). The stack keeps both in Secrets Manager under `creatign-ledger/rate-keys` (created as `not-set`). Run:
+
+  ```bash
+  ./deploy/aws/set-rate-keys.sh
+  ```
+
+  It asks for each key at a hidden prompt (Enter keeps the current one, `-` clears it), saves them in Secrets Manager and restarts the app. Or edit the secret in the Secrets Manager console (**Retrieve secret value → Edit**), then restart the app. Never put a key in `.env.example`, the template or git.
 * **Gmail linking (OAuth):** add `https://<your address>/api/mail/google/callback` as a redirect URI in Google Cloud, and add the client ID and secret to the task. It is easier to wait until your own domain is set up.
 
 ## Updating to a new version
@@ -120,6 +127,7 @@ The stack sets all of these. They are listed so you can run the same image somew
 | `APP_ORIGIN` | CloudFront address | Used for links in emails and the customer portal |
 | `APP_SECRET` | from Secrets Manager | Encrypts passwords saved in Settings |
 | `UPLOAD_DIR` | `/data/uploads` (EFS) | Where attachments are stored |
+| `OPENEXCHANGERATES_APP_ID`, `FRED_API_KEY` | from Secrets Manager (`rate-keys`) | Exchange-rate provider keys; `not-set` means none |
 
 ## Removing it
 

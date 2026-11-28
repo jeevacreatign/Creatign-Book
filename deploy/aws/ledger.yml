@@ -167,6 +167,18 @@ Resources:
         PasswordLength: 48
         ExcludePunctuation: true
 
+  # API keys of the exchange-rate providers. Created as "not-set" (the app treats that as no key): fill them in with
+  # deploy/aws/set-rate-keys.sh (or in the Secrets Manager console), then restart the app. Kept if the
+  # stack is deleted; the template never overwrites the values you saved.
+  RateKeysSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub '${AWS::StackName}/rate-keys'
+      Description: Exchange-rate API keys for Creatign Ledger (OPENEXCHANGERATES_APP_ID for live mid-market rates, FRED_API_KEY for USD from the Federal Reserve). The value not-set means not used.
+      SecretString: '{"OPENEXCHANGERATES_APP_ID":"not-set","FRED_API_KEY":"not-set"}'
+
   # ------------------------------------------------------------------ database
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -272,7 +284,7 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - { Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!Ref DatabaseSecret, !Ref AppSecret] }
+              - { Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!Ref DatabaseSecret, !Ref AppSecret, !Ref RateKeysSecret] }
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -335,6 +347,8 @@ Resources:
             - { Name: DB_USER, ValueFrom: !Sub '${DatabaseSecret}:username::' }
             - { Name: DB_PASSWORD, ValueFrom: !Sub '${DatabaseSecret}:password::' }
             - { Name: APP_SECRET, ValueFrom: !Ref AppSecret }
+            - { Name: OPENEXCHANGERATES_APP_ID, ValueFrom: !Sub '${RateKeysSecret}:OPENEXCHANGERATES_APP_ID::' }
+            - { Name: FRED_API_KEY, ValueFrom: !Sub '${RateKeysSecret}:FRED_API_KEY::' }
           LogConfiguration:
             LogDriver: awslogs
             Options:
