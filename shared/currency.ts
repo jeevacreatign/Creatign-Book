@@ -105,12 +105,12 @@ export interface RateStatus {
 }
 
 /** Where today's default rate of a currency comes from, and whether it is out of date. */
-export function rateStatus(c: Currency, day: string, staleDays = DEFAULT_STALE_DAYS): RateStatus {
+export function rateStatus(c: Currency, day: string, staleDays = DEFAULT_STALE_DAYS, staleDaysByProvider: Record<string, number> = {}): RateStatus {
   if (c.code === BASE_CURRENCY) return { rate: 1, source: 'manual', stale: false };
   const e = rateEntryOn(c, day);
   if (!e) return { rate: c.rate, source: 'unknown', stale: true, staleReason: 'No dated rate: enter one or refresh rates' };
   const ageDays = Math.max(0, Math.round((Date.parse(day) - Date.parse(e.date)) / 86400000));
-  const stale = ageDays > staleDays;
+  const stale = ageDays > (e.source === 'fetched' && e.provider ? (staleDaysByProvider[e.provider] ?? staleDays) : staleDays);
   return { rate: e.rate, date: e.date, source: e.source ?? 'manual', provider: e.provider, recordedAt: e.recordedAt, ageDays, stale, staleReason: stale ? `Rate is ${ageDays} days old` : undefined };
 }
 
