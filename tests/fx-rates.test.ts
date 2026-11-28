@@ -49,7 +49,7 @@ beforeAll(async () => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const currency = async (code: string) => ((await api().get('/api/currencies')).body as { code: string; rate: number; status: { source: string; stale: boolean; date?: string; provider?: string }; history: { date: string; rate: number; source?: string }[] }[]).find((c) => c.code === code)!;
+const currency = async (code: string) => ((await api().get('/api/currencies')).body as { code: string; rate: number; status: { source: string; stale: boolean; date?: string; provider?: string }; history: { date: string; rate: number; source?: string; provider?: string }[] }[]).find((c) => c.code === code)!;
 
 let eurClient = '';
 let oldInvoice = '';
@@ -290,6 +290,56 @@ describe('Australia, England and the US', () => {
     const r3 = await api().post('/api/currency-rates/refresh');
     expect(r3.body.error).toMatch(/Reserve Bank of Australia: The rate provider sent an unexpected response \(no FXRINR series\)/);
     await api().delete('/api/currencies/AUD');
+  });
+});
+
+describe('USD from the Federal Reserve (FRED key)', () => {
+  const FRED = 'https://api.stlouisfed.org/fred/series/observations?series_id=DEXINUS';
+  const fredBody = (date: string, value = '96.91') => ({ observations: [{ date: addDays(date, 1), value: '.' }, { date, value }, { date: addDays(date, -1), value: '96.88' }] });
+  const stub = (fred: () => Response) => (url: string) => (url.startsWith(FRED) ? fred() : both()(url));
+  const KEY = 'test-fred-key-not-real';
+
+  it('is not called without a key, and Settings says what is needed', async () => {
+    const f = stubFetch(stub(() => json(fredBody(DAY))));
+    const r = await api().post('/api/currency-rates/refresh');
+    expect(f.mock.calls.some((c) => String(c[0]).startsWith(FRED))).toBe(false);
+    expect(r.body.updated.find((u: { code: string }) => u.code === 'USD').source).toBe('European Central Bank');
+    const st = await api().get('/api/currency-rates/status');
+    expect(st.body.provider.sources[0].rateType).toMatch(/USD from the Federal Reserve .*needs a free FRED API key in FRED_API_KEY/);
+  });
+
+  it('takes USD from the Fed with a key, accepts its weekly rate and never shows the key', async () => {
+    process.env.FRED_API_KEY = KEY;
+    try {
+      const week = addDays(DAY, -7);
+      const f = stubFetch(stub(() => json(fredBody(week))));
+      const r = await api().post('/api/currency-rates/refresh');
+      expect(r.body.error).toBeUndefined();
+      expect(r.body.updated.find((u: { code: string }) => u.code === 'USD')).toMatchObject({ rate: 96.91, source: 'Federal Reserve', date: week });
+      expect(String(f.mock.calls.find((c) => String(c[0]).startsWith(FRED))![0])).toContain(`api_key=${KEY}`);
+      // a 7-day-old Fed rate is its latest weekly release: not stale, and it is the default for new documents
+      const usd = await currency('USD');
+      expect(usd.status).toMatchObject({ provider: 'Federal Reserve', stale: false, date: week });
+      expect(usd.history.some((h) => h.date > week && h.provider === 'European Central Bank')).toBe(false);
+      expect((await api().get('/api/currencies/USD/rate').query({ date: DAY })).body).toMatchObject({ rate: 96.91, stale: false });
+      const st = await api().get('/api/currency-rates/status');
+      expect(st.body.provider.sources[0].rateType).toMatch(/FRED API key set on the server/);
+      for (const body of [r.body, st.body, (await api().get('/api/currencies')).body]) expect(JSON.stringify(body)).not.toContain(KEY);
+      // older than 10 days: not used
+      stubFetch(stub(() => json(fredBody(addDays(DAY, -12)))));
+      const old = await api().post('/api/currency-rates/refresh');
+      expect(old.body.error).toMatch(/Federal Reserve: its latest rate is of .*, too old; the ECB rate is used for USD/);
+      // an error never echoes the key
+      stubFetch(stub(() => json({ error_message: `Bad Request. api_key ${KEY} is not registered` }, 400)));
+      const bad = await api().post('/api/currency-rates/refresh');
+      expect(bad.body.error).toMatch(/Federal Reserve: The rate provider answered 400/);
+      expect(JSON.stringify(bad.body)).not.toContain(KEY);
+    } finally {
+      delete process.env.FRED_API_KEY;
+    }
+    // back to the ECB for the tests below
+    stubFetch(both());
+    await api().post('/api/currency-rates/refresh');
   });
 });
 

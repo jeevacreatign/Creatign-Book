@@ -113,7 +113,7 @@ const ECB: SourceInfo = {
   updates: 'Once a working day, about 16:00 CET (20:30 IST); none on weekends and TARGET holidays',
   rateType: 'ECB euro reference rates (indicative mid rates), through the Frankfurter API: EUR, and about 30 other currencies whose own central bank has no free daily API (USD, JPY, SGD, CHF, HKD ...)',
 };
-const OWN: SourceInfo = {
+const OWN_BASE: SourceInfo = {
   id: 'own',
   name: 'Own central bank',
   website: 'https://www.bankofcanada.ca/valet/docs',
@@ -153,6 +153,13 @@ const OXR: SourceInfo = {
 
 export function providerInfo(): ProviderInfo {
   const mode = env('FX_RATES_PROVIDER');
+  const fred = !!env('FRED_API_KEY');
+  const OWN: SourceInfo = {
+    ...OWN_BASE,
+    apiKeyRequired: true,
+    apiKeyConfigured: fred,
+    rateType: `${OWN_BASE.rateType}. USD from the Federal Reserve (weekly, through FRED): ${fred ? 'FRED API key set on the server' : 'needs a free FRED API key in FRED_API_KEY on the server; until then USD uses the ECB rate'}`,
+  };
   if (mode === 'openexchangerates') {
     const set = !!env('OPENEXCHANGERATES_APP_ID');
     return { mode, name: OXR.name, sources: [{ ...OXR, apiKeyConfigured: set }], apiKeyRequired: true, apiKeyConfigured: set };
@@ -320,14 +327,42 @@ async function fetchBankOfEngland(): Promise<Quote> {
   return best;
 }
 
+/**
+ * Federal Reserve H.10 rate through FRED, the St. Louis Fed's data service: series DEXINUS is INR per 1 USD
+ * (noon buying rates in New York). The Fed publishes H.10 once a week, so the latest rate can be several
+ * days old. FRED needs a free API key in FRED_API_KEY; it is sent only to FRED and never logged or shown.
+ */
+async function fetchFederalReserve(): Promise<Quote> {
+  const key = env('FRED_API_KEY');
+  if (!key) throw new Error('FRED_API_KEY is not set');
+  const base = (env('FX_URL_FRED') || 'https://api.stlouisfed.org/fred').replace(/\/+$/, '');
+  let body: { observations?: { date?: unknown; value?: unknown }[] };
+  try {
+    body = (await getJson(`${base}/series/observations?series_id=DEXINUS&file_type=json&sort_order=desc&limit=15&api_key=${encodeURIComponent(key)}`)) as typeof body;
+  } catch (e) {
+    // never echo anything that could carry the key
+    throw new Error(e instanceof Error ? e.message.replace(key, '***') : 'Could not reach the rate provider');
+  }
+  // "." marks a day without a rate
+  const o = (body?.observations ?? []).find((x) => isDate(x.date) && goodNum(Number(x.value)));
+  if (!o) throw new Error('The rate provider sent an unexpected response');
+  return { rate: roundRate(Number(o.value)), date: o.date as string, source: 'Federal Reserve' };
+}
+
 /** Currencies fetched from their own central bank (EUR comes from the ECB, the pegs from their issuers). */
-export const OWN_CENTRAL_BANKS: Record<string, { bank: string; website: string; load: () => Promise<Quote> }> = {
+export const OWN_CENTRAL_BANKS: Record<string, { bank: string; website: string; load: () => Promise<Quote>; needsKey?: string; maxAgeDays?: number }> = {
   CAD: { bank: 'Bank of Canada', website: 'https://www.bankofcanada.ca/valet/docs', load: fetchBankOfCanada },
   NOK: { bank: 'Norges Bank', website: 'https://www.norges-bank.no/en/topics/Statistics/open-data/', load: fetchNorgesBank },
   CZK: { bank: 'Czech National Bank', website: 'https://www.cnb.cz/en/financial-markets/foreign-exchange-market/central-bank-exchange-rate-fixing/', load: fetchCzechNationalBank },
   AUD: { bank: 'Reserve Bank of Australia', website: 'https://www.rba.gov.au/statistics/tables/#exchange-rates', load: fetchReserveBankOfAustralia },
   GBP: { bank: 'Bank of England', website: 'https://www.bankofengland.co.uk/boeapps/database/', load: fetchBankOfEngland },
+  // published weekly: a rate up to 10 days old is still the Fed's latest
+  USD: { bank: 'Federal Reserve', website: 'https://fred.stlouisfed.org/series/DEXINUS', load: fetchFederalReserve, needsKey: 'FRED_API_KEY', maxAgeDays: 10 },
 };
+
+/** Days after which a bank's latest rate counts as stale, for banks that publish less often than daily. */
+export const providerStaleDays = (): Record<string, number> =>
+  Object.fromEntries(Object.values(OWN_CENTRAL_BANKS).filter((b) => b.maxAgeDays).map((b) => [b.bank, b.maxAgeDays!]));
 
 /** An own-bank rate this far from the ECB's cross rate is treated as bad data (wrong series, unit or day). */
 const MAX_GAP_FROM_ECB = 0.05;
@@ -405,7 +440,7 @@ export async function fetchQuotes(wanted: string[]): Promise<{ quotes: Quotes; r
   }
   if (info.mode !== 'exchangerate-api') {
     // 1. each currency's own central bank, where it has a free documented feed (fetched alongside the ECB)
-    const own = wanted.filter((c) => OWN_CENTRAL_BANKS[c]);
+    const own = wanted.filter((c) => OWN_CENTRAL_BANKS[c] && (!OWN_CENTRAL_BANKS[c].needsKey || env(OWN_CENTRAL_BANKS[c].needsKey!)));
     const ownRuns = own.map((c) => ({ c, run: { source: OWN_CENTRAL_BANKS[c].bank, ok: false, count: 0 } as SourceRun }));
     const ecbRun: SourceRun = { source: ECB.name, ok: false, count: 0 };
     runs.push(...ownRuns.map((x) => x.run), ecbRun);
@@ -431,12 +466,11 @@ export async function fetchQuotes(wanted: string[]): Promise<{ quotes: Quotes; r
         },
       ),
     ]);
-    const oldest = addDays(today(), -staleDays());
     for (const { c, run, q } of ownQuotes) {
       if (!q) continue;
       const check = ecb?.get(c);
       const gap = check ? Math.abs(q.rate / check.rate - 1) : 0;
-      if (q.date < oldest) run.error = `its latest rate is of ${q.date}, too old; the ECB rate is used for ${c}`;
+      if (q.date < addDays(today(), -(OWN_CENTRAL_BANKS[c].maxAgeDays ?? staleDays()))) run.error = `its latest rate is of ${q.date}, too old; the ECB rate is used for ${c}`;
       else if (gap > MAX_GAP_FROM_ECB) run.error = `its rate ${q.rate} is ${(gap * 100).toFixed(1)}% away from the ECB's ${check!.rate}, so it was not used; the ECB rate is used for ${c}`;
       else {
         run.ok = true;
