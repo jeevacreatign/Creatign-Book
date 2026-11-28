@@ -64,6 +64,9 @@ describe('choosing live mid-market rates', () => {
     expect(no.status).toBe(400);
     expect(no.body.error).toMatch(/need OPENEXCHANGERATES_APP_ID set in the server environment/);
     expect((await api().put('/api/currency-rates/settings').send({ rateBasis: 'live' })).status).toBe(400);
+    // the AWS stack's placeholder for an empty key counts as no key
+    process.env.OPENEXCHANGERATES_APP_ID = 'not-set';
+    expect((await api().get('/api/currency-rates/status')).body.provider).toMatchObject({ basis: 'central-bank', midMarketAvailable: false });
 
     withKey();
     const on = await api().get('/api/currency-rates/status');

@@ -99,7 +99,11 @@ export interface FxRateSettings {
   lastSuccessAt?: string;
 }
 
-const env = (k: string) => process.env[k]?.trim() || undefined;
+/** A setting from the environment; "not-set" (the AWS stack's placeholder for an empty key) counts as unset. */
+const env = (k: string) => {
+  const v = process.env[k]?.trim();
+  return v && v !== 'not-set' ? v : undefined;
+};
 export const staleDays = () => Number(env('FX_RATES_STALE_DAYS')) || DEFAULT_STALE_DAYS;
 export const DEFAULT_MIDMARKET_STALE_HOURS = 24;
 export const midMarketStaleHours = () => Number(env('FX_MIDMARKET_STALE_HOURS')) || DEFAULT_MIDMARKET_STALE_HOURS;
