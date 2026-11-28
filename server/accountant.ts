@@ -9,7 +9,7 @@ import { getDb, newId, now } from './db';
 import { logActivity, runRecurring } from './engine';
 import { accountBalance } from './reports';
 import { BASE_CURRENCY, isIsoCode, isoCodes, isoInfo, rateOn, rateStatus } from '../shared/currency';
-import { fxRateSettings, providerInfo, refreshRates, saveFxRateSettings, staleDays } from './fxRates';
+import { applyFetchedRate, fxRateSettings, providerInfo, quoteFor, refreshRates, saveFxRateSettings, staleDays } from './fxRates';
 import { requireAdmin } from './auth';
 import { currencyRecord, parseRate, revaluationLines } from './fx';
 import { currentUser } from './projects';
@@ -681,17 +681,32 @@ export function registerAccountantRoutes(api: Router, h: Wrap, m: Wrap) {
     const st = rateStatus(c, date, staleDays());
     return { code: c.code, date, rate: rateOn(c, date), source: st.source, rateDate: st.date, provider: st.provider, stale: st.stale, staleReason: st.staleReason };
   }));
-  api.post('/currencies', m((req) => {
-    const db = getDb();
+  api.post('/currencies', h(async (req) => {
     const b = req.body || {};
     const code = String(b.code || '').trim().toUpperCase();
     if (!isIsoCode(code)) throw bad('Enter a valid ISO 4217 currency code, for example USD');
-    if (db.currencies.some((c) => c.code === code)) throw bad(`${code} has already been added`);
-    const rate = parseRate(b.rate);
+    if (getDb().currencies.some((c) => c.code === code)) throw bad(`${code} has already been added`);
+    const blank = b.rate === undefined || b.rate === null || b.rate === '' || Number(b.rate) === 0;
+    // no rate entered: fetch the latest one from the rate sources (on the server)
+    let quote: Awaited<ReturnType<typeof quoteFor>> | undefined;
+    if (blank) {
+      try {
+        quote = await quoteFor(code);
+      } catch (e) {
+        throw bad(e instanceof Error ? e.message : String(e));
+      }
+    }
+    const rate = blank ? quote!.rate : parseRate(b.rate);
     if (!rate) throw bad('Exchange rate is required: how many INR one unit is worth');
+    const db = getDb();
+    if (db.currencies.some((c) => c.code === code)) throw bad(`${code} has already been added`);
     const c = currencyRecord(code, rate, str(b.name), str(b.symbol));
-    c.history = [{ date: str(b.date) || today(), rate, source: 'manual', recordedAt: now() }];
+    if (quote) {
+      c.history = [];
+      applyFetchedRate(c, quote, now(), today());
+    } else c.history = [{ date: str(b.date) || today(), rate, source: 'manual', recordedAt: now() }];
     db.currencies.push(c);
+    S.commit();
     return c;
   }));
   api.put('/currencies/:code', m((req) => {
