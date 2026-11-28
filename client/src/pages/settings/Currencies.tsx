@@ -110,7 +110,7 @@ export default function Currencies() {
 function AddCurrency({ onClose, existing }: { onClose: () => void; existing: string[] }) {
   const { data: iso = [] } = useApi<{ code: string; name: string; symbol: string }[]>('/currencies/iso');
   const [f, setF] = useState({ code: '', rate: '', date: today() });
-  const save = useAction(() => api<{ code: string }>('/currencies', { body: { ...f, rate: Number(f.rate) } }), (c) => `${c.code} added`);
+  const save = useAction(() => api<{ code: string }>('/currencies', { body: { ...f, rate: f.rate.trim() ? Number(f.rate) : undefined } }), (c) => `${c.code} added`);
   const picked = iso.find((x) => x.code === f.code.toUpperCase());
   return (
     <Modal
@@ -141,7 +141,7 @@ function AddCurrency({ onClose, existing }: { onClose: () => void; existing: str
               ))}
           </datalist>
         </Field>
-        <Field inline={false} label="Exchange Rate" required>
+        <Field inline={false} label="Exchange Rate" hint="Leave blank to fetch the latest rate from the rate sources">
           <div className="flex">
             <span className="flex items-center rounded-l-md border border-r-0 border-slate-300 bg-slate-50 px-2.5 text-[13px]">1 {f.code || 'XXX'} =</span>
             <input className="input rounded-none" inputMode="decimal" value={f.rate} onChange={(e) => setF({ ...f, rate: e.target.value })} aria-label="Exchange rate" />
@@ -216,14 +216,21 @@ interface RefreshResult {
   provider: string;
   rateDate?: string;
   fetchedAt: string;
-  updated: { code: string; previousRate: number; rate: number; date: string }[];
+  updated: { code: string; previousRate: number; rate: number; date: string; source?: string }[];
   unsupported: string[];
+  sources?: { source: string; ok: boolean; rateDate?: string; count: number; error?: string }[];
   keptManual: { code: string; date: string; rate: number }[];
   error?: string;
   trigger: 'manual' | 'automatic';
 }
 interface RateStatusInfo {
-  provider: { name: string; website: string; apiKeyRequired: boolean; apiKeyConfigured: boolean; updates: string; rateType: string };
+  provider: {
+    mode: string;
+    name: string;
+    apiKeyRequired: boolean;
+    apiKeyConfigured: boolean;
+    sources: { id: string; name: string; website: string; apiKeyRequired: boolean; apiKeyConfigured: boolean; updates: string; rateType: string; attribution?: { text: string; url: string } }[];
+  };
   staleDays: number;
   autoRefresh: boolean;
   lastRun?: RefreshResult;
@@ -246,17 +253,33 @@ function LiveRates({ admin }: { admin: boolean }) {
     <div className="mb-5 rounded-md border border-slate-200 bg-slate-50/60 p-4 text-[13px]" data-testid="live-rates">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-0.5">
-          <div className="font-semibold text-slate-800">Live exchange rates</div>
-          <div className="text-slate-600">
-            Provider:{' '}
-            <a className="link" href={p.website} target="_blank" rel="noreferrer">
-              {p.name}
-            </a>{' '}
-            <span className="text-slate-400">({p.apiKeyRequired ? (p.apiKeyConfigured ? 'API key set on the server' : 'API key missing on the server') : 'no API key needed'})</span>
-          </div>
-          <div className="text-xs text-slate-500">
-            {p.rateType}. Updated {p.updates.charAt(0).toLowerCase() + p.updates.slice(1)}. Rates older than {data.staleDays} days are flagged as stale.
-          </div>
+          <div className="font-semibold text-slate-800">Live exchange rates against INR</div>
+          <div className="text-xs text-slate-500">Each currency takes its INR rate from the first source below that quotes it. No API key is needed{p.apiKeyRequired ? (p.apiKeyConfigured ? ' (API key set on the server)' : ' (API key missing on the server)') : ''}. Rates older than {data.staleDays} days are flagged as stale.</div>
+          <ol className="mt-1.5 space-y-1" data-testid="rate-sources">
+            {p.sources.map((src, i) => (
+              <li key={src.id} className="flex gap-2">
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-ink-900 text-[10px] font-semibold text-brand-300">{i + 1}</span>
+                <span>
+                  <a className="link font-medium" href={src.website} target="_blank" rel="noreferrer">
+                    {src.name}
+                  </a>
+                  <span className="text-xs text-slate-500">
+                    {' '}
+                    - {src.rateType}. {src.updates}.
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
+          {p.sources
+            .filter((src) => src.attribution)
+            .map((src) => (
+              <div key={src.id} className="text-[11px] text-slate-400">
+                <a href={src.attribution!.url} target="_blank" rel="noreferrer" className="hover:underline">
+                  {src.attribution!.text}
+                </a>
+              </div>
+            ))}
         </div>
         {admin && (
           <button className="btn-primary" disabled={refresh.isPending} onClick={() => refresh.mutate(undefined)}>
@@ -271,18 +294,24 @@ function LiveRates({ admin }: { admin: boolean }) {
         </label>
       )}
       {run && (
-        <div className={clsx('mt-3 rounded-md border px-3 py-2', run.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900')} data-testid="refresh-status">
+        <div className={clsx('mt-3 rounded-md border px-3 py-2', !run.ok ? 'border-red-200 bg-red-50 text-red-900' : run.error ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900')} data-testid="refresh-status">
           <div className="flex items-center gap-1.5 font-medium">
             {run.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
             {run.ok ? `Rates of ${fmtDate(run.rateDate!)} fetched` : 'Refresh failed'} {run.trigger === 'automatic' ? '(automatic)' : ''} at {fmtDateTime(run.fetchedAt)}
+            {run.ok && run.error ? '. One source failed; the next one was used.' : ''}
           </div>
           {!run.ok && <div className="mt-0.5">{run.error}. No rate was changed; the rates below are the last ones saved.</div>}
           {run.ok && (
             <ul className="mt-1 space-y-0.5 text-xs">
+              {(run.sources ?? []).map((r) => (
+                <li key={r.source} className={clsx(!r.ok && 'text-red-700')} data-testid="source-run">
+                  {r.ok ? '✓' : '✗'} {r.source}: {r.ok ? `${r.count} currenc${r.count === 1 ? 'y' : 'ies'}${r.rateDate ? `, rates of ${fmtDate(r.rateDate)}` : ''}` : r.error}
+                </li>
+              ))}
               <li>Updated: {run.updated.length ? run.updated.map((u) => `${u.code} ${u.previousRate} → ${u.rate}`).join(', ') : 'none'}</li>
               {run.unsupported.length > 0 && (
                 <li className="text-amber-800" data-testid="unsupported">
-                  Not updated, the provider does not quote: {run.unsupported.join(', ')}. Enter these rates by hand.
+                  Not updated, no rate source quotes: {run.unsupported.join(', ')}. Enter these rates by hand.
                 </li>
               )}
               {run.keptManual.map((k) => (
