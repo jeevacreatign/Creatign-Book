@@ -1,12 +1,12 @@
-// Storage. The books are kept in MySQL (DATABASE_URL); see server/mysql.ts for the tables.
+// Storage. The books are kept in MongoDB (MONGODB_URI); see server/mongo.ts for collections.
 // The app works on an in-memory copy loaded once by initDb(); every change is written back to
-// MySQL by persist() and the API waits for flushDb() before it answers.
+// MongoDB by persist() and the API waits for flushDb() before it answers.
 // DB_FILE=:memory: runs without any database (used by the test suite).
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { customAlphabet } from 'nanoid';
 import type { Database } from '../shared/types';
-import * as my from './mysql';
+import * as mongo from './mongo';
 import { seedDatabase } from './seed';
 import { normalizeCurrencies } from '../shared/currency';
 
@@ -14,8 +14,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = path.join(here, 'data');
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(here, 'uploads');
 
-/** 'memory' for tests and scripts that should not touch a database, otherwise 'mysql'. */
-export const storage = (): 'memory' | 'mysql' => (process.env.DB_FILE === ':memory:' || (!process.env.DATABASE_URL && !process.env.DB_HOST && process.env.VITEST) ? 'memory' : 'mysql');
+/** 'memory' for tests and scripts that should not touch a database, otherwise 'mongodb'. */
+export const storage = (): 'memory' | 'mongodb' => (process.env.DB_FILE === ':memory:' || (!process.env.MONGODB_URI && process.env.VITEST) ? 'memory' : 'mongodb');
 
 const nano = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
 export const newId = (prefix: string) => `${prefix}_${nano()}`;
@@ -40,26 +40,23 @@ function emptyDefaults(d: Partial<Database>): Database {
 
 let ready = false;
 
-/** Connect to MySQL, create or update the tables and load the books. Call once before serving. */
+/** Connect to MongoDB, create indexes and load the books. Call once before serving. */
 export async function initDb(): Promise<Database> {
   if (storage() === 'memory') return loadDb();
-  const target = my.connectionSettings();
-  if (!target) throw new Error('DATABASE_URL is not set. Point it at your MySQL database, for example mysql://ledger:password@localhost:3306/creatign_ledger (see README).');
-  my.connect(target);
-  const was = await my.migrate();
-  const raw = await my.loadAll();
+  const target = mongo.connectionSettings();
+  if (!target) throw new Error('MONGODB_URI is not set. Point it at your MongoDB database (see README).');
+  mongo.connect(target);
+  await mongo.migrate();
+  const raw = await mongo.loadAll();
   if (raw) {
-    my.remember(raw as Database);
+    mongo.remember(raw);
     db = emptyDefaults(raw);
-    // typed columns changed meaning: rewrite every row once so they are filled in
-    if (was < my.SCHEMA_VERSION) {
-      my.save(db, { full: true });
-      await my.flush();
-    }
+    mongo.save(db);
+    await mongo.flush();
   } else {
     db = seedDatabase({ withSamples: process.env.SEED_SAMPLES !== 'false' });
-    my.save(db, { full: true });
-    await my.flush();
+    mongo.save(db, { full: true });
+    await mongo.flush();
   }
   ready = true;
   return db;
@@ -90,30 +87,30 @@ export function resetDb(withSamples = true, keep: (keyof Database)[] = []): Data
   return db;
 }
 
-/** Load books from another source (JSON import) and write all of them to MySQL. */
+/** Load books from another source (JSON or legacy MySQL import) and write all of them to MongoDB. */
 export function replaceDb(d: Partial<Database>): Database {
   db = emptyDefaults(d);
   ready = true;
-  if (storage() === 'mysql') my.save(db, { full: true });
+  if (storage() === 'mongodb') mongo.save(db, { full: true });
   return db;
 }
 
-/** Queue the changes for MySQL. */
+/** Queue the changes for MongoDB. */
 export function persist() {
   if (storage() === 'memory' || !ready) return;
-  my.save(db);
+  mongo.save(db);
 }
 
-/** Wait until all changes are in MySQL (throws if the write failed). */
+/** Wait until all changes are in MongoDB (throws if the write failed). */
 export async function flushDb() {
   if (storage() === 'memory') return;
-  await my.flush();
+  await mongo.flush();
 }
 
 export async function closeDb() {
-  if (storage() === 'mysql') {
-    await my.flush().catch(() => undefined);
-    await my.close();
+  if (storage() === 'mongodb') {
+    await mongo.flush().catch(() => undefined);
+    await mongo.close();
   }
 }
 

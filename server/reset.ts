@@ -1,4 +1,4 @@
-// npm run reset-data [-- --empty]: replace everything in the MySQL database with fresh sample books.
+// npm run reset-data [-- --empty]: replace everything in the MongoDB database with fresh sample books.
 import 'dotenv/config';
 import { closeDb, initDb, persist, resetDb } from './db';
 import { recompute } from './engine';

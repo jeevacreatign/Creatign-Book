@@ -31,7 +31,7 @@ const server = app.listen(PORT, () => {
   console.log(`Creatign Ledger API listening on http://localhost:${PORT}`);
 });
 
-// finish pending MySQL writes before exiting
+// finish pending database writes before exiting
 for (const sig of ['SIGINT', 'SIGTERM'] as const)
   process.once(sig, () => {
     server.close();

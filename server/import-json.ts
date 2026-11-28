@@ -1,12 +1,13 @@
 // npm run db:import -- [path/to/db.json | https://link/to/db.json] [--force]
-// Moves books kept in the old JSON file (server/data/db.json) into the MySQL database in DATABASE_URL.
-// An https link (for example an S3 pre-signed URL) lets a one-off task on AWS import a file it cannot see.
+// Copies books from a JSON backup into the MongoDB database in MONGODB_URI.
+// An https link (for example an S3 pre-signed URL) lets a one-off task import a file it cannot see.
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Database } from '../shared/types';
 import { DATA_DIR, closeDb, flushDb, getDb, initDb, replaceDb } from './db';
 import { recompute } from './engine';
-import * as my from './mysql';
+import * as mongo from './mongo';
 
 const args = process.argv.slice(2);
 const source = args.find((a) => !a.startsWith('--')) ?? path.join(DATA_DIR, 'db.json');
@@ -30,26 +31,27 @@ if (remote) {
   text = fs.readFileSync(file, 'utf8');
 }
 const data = JSON.parse(text);
-const target = my.connectionSettings();
-if (!target) {
-  console.error('Set DATABASE_URL to your MySQL database first (see README).');
-  process.exit(1);
-}
+const target = mongo.connectionSettings();
+if (!target) throw new Error('Set MONGODB_URI to your MongoDB database first (see README).');
 
-my.connect(target);
-await my.migrate();
-const existing = await my.loadAll();
-await my.close();
-if (existing && !force) {
-  console.error('The MySQL database already has books in it. Run again with --force to replace them with the JSON file.');
-  process.exit(1);
+let existing: Partial<Database> | undefined;
+try {
+  mongo.connect(target);
+  await mongo.migrate();
+  existing = await mongo.loadAll();
+} finally {
+  await mongo.close();
 }
+if (existing && !force) throw new Error('The MongoDB database already has books in it. Run again with --force only if you intend to replace them with the JSON file.');
 
 await initDb();
-const db = replaceDb(data);
-recompute(db);
-await flushDb();
-const counts = ['accounts', 'contacts', 'items', 'docs', 'paymentsReceived', 'paymentsMade', 'expenses', 'journals', 'users'] as const;
-console.log(`Imported ${file} into MySQL:`);
-for (const k of counts) console.log(`  ${k.padEnd(18)} ${getDb()[k].length}`);
-await closeDb();
+try {
+  const db = replaceDb(data);
+  recompute(db);
+  await flushDb();
+  const counts = ['accounts', 'contacts', 'items', 'docs', 'paymentsReceived', 'paymentsMade', 'expenses', 'journals', 'users'] as const;
+  console.log(`Imported ${file} into MongoDB:`);
+  for (const k of counts) console.log(`  ${k.padEnd(18)} ${getDb()[k].length}`);
+} finally {
+  await closeDb();
+}

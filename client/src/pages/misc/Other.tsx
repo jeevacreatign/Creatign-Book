@@ -378,7 +378,7 @@ function DataAdmin() {
   return (
     <div className="max-w-2xl space-y-3">
       <div className="text-slate-600">
-        Your books are stored in the MySQL database set in <code className="rounded bg-slate-100 px-1">DATABASE_URL</code>. Schedule regular backups with <code className="rounded bg-slate-100 px-1">mysqldump</code> or your hosting provider's backups. You can also download a copy of everything as JSON (sign-in passwords and sessions are left out).
+        Your books are stored in the MongoDB database set in <code className="rounded bg-slate-100 px-1">MONGODB_URI</code>. Schedule regular backups with your MongoDB host's backup tools. You can also download a copy of everything as JSON (sign-in passwords and sessions are left out).
       </div>
       <a className="btn-secondary" href="/api/admin/backup" download>
         <Download size={14} /> Download Backup (JSON)

@@ -14,22 +14,15 @@ The architecture, every entity and the double-entry posting rules are documented
 |---|---|
 | Frontend | React 18, TypeScript, Tailwind CSS 3, Vite 5, React Router 6, TanStack Query 5, Recharts, lucide-react |
 | Backend | Node.js, Express 5 (run with `tsx`), multer for attachments |
-| Database | MySQL 8 (or MariaDB 10.6+) through `mysql2`: one table per entity plus a `journal_lines` ledger table. Attachments go to `server/uploads/` |
+| Database | MongoDB 8 through the official Node.js driver; each entity is stored in its own collection. Attachments go to `server/uploads/` |
 | Tests | Vitest + Supertest (end-to-end API workflows) |
 
 ## Setup
 
-Requirements: Node.js 20 or newer, npm, and a MySQL 8 (or MariaDB 10.6+) server.
+Requirements: Node.js 20 or newer, npm, and MongoDB 8 (local Docker or a hosted cluster).
 
-1. **Start MySQL.** With Docker: `docker compose up -d mysql` (uses `docker-compose.yml`, which creates the `creatign_ledger` database and user). Or create them yourself:
-
-   ```sql
-   CREATE DATABASE creatign_ledger CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   CREATE USER 'ledger'@'%' IDENTIFIED BY 'choose-a-strong-password';
-   GRANT ALL ON creatign_ledger.* TO 'ledger'@'%';
-   ```
-
-2. **Point the app at it.** Copy `.env.example` to `.env` and set `DATABASE_URL=mysql://ledger:choose-a-strong-password@localhost:3306/creatign_ledger`.
+1. **Start MongoDB.** With Docker: `docker compose up -d mongo`. The local database is available at `mongodb://127.0.0.1:27017/creatign_ledger`.
+2. **Point the app at it.** Copy `.env.example` to `.env` and set `MONGODB_URI`. For Atlas, use its connection string and configure Network Access to allow only the app's required source addresses.
 
 3. **Run it.**
 
@@ -47,46 +40,34 @@ On first start the server creates the tables and fills them with the Creatign or
 |---|---|
 | `npm run dev` | Starts API (port 4000, auto-reload) and web app (port 5173) together |
 | `npm test` | Runs the workflow tests against an in-memory database |
-| `npm run test:mysql` | Runs the same tests against a real MySQL database (`TEST_DATABASE_URL`, an empty throwaway database: its tables are dropped) and checks that MySQL matches the books in memory |
+| `npm run test:mongodb` | Runs the API and persistence checks against a uniquely named temporary database (`MONGODB_TEST_URI`); it drops only that generated test database |
 | `npm run typecheck` | TypeScript check for client, server and shared code |
-| `npm run reset-data` | Wipes the MySQL database and reseeds sample data. `npm run reset-data -- --empty` seeds only the organisation and accounts |
-| `npm run db:import -- server/data/db.json` | Moves books from the old JSON file into MySQL (add `--force` to replace books already in MySQL) |
+| `npm run reset-data` | Wipes the MongoDB database and reseeds sample data. `npm run reset-data -- --empty` seeds only the organisation and accounts |
+| `npm run db:import -- server/data/db.json` | Imports a JSON backup into MongoDB (add `--force` only to replace data already there) |
+| `npm run db:migrate-mysql` | Copies the existing MySQL books to MongoDB, without changing the MySQL source |
 | `npm run build` then `npm start` | Production build; the API then also serves the built app on port 4000 |
 
-Environment variables go in a `.env` file in the project folder (copy `.env.example`): `DATABASE_URL` (required), `PORT` (default 4000) and the email settings below. `.env` is ignored by git, so passwords stay on your computer.
+Environment variables go in a `.env` file in the project folder (copy `.env.example`): `MONGODB_URI` (required), `PORT` (default 4000) and the email settings below. `.env` is ignored by git, so credentials stay on your computer.
 
 ## Database
 
-The books live in MySQL. Every list in the app has its own table (`transactions` for invoices, quotes, bills and other documents, `contacts`, `items`, `accounts`, `payments_received`, `payments_made`, `expenses`, `journals`, `bank_transactions`, `statement_lines`, `users`, …). Each table has:
+The books live in MongoDB. Every list in the app has its own collection (`docs`, `contacts`, `items`, `accounts`, `paymentsReceived`, `paymentsMade`, `expenses`, `journals`, `bankTransactions`, `statementLines`, `users`, …). Each document stores the full record, plus its stable id and list order. Single settings (organisation profile, preferences, numbering counters, transaction locks) are stored in the `settings` collection. `journal_lines` is a derived collection used for ledger reporting.
 
-* `id` (primary key) and `seq` (the order rows appear in the app),
-* typed, indexed columns for querying and reporting, such as `date`, `contact_id`, `account_id`, `status`, `total`, `balance`,
-* `data`: the full record as JSON, so nothing is lost,
-* `updated_at`.
+How it runs: the server loads the books into memory and writes changed documents before answering each request. Run **one** app process per database and edit data through the app rather than directly in MongoDB while it is running.
 
-`journal_lines` holds every ledger posting (`journal_id`, `date`, `account_id`, `contact_id`, `debit`, `credit`, `source_type`, `source_id`), so you can run SQL such as account balances directly:
+**Moving from the old MySQL database**: keep the original MySQL database intact. Set `SOURCE_MYSQL_URL` to that database and `MONGODB_URI` to the destination, then run `npm run db:migrate-mysql`. The command refuses to overwrite a non-empty MongoDB database unless `--force` is explicitly supplied. Check the printed collection counts and verify the app before changing production environment variables. Never post either connection string in chat or commit them.
 
-```sql
-SELECT a.code, a.name, SUM(l.debit) - SUM(l.credit) AS balance
-FROM journal_lines l JOIN accounts a ON a.id = l.account_id
-WHERE l.date <= '2027-03-31' GROUP BY a.id ORDER BY a.code;
-```
+**Moving from a JSON backup**: set `MONGODB_URI`, then run `npm run db:import -- server/data/db.json`. Keep the backup until you have checked the imported books.
 
-Single settings (organisation profile, preferences, numbering counters, transaction locks) are rows of the `settings` table.
+**Backups**: use your MongoDB host's backup/export tools. Admins can also download a JSON copy from **Settings → Data & Backup**.
 
-How it runs: the server creates missing tables and columns on start, loads the books into memory, and after every change writes only the rows that changed, in one transaction, before it answers the request. Run **one** app process per database (do not put two servers on the same database), and edit data through the app rather than with SQL while it is running.
-
-**Moving from the JSON file**: if you used an earlier version, your books are in `server/data/db.json`. Set `DATABASE_URL`, then run `npm run db:import -- server/data/db.json`. Keep the JSON file until you have checked everything in the app.
-
-**Backups**: use `mysqldump creatign_ledger > backup.sql` (or your host's MySQL backups). Admins can also download a JSON copy from **Settings → Data & Backup**.
-
-**Tests** run against an in-memory copy and need no database. `tests/mysql.test.ts` also checks the MySQL layer when `TEST_DATABASE_URL` points at an empty test database, for example `TEST_DATABASE_URL=mysql://ledger:pass@localhost:3306/creatign_ledger_test npm test`.
+**Tests** run against an in-memory copy by default. To run MongoDB integration checks, set `MONGODB_TEST_URI` to an accessible test cluster; the suite uses a unique database name and drops only that generated test database.
 
 ## Deploying to AWS
 
-`./deploy/aws/deploy.sh` builds the Docker image and creates the whole setup on AWS: CloudFront (HTTPS), a load balancer, ECS Fargate, RDS for MySQL 8.4 and EFS for attachments. `./deploy/aws/import.sh` moves existing books into RDS. See [docs/DEPLOY-AWS.md](docs/DEPLOY-AWS.md) for the steps, the cost and day-to-day commands.
+The existing AWS deployment scripts and [docs/DEPLOY-AWS.md](docs/DEPLOY-AWS.md) provision MySQL and are for the previous MySQL-backed version; they are not compatible with this MongoDB-backed version.
 
-To run the same image anywhere else: `docker build -t creatign-ledger .` then `docker run -p 4000:4000 -e DATABASE_URL=mysql://... creatign-ledger`.
+To run the same image anywhere else: `docker build -t creatign-ledger .` then `docker run -p 4000:4000 -e MONGODB_URI=mongodb://... creatign-ledger`.
 
 ## Sign-up and sign-in
 
@@ -165,7 +146,7 @@ server/
   services.ts  validation, numbering, document actions, payments, credits, expenses
   engine.ts    recompute balances/statuses and rebuild journals after each change
   reports.ts   dashboard, P&L, balance sheet, trial balance, ledgers, aging, sales reports
-  db.ts        load / save the books   mysql.ts  MySQL tables and writes     seed.ts  organisation, accounts, samples
+  db.ts        load / save the books   mongo.ts  MongoDB collections/writes  seed.ts  organisation, accounts, samples
 client/src/
   components/  layout (sidebar + top bar), form controls, document preview, shared panels
   pages/       Home, items, contacts, docs (all 10 sales/purchase documents), payments,
@@ -280,4 +261,4 @@ Security: passwords are hashed with scrypt; sessions are random tokens stored ha
 * Recurring invoices, bills and expenses generate due documents when the server starts, on the first request each day, and from **More → Generate due invoices now**.
 * Single organisation and single user. GST tax lines, bank feeds and reconciliation are not implemented.
 * **Multi-currency limits**: expenses, bank accounts, bank transactions, journal vouchers and opening balances are INR only; item rates and project rates are kept in INR and converted at the document's rate; currencies no rate source quotes need manual rates.
-* One app process serves one MySQL database; it keeps the books in memory and writes each change through. Scaling out to several app servers would need the services to query MySQL directly.
+* One app process serves one MongoDB database; it keeps the books in memory and writes each change through. Scaling out to several app servers would need the services to query MongoDB directly.

@@ -18,12 +18,12 @@ This document describes how Creatign Books is put together, every entity it stor
 │  routes → services.ts (validation, numbering, actions)           │
 │         → engine.ts   (recompute balances/statuses + journals)    │
 │         → reports.ts  (dashboard, P&L, BS, TB, GL, aging …)       │
-│         → db.ts       (load / save) → mysql.ts (tables, writes)   │
+│         → db.ts       (load / save) → mongo.ts (collections)      │
 └───────────────┬──────────────────────────────────────────────────┘
                 │
-        MySQL (DATABASE_URL)  one table per collection + journal_lines,
-                              changed rows written per request in one transaction
-                              (DB_FILE=:memory: for tests)
+        MongoDB (MONGODB_URI)  one collection per entity + journal_lines,
+                               changed documents written before each response
+                               (DB_FILE=:memory: for tests)
         server/uploads/       (attachments, via multer, 10 MB per file)
 ```
 
@@ -42,7 +42,7 @@ Code that both sides need lives in `shared/`:
 * **One generic transaction document.** Quotes, sales orders, invoices, recurring invoices, delivery challans, credit notes, purchase orders, bills, recurring bills and vendor credits all share the `TxnDoc` shape. Behaviour differences are data (`DOC_META` on the server, `DOC_UI` on the client), which keeps the ten modules consistent.
 * **Conversions copy, then link.** `GET /api/docs/:id/convert?to=<kind>` returns an unsaved, prefilled template (for example quote → sales order). Saving it stores the back-link (`quoteId`, `salesOrderId`, `purchaseOrderId` …) and the source's status is recomputed (`invoiced`, `billed`, `partially_invoiced` …).
 * **Recurring profiles** generate child documents on boot, on the first request of each day, and on demand (`POST /api/recurring/run`).
-* **Swappable persistence.** All storage goes through `db.ts`. Moving to PostgreSQL means re-implementing `getDb/persist` with the relational tables in section 3; nothing above it changes.
+* **Swappable persistence.** All storage goes through `db.ts`; MongoDB collection writes are implemented in `server/mongo.ts`.
 
 ## 2. Formatting and calculation rules
 
@@ -55,7 +55,7 @@ Code that both sides need lives in `shared/`:
 
 ## 3. Entities
 
-In memory the books are one `Database` object; each array is a MySQL table (see `server/mysql.ts` for table and column names) and the single objects are rows of `settings`. Types below are TypeScript, with `?` meaning nullable. Ids are prefixed strings (`cus_…`, `inv_…`).
+In memory the books are one `Database` object; each array is a MongoDB collection (see `server/mongo.ts`) and the single objects are documents in `settings`. Types below are TypeScript, with `?` meaning nullable. Ids are prefixed strings (`cus_…`, `inv_…`).
 
 ### Database (root)
 
